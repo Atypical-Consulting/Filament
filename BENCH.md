@@ -1783,3 +1783,412 @@ aujourd'hui BÉNI PAR UN TEST plutôt que corrigé.**
 ---
 
 *Fin de l'entrée n°4. Ne pas modifier — ajouter une entrée n°5 pour toute rectification.*
+
+---
+
+## Entrée n°5 — 2026-07-16 — Phase 2 : C1/C3/C4 sur la **SORTIE D'UN COMPILATEUR**
+
+### 🔴 CE QUI REND CETTE ENTRÉE DIFFÉRENTE DES QUATRE PRÉCÉDENTES
+
+**C'est la PREMIÈRE entrée de ce registre dont les chiffres décrivent du JS qu'une MACHINE a émis.**
+
+Les entrées n°1 et n°2 mesurent **Blazor**. Les entrées n°3 et n°4 mesurent du **JS écrit à la
+main** — l'**answer key** (n°21), c'est-à-dire ce qu'un générateur **devrait** émettre un jour. Les
+deux portaient un avertissement de portée identique et **toujours en vigueur** : *« l'artefact n'est
+pas la sortie d'un générateur »*. La décision n°34 a **refusé de déclarer la Phase 1 franchie** pour
+exactement cette raison, et la n°50 a maintenu ce refus : **la proposition qui porte la thèse — « un
+générateur C# émet ceci, sous 10 ko, à ces temps » — n'avait jamais été testée.**
+
+**Elle l'est ici, à moitié.** Le label **`filament-counter-gen`** monte le JS que
+`Filament.Generator` **émet** depuis `samples/Counter/Counter.razor`. Il tourne dans le **même run**,
+sur le **même harness**, contre le label `filament-counter` (l'answer key) et contre Blazor.
+
+**« À moitié » est littéral, et c'est le fait le plus important de cette entrée** : seul le
+**TEMPLATE** est généré. Le bloc `@code` de `Counter.razor` contient du **JavaScript écrit à la
+main** (`const currentCount = signal(0)`), splicé verbatim — c'est le périmètre déclaré de la Phase 2
+(§6 : « la logique `@code` reste écrite en JS à la main »), et c'est consigné en n°57. **Le lifting
+d'état (`private int` → `Signal<int>`) qu'un vrai générateur devra faire n'est PAS dans ces octets.**
+Le `+18 o` ci-dessous est donc une **BORNE INFÉRIEURE** du coût éventuel du générateur, jamais son
+coût final.
+
+> **CE QUE CETTE ENTRÉE SUPERSÈDE : RIEN.** Elle **ajoute** un label ; elle ne re-mesure ni `Rows`,
+> ni les temps `create/update/swap/clear`. Les chiffres de l'entrée n°4 restent ce qu'ils sont.
+> **Le contrôle écrit à la main de ce run EST l'artefact de l'entrée n°4**, à l'octet près :
+> `filament-counter/app.js` md5 `425e2d6d65be412bf23ba43b0cb22298` — **identique** à celui que
+> l'entrée n°4 enregistre — et il **reproduit son poids exactement** (2 976 o gzip / 2 604 o brotli,
+> **IQR 0** sur les deux). **Cela renforce l'axe POIDS et n'autorise AUCUNE comparaison de TEMPS
+> inter-sessions** (n°18) : aucune n'est faite ici.
+
+### Environnement
+
+| | |
+|---|---|
+| Machine | Mac17,6 — Apple M5 Max, 18 cœurs, arm64, 64 Gio |
+| OS | darwin 25.5.0 (`productVersion` 26.5.1) |
+| Chrome | 150.0.7871.124, **headless** |
+| Node | v26.5.0 · Playwright 1.61.1 · .NET SDK 10.0.301 · esbuild 0.28.1 |
+| Date | **2026-07-16**, run 20:13:36 → 20:21:24 UTC (~8 min) |
+
+**Quiescence — divulguée, non nettoyée** (n°11/n°19) : `logioptionsplus_updater` ~47,5 % d'un cœur,
+OrbStack Helper ~25 %, WindowServer 7,3 % ⇒ **~0,8 cœur sur 18 (~4,5 %)** — **meilleur** que les
+~14 % de l'entrée n°4. Swap **3,27 Gio utilisés sur 4,0**. **Deux processus `claude` (l'agent qui
+mesure) étaient vivants pendant tout le run.** Les IQR disent que cela n'a pas mordu (tout IQR chaud
+≤ 0,4 ms) ; **une machine réellement au repos reste préférable.**
+
+### Identité du harness — hash de contenu
+
+```
+sha256 = 47e7e46f372f8573e9a574713cee9cd6c125d55361fdb5d4b47755ac7d4536f8
+```
+
+**Partagé par les 11/11 résultats du run** (vérifié en relisant les JSON : **1 seul hash distinct**).
+**Byte-identique à celui de l'entrée n°4**, y compris les trois hashs par fichier (`bench.mjs`
+`e4b5e96e…`, `server.mjs` `c4867310…`, `expected-labels.json` `877b1461…`) — donc les **poids** des
+deux entrées sont produits par le même appareil.
+
+> **🔴 TROU DANS LE PÉRIMÈTRE DU HASH, ET IL EST EXACTEMENT LÀ OÙ ÇA COMPTE POUR CETTE ENTRÉE.**
+> `HARNESS_SOURCE_FILES` = `bench.mjs` + `server.mjs` + `expected-labels.json`. **`build-filament.sh`
+> — qui DÉCIDE QUELS OCTETS EXISTENT À PESER — n'y est pas.** Il a été **modifié dans ce run**
+> (ajout des labels `-gen` et de l'appel au générateur) et **le hash n'a pas bougé d'un bit**. Le
+> hash certifie le **driver**, pas l'**usine à artefacts**. La n°43 (« un hash ne peut pas être
+> oublié ») a un trou exactement où la n°31 en avait un. **Divulgué ici, pas corrigé ici.**
+
+### Protocole
+
+**Strictement séquentiel**, une config à la fois, un navigateur à la fois (§7). Cache **FROID** ·
+poids via CDP `encodedDataLength` · **10 runs chronométrés/scénario** · **MÉDIANE + IQR, jamais la
+moyenne** · 3 runs de poids/config.
+
+**Santé** : **11/11 `ok=true`**, **160/160 itérations chronométrées enregistrées**, **0 échec, 0
+timeout, 0 échantillon écarté**.
+
+**L'ORDRE EST ENTRELACÉ EN MIROIR — c'est la réponse directe à la réserve F de l'entrée n°4** (« tout
+Blazor d'abord, tout Filament ensuite ⇒ dérive thermique CONFONDUE avec le framework ») :
+
+```
+passe gzip :  blazor-nojit   filament-hand   filament-GEN   blazor-aot
+passe br   :  blazor-aot     filament-GEN    filament-hand  blazor-nojit
+```
+
+Chaque config apparaît **une fois dans chaque moitié**, et **les deux labels Filament — la
+comparaison que ce run existe pour faire — sont ADJACENTS dans les deux passes**, donc la dérive
+entre eux est bornée par la durée d'**une** config et non par celle du run.
+
+**Contrôle de dérive** : les deux moitiés indépendantes de chaque config s'accordent —
+`blazor-nojit` chaud **1,45 / 1,40** · `blazor-aot` **1,10 / 1,10** · hand **0 / 0** · **gen
+0,05 / 0**. **Aucune dérive corrélée à l'identité du framework** sur la fenêtre de 8 min.
+**Atténué, PAS éliminé** : gzip et brotli sont des **mesures différentes**, donc non poolables ; le
+test de dérive vaut **n = 2 moitiés par config** — faible, même si les 4 configs s'accordent.
+
+#### Commande de rejeu
+
+```bash
+# 1. Construire les 6 labels Filament. Le script SUPPRIME et RÉ-ÉMET
+#    samples/filament-counter-gen/Counter.g.js depuis Counter.razor à chaque build.
+bash bench/build-filament.sh
+
+# 2. Republier la baseline Blazor (purge obj/ + bin/ entre configs).
+bash bench/publish-baseline.sh blazor-counter-nojit blazor-counter-aot
+
+# 3. Mesurer. L'ORDRE EST DANS LE SCRIPT et ne doit pas être improvisé.
+bash bench/run-phase2-gen.sh            # les 8 configs C1/C4 en miroir, puis les 3 passes C3
+```
+
+---
+
+## C1 — **LE CHIFFRE DE TÊTE : LE GÉNÉRATEUR COÛTE +18 OCTETS**
+
+**Base = octets SUR LE FIL** (`encodedDataLength`, **en-têtes de réponse inclus**), `toInteractive`,
+cache froid — **la base la plus SÉVÈRE** (n°44). L'aperçu au build (somme des frères gzip, hors
+en-têtes) donne **2 160 vs 2 142** — **plus flatteur, donc non retenu**, et il montre **le même
+delta**.
+
+| Config | gzip (o) | IQR | brotli (o) | IQR | Gate < 10 000 | Marge gzip |
+|---|---:|---:|---:|---:|:---:|---:|
+| `filament-counter` (**answer key**) | 2 976 | **0** | 2 604 | **0** | ✅ PASS | 7 024 o |
+| **`filament-counter-gen` (GÉNÉRÉ)** | **2 994** | **0** | **2 623** | **0** | ✅ **PASS** | **7 006 o** |
+| `blazor-counter-nojit` | 1 885 613 | 0 | 1 551 670 | 0 | ❌ ×188 | — |
+| `blazor-counter-aot` | 4 849 976 | 0 | 3 353 458 | 0 | ❌ ×485 | — |
+
+### 🟢 **Δ générateur vs answer key = +18 o gzip (+0,60 %) · +19 o brotli (+0,73 %)**
+
+**C'est 0,18 % du budget de 10 000 o.** Le générateur passe C1 avec **70 % du budget inutilisé**.
+**IQR 0 des deux côtés : ce delta est RÉSOLU, ce n'est pas du bruit.**
+
+### Le delta est **ATTRIBUÉ CONSTRUCTIVEMENT**, pas estimé
+
+Chacun des deux écarts de la n°55 a été **neutralisé un à la fois**, à travers les **mêmes** flags
+esbuild :
+
+| variante | brut (o) | gzip (o) | |
+|---|---:|---:|---|
+| généré tel quel | 3 060 | 1 283 | |
+| **moins** les 2 nœuds blancs | 2 990 | 1 272 | ⇒ les nœuds coûtent **70 brut / 11 gzip** |
+| **moins** l'indirection du handler | 3 056 | 1 276 | ⇒ le handler coûte **4 brut / 7 gzip** |
+| moins **les deux** | 2 986 | 1 265 | |
+| **ANSWER KEY (livrée)** | **2 986** | **1 265** | ⬅ **IDENTIQUE**, et `canon` dit **ALPHA-ÉQUIVALENT** |
+
+**Neutraliser exactement ces deux points reproduit le bundle de l'answer key À L'OCTET.** Donc :
+**la compilation du template coûte ZÉRO octet** par rapport au JS écrit à la main. **La totalité du
++18 o est les deux écarts nommés de la n°55**, additifs, sans interaction.
+
+### 🔴 LIRE LE SIGNE DE CE DELTA — le prendre pour une régression serait FAUX
+
+**11 des 18 octets gzip sont les deux nœuds texte `"\n\n"` — que Blazor expédie AUSSI.** Vérifié
+dans le navigateur depuis les artefacts servis :
+
+| | `#app.childNodes` | nœuds |
+|---|---|---:|
+| `blazor-counter-nojit` | `["<!--!-->", "<h1#title>", "\n\n", "<p#>", "<!--!-->", "\n\n", "<button#increment>"]` | **7** |
+| **généré** | `["<h1#title>", "\n\n", "<p#>", "\n\n", "<button#increment>"]` | **5** |
+| answer key | `["<h1#title>", "<p#>", "<button#increment>"]` | **3** |
+
+**Le générateur construit un DOM strictement PLUS PROCHE de celui de Blazor que l'answer key.** Il
+paie 11 o pour être **plus fidèle au contrat DOM partagé** ; **c'est l'answer key qui diverge de la
+baseline**, et personne ne l'avait remarqué pour `Counter`. Les retirer **encaisserait en silence**
+l'avantage « ~25 % de nœuds DOM en moins, **gratuitement** » que la n°20 liste comme **dette ouverte
+à épingler AVANT toute comparaison**. **Si cet avantage était encaissé, le générateur coûterait
++7 o (+0,24 %).** **La dette n°20 est maintenant CHIFFRÉE pour `Counter` — 4 nœuds sur 7 — et reste
+OUVERTE.**
+
+**Provenance** : les bundles mesurés **se reconstruisent à l'identique** depuis la source livrée —
+`filament-counter-gen/app.js` md5 `edbca7c952ce710cbb2fe8c96547a5c6`, `Counter.g.js` md5
+`be5c37bc41e0fbe4cafc13f4405e7e15`. **Le générateur est déterministe**, et ces octets décrivent bien
+le code commité.
+
+---
+
+## C4 — Vitesse. **`msToMutation`**, n = 10, **MÉDIANE (IQR = p75−p25)**, jamais la moyenne
+
+### Passe **gzip** (base de C1 ; ordre d'exécution : nojit, hand, GEN, aot)
+
+| Config | fil (o) | `increment-cold` | `increment-warm` |
+|---|---:|---:|---:|
+| `blazor-counter-nojit` | 1 885 613 | 16,35 (IQR 3,125) | 1,45 (IQR 0,4) |
+| `blazor-counter-aot` (**le Blazor le plus rapide**) | 4 849 976 | 23,3 (IQR 4,775) | 1,1 (IQR 0,1) |
+| `filament-counter` (**hand**) | 2 976 | **0,4** (IQR 0,1) | **0** (IQR 0,075) |
+| **`filament-counter-gen` (GÉNÉRÉ)** | 2 994 | **0,4** (IQR 0,1) | **0,05** (IQR 0,1) |
+
+### Passe **brotli** (ordre **miroir** : aot, GEN, hand, nojit)
+
+| Config | fil (o) | `increment-cold` | `increment-warm` |
+|---|---:|---:|---:|
+| `blazor-counter-nojit` | 1 551 670 | 17,8 (IQR 6,45) | 1,4 (IQR 0,075) |
+| `blazor-counter-aot` | 3 353 458 | 23,65 (IQR 2,075) | 1,1 (IQR 0,275) |
+| `filament-counter` (**hand**) | 2 604 | **0,4** (IQR 0) | **0** (IQR 0,1) |
+| **`filament-counter-gen` (GÉNÉRÉ)** | 2 623 | **0,4** (IQR 0) | **0** (IQR 0) |
+
+### « Les mesures sont inchangées » — **TIENT, À LA RÉSOLUTION DE L'INSTRUMENT**, et pas plus
+
+Généré vs écrit à la main, **dans le même run, à encodage égal** : `increment-cold` **0,4 vs 0,4**
+(médianes identiques **dans les deux passes**) · `increment-warm` **0,05 vs 0** (gzip), **0 vs 0**
+(br).
+
+> **🔴 CET ACCORD N'EST PAS UNE MESURE DE PARITÉ, et la n°32 interdit de le rapporter comme telle.**
+> **Les deux labels Filament sont SUR LE PLANCHER de l'appareil.** Valeurs distinctes observées en
+> `increment-warm` :
+>
+> | label | échantillons distincts |
+> |---|---|
+> | `filament-counter` | `{0 · 0,1 · 0,2}` gzip · `{0 · 0,1}` br |
+> | `filament-counter-gen` | `{0 · 0,1 · 0,2}` gzip · `{0 · 0,1}` br |
+> | `blazor-counter-aot` | `{1 · 1,1 · 1,2 · 1,3}` gzip · `{1 · 1,1 · 1,3 · 1,4 · 1,5}` br |
+> | `blazor-counter-nojit` | `{1,3 · 1,4 · 1,5 · 1,8 · 1,9}` gzip |
+>
+> Le quantum de `performance.now()` est **0,1 ms**. **Filament lit 0 à 2 quanta : hand-vs-généré est
+> IRRÉSOLVABLE et le « 0,05 vs 0 » est UN QUANTUM DE RIEN.** Ce que la donnée **établit** (logique
+> de la n°32, appliquée **dans les deux sens**) : **les échantillons de Blazor NE s'empilent PAS au
+> minimum** — 1,0 à 1,9 ms sont de **vraies lectures** — donc **Filament est bien EN DESSOUS de
+> Blazor**, mais **le RAPPORT ne doit pas être cité**.
+
+**NON MESURÉ ICI : la cible de tête de C4.** Les n°13/n°15 fixent C4 sur **`Rows` `create-warm`
+(7,35 ms AOT)**. Ce run est **`Counter` seul** : il mesure l'incrément du compteur et **ne touche pas
+du tout à la cible dure de C4**.
+
+---
+
+## C3 — Écritures DOM par incrément : **mesuré sur les TROIS, résultat IDENTIQUE**
+
+| Label | écritures/incrément | `records` | `byType` |
+|---|---|---|---|
+| `blazor-counter-nojit` | `[1,1,1,1,1]` | `[1,1,1,1,1]` | `{childList: 0, characterData: 1, attributes: 0}` |
+| `filament-counter` (**hand**) | `[1,1,1,1,1]` | `[1,1,1,1,1]` | idem |
+| **`filament-counter-gen` (GÉNÉRÉ)** | `[1,1,1,1,1]` | `[1,1,1,1,1]` | idem |
+
+Instrument : `MutationObserver` sur **`body`** (la racine la **plus large** — le framework mesuré ne
+choisit pas où l'instrument regarde), **code identique** pour les deux frameworks, 5 incréments, rAF
++ 60 ms de repos. Détail du 1er incrément, **le même nœud dans les trois** :
+`{type: "characterData", target: "#text in <span#counter-value>", added: 0, removed: 0}`. Verdict lu
+**depuis l'artefact** : *« Exactly 1 DOM write on every counted increment. »*
+
+> **BLAZOR PASSE CETTE BARRE EXACTEMENT AUSSI BIEN QUE FILAMENT.** La moitié « écritures DOM » de C3
+> est une **BARRE DE CORRECTION que la sortie du générateur franchit** — **ce n'est PAS un gain
+> qu'elle marque**, ni un différenciateur. Conformément à la n°30, le « Filament ~0 o vs Blazor
+> 2 769 o » **n'est pas cité ici** et **aucun rapport d'allocation n'est rapporté**.
+
+**Contre-vérification stats** (lue dans le JSON, pas déduite d'une absence d'avertissement) : les
+deux labels Filament auto-rapportent `__filament.stats.domWrites = [1,1,1,1,1]` contre `[1,1,1,1,1]`
+observés, **`agrees: true`**. `statsCrossCheck` de Blazor est **`null`**, comme il se doit — pas de
+stats dans ce bundle. **L'auto-rapport n'est jamais la mesure, seulement un contrôle** (n°29).
+
+### Allocation — **Filament contre Filament UNIQUEMENT**
+
+| label | o/incrément (médiane) | échantillons | étendue |
+|---|---:|---|---:|
+| `filament-counter` (hand) | **309,34** | `[259,42 · 340,01 · 309,34]` | 81 o |
+| **`filament-counter-gen`** | **313,91** | `[300,45 · 337,95 · 313,91]` | 38 o |
+
+**Δ = +4,57 o/incrément — NON RÉSOLVABLE** : c'est une **fraction de l'étendue propre** de chaque
+label. **Délibérément PAS lancée sur Blazor** (n°30) : la sonde échantillonne le **tas JS**, donc
+l'arbre de rendu de Blazor — dans la mémoire linéaire WASM, **un seul `ArrayBuffer` pour V8** — lui
+est **structurellement invisible** ; un chiffre Blazor serait le sous-ensemble « glue d'interop » et
+le seul usage qu'on en ferait est le rapport interdit.
+
+> **🔴 CRITIQUE : aucun de ces ~310 o n'est « l'allocation du framework ».** La n°30 consigne que
+> `driveIncrements` pilote par `setTimeout(tick, 0)` et évalue `textContent.trim()` à chaque tick
+> (**2 chaînes/tick**) : **le coût de pilotage du harness est DANS ce chiffre**. L'artefact émet
+> `bytesPerIncrement` **NU** — **aucun zéro calibré, aucun verdict** (vérifié : le champ `verdict`
+> n'existe pas). **Le « 0 allocation d'arbre » de la sortie générée n'est donc PAS CERTIFIÉ par
+> cette sonde — il est seulement NON RÉFUTÉ.** Les deux labels flushent synchronement et sont tous
+> deux du JS ⇒ **hand-vs-généré EST une comparaison à périmètre égal**, et elle dit que **le
+> générateur n'alloue pas plus que l'answer key**.
+
+---
+
+## Verdict du gate — **la Phase 2 N'EST PAS FRANCHIE**
+
+La porte de la §6, **verbatim** : *« le JS émis pour `Counter` **et** `Rows` est équivalent au JS
+écrit à la main en phase 1, vérifié par tests de snapshot, **et** les mesures sont inchangées. »*
+**Trois conjonctions. Deux échouent.**
+
+| Moitié de la porte | Verdict | Sur quoi |
+|---|:---:|---|
+| **`Rows`** | 🔴 **NON FAIT** | **Hors du périmètre déclaré de la Phase 2** (n°54) : `@foreach` est du **C# brut**, accolades **déséquilibrées**, l'élément est **FRÈRE** de l'en-tête. Le générateur le **REFUSE** avec **6 diagnostics localisés**, exit **1**, **aucun fichier écrit** — vérifié en le lançant. **Traduire cette boucle est le travail de la Phase 3.** |
+| **Équivalence sur `Counter`** | 🔴 **ÉCHOUE** | `canon(minify(généré)) !== canon(minify(answer key))`, **première divergence au jeton canonique #42**. Reproduit indépendamment lors de la rédaction : **674 o/956 o/238 jetons** contre **600 o/844 o/210 jetons**. **Le test de porte est commité ROUGE** (`dotnet test` : **41 passés, 1 ÉCHOUÉ** — l'échec **EST** la porte). |
+| **« les mesures sont inchangées »** | 🟢 **tient, avec une nuance** | C4 **indistinguable au plancher** · C3 **identique** · **C1 bouge de +18 o (+0,60 %)** — **résolu (IQR 0), pas du bruit**, et **entièrement attribué** aux deux écarts ci-dessus. **Cette moitié-là est la seule des trois qui passe.** |
+
+### 🔴 **`gateVerdict` = FAIL. La Phase 2 n'est PAS franchie, et aucun chiffre de `Counter` ne peut y changer quoi que ce soit.**
+
+**Les deux échecs ne sont PAS des défauts du générateur, et c'est ce qui les rend graves.**
+
+1. **`Rows` : la frontière Phase 2 / Phase 3 de la spec n'existe pas dans l'IR** (n°54).
+2. **`Counter` : le périmètre de la Phase 2 CONTREDIT la porte de la Phase 2** (n°55). L'answer key
+   émet `listen(button, 'click', () => { currentCount.value++ })` — elle **INLINE le corps** de
+   `private void Increment()`. Compiler l'**événement** (**dans** le périmètre) donne
+   `listen(el, 'click', Increment)`. **Inliner exige de lire un CORPS**, donc de traduire `@code`,
+   **que la §6 exclut explicitement du périmètre**. **La porte est inatteignable sous le périmètre de
+   sa propre phase.** Coût de cette contradiction, **désormais chiffré : 7 o gzip.**
+
+**Ce qui n'a PAS été fait pour faire passer la porte** : `samples/Counter/counter.js` **n'a pas été
+touché** (sha256 `e4249db742f48a53…`, **git-clean**, dernière modification = le commit de la
+Phase 1) ; l'assertion **n'a été ni assouplie, ni skippée, ni inversée**. **n°21/n°51 : l'answer key
+est la RÉFÉRENCE, le générateur est ce qui est JUGÉ ; un désaccord est un RAPPORT, pas une édition.**
+
+### Ce que ce run établit malgré la porte rouge — **exactement ceci, et rien de plus**
+
+**La compilation du template est EXACTE au jeton près.** Prouvé **constructivement** : en neutralisant
+**les deux seuls** écarts nommés, `canon` dit **ALPHA-ÉQUIVALENT** et le bundle reproduit celui de
+l'answer key **à l'octet**. **Il n'y a pas d'autre divergence.**
+
+### Décision n°34 — **RADICAL vs PRUDENT** (§8) : ce que ce chiffre tranche, et ce qu'il ne tranche pas
+
+La n°34 laissait ouvert le choix d'architecture en attendant **exactement ce chiffre**. Le voici, et
+voici **précisément** ce qu'il autorise à dire :
+
+> **La condition de viabilité de la variante RADICALE est REMPLIE POUR `Counter`, et pour `Counter`
+> seul.** Le JS d'un générateur C#, monté dans un navigateur, **pèse 2 994 o sur le fil (70 % du
+> budget C1 inutilisé)**, **fait exactement 1 écriture DOM par incrément**, et est **indistinguable
+> de l'answer key au plancher de l'instrument**. **Rien dans ces données ne compte contre RADICAL.**
+
+**Et rien de plus. Une app SANS FLUX DE CONTRÔLE ne tranche pas l'architecture d'un framework.**
+`Counter` n'a ni `@if`, ni `@foreach`, ni `@key`, ni composition, ni attribut dynamique — **et sa
+logique est du JS écrit à la main**. **Le coût par nœud du générateur sur 1 000 lignes est
+INCONNU** ; c'est là que vivent le travail lourd en DOM **et toute la cible de tête de C4**. **La
+n°52 pèse en sens INVERSE et n'a pas bougé** : le seul parser Razor réutilisable est **gelé en 2021,
+hors support**, et ce risque frappe **RADICAL plus fort que PRUDENT**. **La n°34 RESTE OUVERTE. Le
+choix ne se tranche pas sur cette donnée.**
+
+---
+
+## Réserves ouvertes — listées, pas enterrées
+
+**A. 🔴 LE `@code` EST DU JAVASCRIPT ÉCRIT À LA MAIN. Seul le TEMPLATE est généré.** La proposition
+porteuse des n°34/n°50 est **à moitié testée, pas testée**. **`+18 o` est une BORNE INFÉRIEURE.**
+*(n°57.)*
+
+**B. 🔴 LA PORTE DE LA PHASE 2 ÉCHOUE SUR CET ARTEFACT.** Ces chiffres décrivent un artefact qui **ne
+passe pas la porte de sa propre phase**. **Un PASS C1 n'est PAS un passage de porte.**
+
+**C. 🔴 `ROWS` N'EST PAS MESURÉ.** La porte dit « `Counter` **et** `Rows` ». **Rien ici ne transfère à
+`Rows`.** *(n°54.)*
+
+**D. `increment-warm` est AU PLANCHER DE QUANTISATION pour les DEUX labels Filament** (`{0 · 0,1 ·
+0,2}`). **L'accord hand-vs-généré n'est PAS une mesure de parité.** Résoudre l'incrément honnêtement
+exige **un autre instrument** (une boucle de N incréments chronométrée en bloc), **non construit**.
+*(n°32, TOUJOURS NON LEVÉE.)*
+
+**E. LA SONDE D'ALLOCATION N'A TOUJOURS PAS DE ZÉRO CALIBRÉ** et porte le coût de pilotage du
+harness. Elle **ne peut pas certifier** « 0 allocation d'arbre » pour le bundle généré ; elle **échoue
+à le réfuter**. *(n°30 pt 3, TOUJOURS OUVERTE.)*
+
+**F. AUCUNE COMPARAISON D'ALLOCATION INTER-FRAMEWORKS N'EXISTE, PAR CONSTRUCTION** (n°30). La moitié
+« zéro allocation » de C3 **n'a aucun pendant Blazor** dans ce run. **Seule la moitié « écritures
+DOM » est une vraie comparaison** — et **Blazor la franchit aussi**.
+
+**G. 🔴 `build-filament.sh` N'EST PAS DANS LE PÉRIMÈTRE DU HASH DU HARNESS, alors qu'il décide quels
+octets existent à peser.** Modifié dans ce run ; **le hash n'a pas bougé**. « Deux résultats sont
+comparables SSI le hash correspond » est **faux exactement dans la direction qui compte pour le
+poids**. **À faire : ajouter `build-filament.sh` (et `publish-baseline.sh`) au périmètre, ou inscrire
+leurs digests dans le JSON.**
+
+**H. LA n°32 EST TENUE — mais À LA MAIN, et PAS DANS CE RUN.** *(Le rapport de mesure amont
+affirmait : « aucun champ `floorLimited` n'existe dans `bench.mjs` ni dans AUCUN JSON de résultat
+(grep des deux) ». **La seconde moitié est FAUSSE, et elle est rectifiée ici.**)* **Le champ
+EXISTE** : `bench/results/phase1-clean/summary.json` marque `increment-warm`
+**`"floorLimited": true`**, avec une note explicite (« *3/10 Filament samples read exactly 0.0 ms…
+NOT a measured 11x* ») ; l'entrée n°3 le marque aussi. **La n°32 est donc HONORÉE là où elle a été
+écrite.** **Ce qui est vrai — et c'est la vraie réserve** : le champ est **assemblé À LA MAIN dans
+`summary.json`** ; **l'INSTRUMENT ne l'émet pas** (`bench.mjs` : **0 occurrence**), et **ce run n'a
+produit AUCUN `summary.json`**. **Les 11 JSON par config de cette entrée n'auto-déclarent donc PAS
+leur limite de quantisation** — un lecteur doit l'inférer des échantillons, ce que la section C4
+ci-dessus fait explicitement et à la main. **Un champ tenu à la main est de la même classe que le
+`HARNESS_VERSION` périmé de la n°31** : il n'était **pas** périmé dans l'entrée n°4 — il était
+correctement à `true` — **mais rien ne l'impose, et ici il est simplement absent.**
+
+**I. C1 EST MESURÉ SUR D'AUTRES OCTETS QUE C3.** Les bundles `-stats` sont **instrumentés et NON
+minifiés** (74,9 ko brut pour `-gen`, 78,6 ko pour hand). Même source, `--define` différent, **mais
+pas les mêmes octets que le bundle pesé**. **C'est par conception** (l'en-tête de `build-filament.sh`
+l'explique : le bundle de C1 et celui de C3 **ne peuvent pas** être les mêmes octets) — et le
+comportement DOM **devrait** être identique. **« Devrait » fait du travail dans cette phrase.**
+
+**J. LA BASE DU FIL DE C1 INCLUT LES EN-TÊTES HTTP** : **2 994 o mesurés contre 2 160 o de corps sur
+3 requêtes** ⇒ **~834 o (~28 %) du chiffre C1 sont des en-têtes, pas du code.** C'est la base la plus
+sévère de la n°44 et c'est la bonne — mais **un lecteur qui compare 2 994 à 10 000 doit savoir ce
+qu'il y a dedans**.
+
+**K. LA LIMITE L3 DE `canon` EST ACTIVE POUR L'ATTRIBUTION AU NIVEAU BUNDLE.** L'outil a averti
+« *object-literal keys present — limitation L3 is LIVE for this pair* » sur la comparaison des
+**bundles** (il renomme les clés d'objet, faute d'AST) ; **la comparaison au niveau MODULE — celle de
+la porte — ne la déclenche pas**. **La preuve forte de l'attribution est l'IDENTITÉ DES OCTETS**
+(2 986/1 265 des deux côtés), **pas le verdict de `canon` seul**.
+
+**L. `--shell-parity` (n°28) NE COUVRE TOUJOURS QU'UN SEUL SHELL.** Le chemin code encore en dur
+`filament_shell "Counter" "app.js"`. **Il se trouve être correct pour les nouveaux labels** — vérifié
+**à la main** par `cmp` : `filament-counter-gen/index.html` et `css/app.css` sont **byte-identiques**
+à ceux de `filament-counter`, et la feuille de style est byte-identique à celle que publie
+`blazor-counter-nojit` — **mais c'est un fait établi à la main, pas un fait que le rapport impose.**
+*(Héritée, TOUJOURS NON CORRIGÉE.)*
+
+**M. `blazor-counter-nojit` `increment-cold` (br) a un IQR de 6,45 ms — 36 % de sa médiane de
+17,8 ms**, le chiffre le plus mou de cette matrice. Les scénarios froids incluent le boot et ne sont
+**jamais** un chiffre de tête (n°13) ; noté pour qu'il ne le devienne pas discrètement.
+
+**N. `n = 10`, une machine, un Chrome, un OS.** *(Réserve permanente n°15/n°20 : suffisant pour un
+gate de POC, insuffisant pour une revendication publiable.)*
+
+**O. MACHINE NON MISE AU REPOS, ET L'AGENT QUI MESURE TOURNE DESSUS.** Voir « Quiescence » ci-dessus.
+Divulgué au titre des n°11/n°19.
+
+---
+
+*Fin de l'entrée n°5. Ne pas modifier — ajouter une entrée n°6 pour toute rectification.*

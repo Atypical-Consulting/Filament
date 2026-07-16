@@ -9,12 +9,45 @@
 # here is borrowed from it on purpose, so that the two halves of the comparison
 # are produced by two scripts a reviewer can diff.
 #
-# Four labels from TWO source trees, in TWO modes:
+# Six labels from THREE source trees, in TWO modes:
 #
-#   filament-counter         samples/filament-counter   production  (minified, stats DCE'd out)
-#   filament-rows            samples/filament-rows      production  (minified, stats DCE'd out)
-#   filament-counter-stats   samples/filament-counter   instrumented (stats compiled IN)
-#   filament-rows-stats      samples/filament-rows      instrumented (stats compiled IN)
+#   filament-counter           samples/filament-counter       production  (minified, stats DCE'd out)
+#   filament-rows              samples/filament-rows          production  (minified, stats DCE'd out)
+#   filament-counter-gen       samples/filament-counter-gen   production  (minified, stats DCE'd out)
+#   filament-counter-stats     samples/filament-counter       instrumented (stats compiled IN)
+#   filament-rows-stats        samples/filament-rows          instrumented (stats compiled IN)
+#   filament-counter-gen-stats samples/filament-counter-gen   instrumented (stats compiled IN)
+#
+# ---------------------------------------------------------------------------
+# THE -gen LABELS: THE GENERATOR'S OUTPUT, NOT THE ANSWER KEY
+# ---------------------------------------------------------------------------
+# filament-counter mounts samples/Counter/counter.js -- the Phase 1 ANSWER KEY,
+# written by a human. filament-counter-gen mounts the JS that Filament.Generator
+# EMITS from samples/Counter/Counter.razor. The two apps are otherwise identical
+# down to the byte: same runtime, same host shim modulo one import line, same
+# shell, same stylesheet. That is deliberate and it is the whole point -- the only
+# variable between the two labels is who wrote the component, so the C1 delta
+# between them is the generator's cost and nothing else's.
+#
+# DECISIONS.md #21/#34/#50 is why this label exists. Every weight and every timing
+# the POC has published describes hand-written JS. The proposition that actually
+# carries the thesis -- "a C# generator emits this, under 10 ko, at these times" --
+# had never been measured; #50 records that the imposed Phase 2 deliverable is to
+# write the generator for the counter and RE-MEASURE C1/C3/C4 ON ITS OUTPUT.
+# Wiring the generator in here is what closes the debt #58 left open ("build-filament.sh
+# n'appelle pas encore le generateur ... donc C1/C3/C4 n'ont PAS ete re-mesures sur
+# la sortie du generateur").
+#
+# THE EMITTED FILE IS RE-EMITTED EVERY BUILD, AND IS NOT COMMITTED.
+# samples/filament-counter-gen/Counter.g.js is deleted and regenerated below on
+# every run, and it is gitignored. A committed generated file is one somebody
+# eventually hand-edits, and then C1 is measured on an artifact the generator did
+# not produce while the label's name still says it did. That failure would be
+# silent, which is the class of failure this repo exists to refuse. Regenerating
+# unconditionally costs ~1 s and makes staleness structurally impossible rather
+# than merely unlikely. The generator is a console app (#58), so this is a plain
+# `dotnet run` -- spec 4.3's MSBuild target is a packaging concern that changes no
+# emitted byte.
 #
 # WHY THE STATS BUILD IS A SEPARATE LABEL, AND NOT A FLAG ON THE SAME OUTPUT.
 # C1 (< 10 ko gzip) is measured on the production bundle; C3 (1 DOM write, 0 tree
@@ -138,14 +171,17 @@ C1_BINARY=10240
 ALL_LABELS=(
   filament-counter
   filament-rows
+  filament-counter-gen
   filament-counter-stats
   filament-rows-stats
+  filament-counter-gen-stats
 )
 
 project_for() {
   case "$1" in
-    filament-counter|filament-counter-stats) echo "samples/filament-counter" ;;
-    filament-rows|filament-rows-stats)       echo "samples/filament-rows" ;;
+    filament-counter|filament-counter-stats)         echo "samples/filament-counter" ;;
+    filament-rows|filament-rows-stats)               echo "samples/filament-rows" ;;
+    filament-counter-gen|filament-counter-gen-stats) echo "samples/filament-counter-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -154,15 +190,27 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen) echo "production" ;;
     *) return 1 ;;
+  esac
+}
+
+# The Razor source this label's component is COMPILED FROM, or empty for the
+# hand-written labels. Non-empty is what makes a label a generator label: it is
+# the single switch that decides whether the generator runs, so a label cannot
+# accidentally be half-generated.
+razor_for() {
+  case "$1" in
+    filament-counter-gen|filament-counter-gen-stats) echo "$REPO_ROOT/samples/Counter/Counter.razor" ;;
+    *) echo "" ;;
   esac
 }
 
 title_for() {
   case "$1" in
-    filament-counter|filament-counter-stats) echo "Counter" ;;
-    filament-rows|filament-rows-stats)       echo "Rows" ;;
+    filament-counter|filament-counter-stats)         echo "Counter" ;;
+    filament-rows|filament-rows-stats)               echo "Rows" ;;
+    filament-counter-gen|filament-counter-gen-stats) echo "Counter" ;;
     *) return 1 ;;
   esac
 }
@@ -172,8 +220,9 @@ title_for() {
 # build, to prove the copy really is what that app ships.
 blazor_label_for() {
   case "$1" in
-    filament-counter|filament-counter-stats) echo "blazor-counter-nojit" ;;
-    filament-rows|filament-rows-stats)       echo "blazor-rows-nojit" ;;
+    filament-counter|filament-counter-stats)         echo "blazor-counter-nojit" ;;
+    filament-rows|filament-rows-stats)               echo "blazor-rows-nojit" ;;
+    filament-counter-gen|filament-counter-gen-stats) echo "blazor-counter-nojit" ;;
     *) return 1 ;;
   esac
 }
@@ -191,8 +240,9 @@ blazor_label_for() {
 # understatement, both pointing Filament's way, on the app C4 turns on.
 css_for() {
   case "$1" in
-    filament-counter|filament-counter-stats) echo "$REPO_ROOT/baseline/Counter.Blazor/wwwroot/css/app.css" ;;
-    filament-rows|filament-rows-stats)       echo "$REPO_ROOT/baseline/Rows.Blazor/wwwroot/css/app.css" ;;
+    filament-counter|filament-counter-stats)         echo "$REPO_ROOT/baseline/Counter.Blazor/wwwroot/css/app.css" ;;
+    filament-rows|filament-rows-stats)               echo "$REPO_ROOT/baseline/Rows.Blazor/wwwroot/css/app.css" ;;
+    filament-counter-gen|filament-counter-gen-stats) echo "$REPO_ROOT/baseline/Counter.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }
@@ -449,6 +499,15 @@ fi
 command -v node >/dev/null 2>&1 || die "node not on PATH. The harness needs it too; see README.md."
 command -v npx  >/dev/null 2>&1 || die "npx not on PATH (ships with node)."
 
+# Only the -gen labels need the SDK, but checking here means the failure lands
+# before anything is deleted rather than half way through a rebuild.
+if [[ $# -eq 0 || "$*" == *-gen* ]]; then
+  command -v dotnet >/dev/null 2>&1 || die "dotnet not on PATH, and the -gen labels
+     compile samples/Counter/Counter.razor with src/Filament.Generator. Build only the
+     hand-written labels if you have no SDK:
+       ./bench/build-filament.sh filament-counter filament-rows"
+fi
+
 # Pin the toolchain the way publish-baseline.sh pins the SDK. esbuild's minifier
 # is part of the result: a different version can emit different bytes, and C1 is
 # a byte gate decided in the last few hundred of them.
@@ -507,6 +566,46 @@ for label in "${REQUESTED[@]}"; do
   # ${var:?} so an empty out_dir can never turn this into `rm -rf /`.
   rm -rf "${out_dir:?}"
   mkdir -p "$out_dir/css"
+
+  # ---- generate: Razor -> JS, for the -gen labels only ---------------------
+  # Unconditional delete-then-emit. See the header: a generated file that can
+  # survive a build is a file that can be hand-edited, and then the label's name
+  # asserts "the generator produced this" while the bytes say otherwise -- with
+  # nothing to catch it. The rm is what makes the assertion below meaningful:
+  # after it, the file exists IF AND ONLY IF this run's generator wrote it.
+  razor_src="$(razor_for "$label")"
+  if [[ -n "$razor_src" ]]; then
+    [[ -f "$razor_src" ]] || die "'$label' is a generator label but its Razor source
+     is missing: $razor_src"
+
+    generated_js="$project_dir/Counter.g.js"
+    rm -f "$generated_js"
+
+    printf '    dotnet run --project src/Filament.Generator -- %s %s\n' \
+      "${razor_src#"$REPO_ROOT"/}" "${generated_js#"$REPO_ROOT"/}"
+    # Release, like every other artifact this project measures. --no-build would
+    # measure whatever was last compiled; the build is seconds and this runs once
+    # per label, so it is built here rather than assumed.
+    dotnet run --project "$REPO_ROOT/src/Filament.Generator" -c Release \
+      -- "$razor_src" "$generated_js" \
+      || die "the generator refused to emit for '$label'.
+     Section 10: a construct outside the subset MUST produce a diagnostic rather
+     than silently wrong JS, so this exit code is the generator working, not
+     failing. Read the diagnostic above; do not work around it."
+
+    # Verify from the ARTIFACT, never from the exit code -- the same stance the
+    # stats-marker and AOT checks take. An exit-0 generator that wrote nothing
+    # would otherwise leave the previous label's bundle in place and be weighed.
+    [[ -f "$generated_js" ]] || die "the generator exited 0 for '$label' but wrote no
+     file at $generated_js. C1 would have been measured on a bundle the generator
+     did not produce."
+    grep -q 'GENERATED by Filament.Generator' "$generated_js" || die "'$label' has a
+     $generated_js that does not carry the generator's banner. Something other than
+     Filament.Generator wrote it, and this label's whole purpose is to measure what
+     Filament.Generator emits."
+    printf '        emitted %s B of JS from %s\n' \
+      "$(file_size "$generated_js")" "$(basename "$razor_src")"
+  fi
 
   # ---- bundle -------------------------------------------------------------
   esbuild_args=(

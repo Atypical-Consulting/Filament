@@ -1270,3 +1270,489 @@ d'un runtime qui sert des valeurs silencieusement fausses depuis toute chaîne d
 niveaux.** C'était le point 1 de la recommandation de la n°34 ; **il est fait.** Restent les points 2, 3
 et une partie du 4 (**`--shell-parity` sur tous les labels** n°28 ; **plancher d'allocation calibré**
 n°30 — **toujours ouverts**).
+
+---
+
+# Phase 2 — arbitrages du générateur de template
+
+## 51. « Équivalent » devient **décidable** — alpha-équivalence du JS minifié, pas un jugement
+
+**Décision.** La porte de la Phase 2 exige que « le JS émis pour `Counter` et `Rows` [soit] **équivalent**
+au JS écrit à la main en phase 1 ». **`équivalent` est le seul mot de cette porte qui ne se mesure pas.**
+On lui donne donc une définition **mécanique**, arrêtée **avant** d'écrire une ligne du générateur, pour
+qu'elle ne puisse pas être ajustée après coup à ce que le générateur se trouvera émettre :
+
+> `canon(minify(généré)) === canon(minify(écrit à la main))`
+
+où `minify` est **exactement** l'esbuild de `build-filament.sh` (`--minify --target=es2022`) et `canon`
+renomme chaque identifiant par son **ordre de première apparition**. Deux programmes qui ne diffèrent que
+par le **nommage** collapsent alors sur le même texte.
+
+**Raison.** Comparer les **octets bruts** serait faux : le générateur nomme ses éléments `_el0`, un humain
+les nomme `h1`, et cette différence ne dit **rien** sur la thèse. Faire relire par un humain qui **déclare**
+l'équivalence est la porte **molle** que ce projet a déjà payée trois fois (n°28, n°31, n°43 : l'invariant
+**supposé** plutôt qu'**imposé** casse, et casse **silencieusement**).
+
+**La définition est vérifiée, pas espérée.** Mesurée **avant** d'être adoptée, sur `samples/Counter/counter.js`
+contre une variante de structure identique portant des **noms de compilateur** (`_el0/_el1/_el2/_tx0`) :
+
+| | octets minifiés | octets canonisés | verdict |
+|---|---|---|---|
+| écrit à la main | 608 B | 522 B | — |
+| noms « compilateur » | 608 B | 522 B | **ALPHA-ÉQUIVALENT** |
+
+Les **seules** différences avant canonisation étaient les alias d'import (`signal as d` contre `signal as l`)
+et le nom de la fonction exportée. **Tous les locaux avaient déjà reçu la même lettre** : le minifieur
+normalise **de lui-même** le choix de nommage sur lequel un compilateur et un humain divergent. C'est ce qui
+rend la porte franchissable sans tricher sur les noms.
+
+**Limite nommée, et pourquoi elle ne porte pas la porte seule.** `canon` renomme **par nom**, pas par
+**portée** : deux variables distinctes dans des portées disjointes portant la même lettre reçoivent le même
+jeton. Sur une sortie esbuild minifiée le risque est faible, mais il est **réel**, et **dans les deux sens**
+(faux PASS comme faux FAIL). On ne lui fait donc **pas** porter la porte à lui seul : la porte exige *aussi*
+« les mesures sont inchangées », contrôle **indépendant**. Un défaut du comparateur ne peut pas franchir la
+phase tout seul, et un **désaccord** entre les deux contrôles est un **signalement**, pas un arrondi.
+
+**Conséquence assumée.** `canon` est **un outil du dépôt** — commité, testé, sa limite de portée écrite à
+côté de lui — et non un script jetable. Si le générateur émet une structure **réellement** différente de
+l'answer key, la porte **échoue** et le diff **est** le résultat : **on ne réécrira pas l'answer key pour la
+faire correspondre au générateur.** C'est le sens de la n°21 — l'answer key est la **référence**, le
+générateur est ce qui est **jugé**.
+
+## 52. Le parser Razor est réutilisable **depuis un paquet mort** — 6.0.36, ou rien
+
+**Décision.** Le générateur se pose sur **`Microsoft.AspNetCore.Razor.Language` 6.0.36** (+ `Microsoft.CodeAnalysis.Razor` 6.0.36 pour les tag helpers). **Ce n'est pas un choix, c'est la seule option.**
+
+**Raison — vérifiée en compilant, pas en lisant la doc.**
+
+| Voie | Résultat |
+|---|---|
+| `Microsoft.AspNetCore.Razor.Language` **6.0.36** | **la DERNIÈRE version publiée** (140 au total, pas de 7/8/9/10). Restaure, marche depuis un TFM `net10.0`. `GetDocumentIntermediateNode()` **PUBLIC**. |
+| `Microsoft.CodeAnalysis.Razor.Compiler` 10.0.0-preview | **ne restaure pas** : `NU1101` — sa propre dépendance `Razor.Utilities.Shared` n'a jamais été publiée. |
+| DLL du SDK 10.0.301, en référence directe | compile, mais l'API **a fermé** : `GetDocumentIntermediateNode()` → renommé `GetDocumentNode()`, **membre interne sur type public** (`CS1061`). |
+| Arbre **syntaxique** (`RazorSyntaxTree.Root`) | **mort dans TOUTES les versions** : `Syntax.SyntaxNode` est **interne** (`CS0122`). |
+
+**Ce que cela dit de la prémisse de la spec.** La §1 justifie le POC ainsi : « Svelte a dû écrire son
+compilateur de zéro. Ici, **Roslyn et le parser Razor existent déjà** ». C'est **vrai**, mais **la porte
+publique a été retirée** : le seul parser Razor réutilisable est **gelé en 2021 et hors support**. L'avantage
+sur Svelte est **réel pour le POC** et **fragile au-delà**. Ce risque est **asymétrique** et pèse sur la §8 :
+il frappe la variante **RADICALE** (compilateur autonome sur paquet EOL) plus fort que la **PRUDENTE**.
+
+**Deux dettes assumées, nommées.**
+1. Les passes à retirer (`ComponentMarkupBlockPass`, `ComponentMarkupEncodingPass`) sont **internes** : on les
+   retire de `builder.Features` en **filtrant sur `GetType().Name`**. Chaîne de caractères, donc **cassable en
+   silence** par une mise à jour — mais le paquet est mort, donc il n'y aura pas de mise à jour. La laideur et
+   sa raison d'être s'annulent.
+2. Sans ces passes retirées, l'IR par défaut rend du **HTML opaque** (`MarkupBlockIntermediateNode
+   Content="<h1 id=\"title\">Counter</h1>"`) — re-parser cette chaîne serait **tout le travail**. Passes
+   retirées, on obtient la vraie structure (`MarkupElementIntermediateNode <h1>` / `HtmlAttributeIntermediateNode
+   'id'` / `HtmlContentIntermediateNode "Counter"`). **C'est ce qui rend le projet faisable.**
+
+## 53. `@onclick` et `@key` se mé-parsent **EN SILENCE** sans les descripteurs — le piège exact que la §10 interdit
+
+**Décision.** Le générateur **doit** monter la chaîne complète des tag helpers (`CompilerFeatures.Register`,
+`DefaultMetadataReferenceFeature`, `CompilationTagHelperFeature`, alimentée par les assemblies de référence
+`Microsoft.AspNetCore.App.Ref`), et **un test doit échouer si elle disparaît**.
+
+**Raison.** **Sans** descripteurs, `@onclick="Increment"` ne produit **aucun diagnostic** : il devient un
+attribut DOM littéral nommé `@onclick` portant un token `[HTML] "Increment"`. Le `<button>` paraît alors
+**entièrement statique**, se fait ramasser en bloc de markup, et le générateur **émettrait `@onclick` comme un
+vrai attribut HTML en ayant l'air de marcher**. C'est mot pour mot le mode de défaillance que la §10 interdit :
+« **jamais du JS silencieusement faux** ». **Avec** descripteurs, les deux se résolvent (`attr 'onclick'` +
+`CSharpExpressionAttributeValueIntermediateNode`, et `SetKeyIntermediateNode`).
+
+**Conséquence assumée.** On ne se fie pas au fait que « ça a marché » : la présence des descripteurs est un
+**invariant testé**, sur le modèle de la n°29/n°43 (vérifier depuis l'**artefact**, jamais depuis le drapeau
+qu'on croit avoir passé). Corollaire : l'IR arrive **pré-abaissé à la sémantique Blazor** — `@onclick` porte
+déjà `EventCallback.Factory.Create<MouseEventArgs>(this, Increment)`, qu'il faut **dépiauter** pour émettre un
+`listen(el, 'click', ...)`.
+
+## 54. La frontière Phase 2 / Phase 3 de la spec **n'existe pas dans l'IR** — `@foreach` EST du C#
+
+**Décision.** La Phase 2 est menée sur **`Counter` SEUL**. **`Rows` est signalé comme non réalisable dans le
+périmètre déclaré de la Phase 2**, et le dire **maintenant** plutôt que de déplacer discrètement la frontière.
+
+**Raison.** La spec §6 découpe : Phase 2 = template (`@expression`, `@if`, `@foreach`, `@key`, attributs,
+événements), « la logique `@code` reste écrite en JS à la main » ; Phase 3 = sous-ensemble C# → JS. **Ce
+découpage suppose que le template et le C# sont séparables. Dans l'IR de Razor, ils ne le sont pas :**
+
+```
+CSharpCodeIntermediateNode     [CS] "foreach (Row row in _rows)\n{\n"   <- texte C# BRUT, accolades DÉSÉQUILIBRÉES
+MarkupElementIntermediateNode  <tr>                                     <- FRÈRE de l'en-tête, pas enfant
+CSharpCodeIntermediateNode     [CS] "}\n"
+```
+
+Razor n'émet **pas** de nœud de boucle : pas de portée, pas d'arbre équilibré. Il produit du texte destiné à
+être **recraché tel quel** dans un corps de méthode C# — Blazor n'a **jamais besoin de comprendre la boucle**,
+il la recompile via Roslyn et elle appelle `RenderTreeBuilder` au runtime. **Filament émet du JS : il doit donc
+la TRADUIRE**, donc la comprendre. **`@if` et `@foreach` sont du C#** — le périmètre « template seul » de la
+Phase 2 les contient et **ne peut pas les traiter sans le travail de la Phase 3.**
+
+**Pourquoi `Counter` s'en sort — et ce n'est pas de la chance.** `Counter` **n'a aucun flux de contrôle** :
+`@currentCount` et `@onclick="Increment"`. Il tombe **entièrement** dans le périmètre réel de la Phase 2. C'est
+**exactement** le livrable imposé par la n°34/n°50 (« le générateur pour le SEUL compteur, et re-mesurer
+C1/C3/C4 sur SA sortie »), atteint ici par un **chemin indépendant** : la n°34 le voulait parce que c'est la
+mesure **décisive et la moins chère** ; le spike le confirme parce que c'est la **seule moitié honnête** de la
+phase.
+
+**Conséquence assumée.** `Rows` est **reporté**, pas abandonné : son `@foreach` demande une traduction C#
+**bornée** (l'en-tête `foreach (T x in expr)` est dans le sous-ensemble §5, et hors-forme ⇒ diagnostic). Mais
+c'est du travail de **Phase 3 tiré en avant**, et la porte de la Phase 2 (« le JS émis pour `Counter` **et**
+`Rows` ») **ne sera donc PAS franchie en entier**. **On rend le chiffre de `Counter` et on nomme le trou** —
+la n°34 interdit précisément de laisser croire qu'une proposition porteuse a été testée quand elle ne l'a pas
+été.
+
+---
+
+# Phase 2 — arbitrages du générateur, run `Counter` (2026-07-16)
+
+## 55. La porte de la Phase 2 est **INATTEIGNABLE sur `Counter`** — et ce n'est pas le générateur qui échoue
+
+**Décision.** Le générateur existe, compile `Counter`, et **la porte ÉCHOUE**. On le dit **maintenant**,
+sans déplacer le seuil (§10 : « si un critère devient inatteignable, le dire immédiatement »).
+
+**Le fait, mesuré.** `canon(minify(généré)) !== canon(minify(answer key))`, première divergence au jeton
+canonique **#42**. Exactement **deux** écarts, et **rien d'autre** — vérifié **constructivement** : en
+neutralisant ces deux seuls points sur la sortie du générateur, le verdict devient **ALPHA-ÉQUIVALENT**.
+**La compilation du template est donc exacte au jeton près.**
+
+**Écart n°1 — le handler. C'est une CONTRADICTION DE LA SPEC, pas un défaut du générateur.**
+L'answer key émet `listen(button, 'click', () => { currentCount.value++; })` : elle **inline le corps** de
+`private void Increment()`. Or la §6 découpe : Phase 2 = template (« événements » compris), « **la logique
+`@code` reste écrite en JS à la main** ». Compiler l'**événement** — ce qui EST dans le périmètre — donne
+`listen(el, 'click', Increment)`. **Inliner** exige de lire le corps du handler, donc de traduire la logique
+`@code` : c'est la Phase 3. **La forme de l'answer key présuppose la Phase 3.** Le périmètre de la Phase 2
+et la porte de la Phase 2 **se contredisent** sur `Counter`.
+
+**C'est la n°54, atteinte par un second chemin indépendant.** La n°54 a trouvé que la frontière Phase 2 /
+Phase 3 « n'existe pas dans l'IR » pour `@foreach`. Elle n'existe pas non plus **à la couture `@code`** :
+`@onclick="Increment"` est un **nom**, et l'answer key en compile le **corps**. La n°54 concluait que `Rows`
+était hors de portée mais que « `Counter` tombe **entièrement** dans le périmètre réel de la Phase 2 ».
+**Cette phrase est superseded : le TEMPLATE de `Counter` y tombe ; sa PORTE, non.**
+
+**Écart n°2 — deux nœuds texte, et l'answer key est celle qui diverge de la baseline.**
+Le générateur émet les deux nœuds `"\n\n"` entre `<h1>`/`<p>`/`<button>`. **Vérifié depuis l'artefact, deux
+fois plutôt qu'une** : (a) le `BuildRenderTree` généré par le compilateur Blazor de .NET 10 pour ce fichier
+appelle `AddMarkupContent(0, "<h1 id=\"title\">Counter</h1>\n\n")` puis `AddMarkupContent(6, "\n\n")` ;
+(b) le **DOM réel** de `blazor-counter-nojit` servi dans Chrome donne
+
+```
+#app.childNodes = ["<!--!-->", "<h1#title>", "\n\n", "<p#>", "<!--!-->", "\n\n", "<button#increment>"]
+```
+
+**Blazor expédie bien ces deux nœuds texte. L'answer key n'en crée aucun.** Décompte à `#app` :
+**Blazor 7 nœuds · générateur 5 · answer key 3.** L'answer key transcrit d'ailleurs le source **sans les
+lignes vides** dans son propre en-tête — c'est très probablement ainsi qu'ils ont été perdus.
+
+**Pourquoi on ne les retire PAS pour faire passer la porte.** Les retirer ferait construire à Filament un
+**DOM différent de celui de Blazor à partir du MÊME source**, alors que le banc affirme que les deux
+frameworks font **le même travail** (n°5) ; et cela **encaisserait en silence** l'avantage gratuit que la
+n°20 liste comme **dette ouverte à épingler avant toute comparaison** (« ~25 % de nœuds DOM en moins,
+**gratuitement** »). La n°20 interdit précisément que cette classe de question se règle **par défaut**, dans
+l'implémentation. **Elle reste ouverte, et elle est maintenant chiffrée : 4 nœuds sur 7 pour `Counter`.**
+
+**Ce qu'on ne fait pas.** **On ne réécrit pas `counter.js`.** n°21/n°51 : l'answer key est la **référence**,
+le générateur est ce qui est **jugé** ; un désaccord est un **rapport**, pas une édition. Le test de porte
+est **commité ROUGE**. Un `dotnet test` rouge **est le résultat**, pas une dette.
+
+## 56. Le comparateur de la n°51 était **faux dans le sens négatif** — il bénissait des programmes cassés
+
+**Décision.** Le prototype `canon` est **remplacé**, pas promu tel quel. La **définition** de la n°51 est
+conservée mot pour mot (`canon(minify(g)) === canon(minify(h))`, renommage par ordre de première
+apparition) ; c'est son **implémentation** qui est refaite.
+
+**Raison — mesurée, pas supposée.** La n°51 dit sa définition « **vérifiée, pas espérée** ». Elle ne l'était
+que dans **un seul sens** : elle **accepte** un renommage. **Le sens qui décide de la porte — rejeter un
+programme réellement différent — n'a jamais été testé.** Il échoue. Le prototype renomme **tout mot** de la
+forme identifiant, donc :
+
+| Ce qu'il ne voit pas | Conséquence |
+|---|---|
+| il renomme **dans les littéraux de chaîne** | `createElement("button")` ≡ `createElement("div")` — **le comparateur qui garde le CONTRAT DOM ne voit pas le contrat DOM** |
+| il renomme les **noms importés** | `import{setText as i}` ≡ `import{listen as i}` — un module qui appelle `listen` là où l'answer key appelle `setText` **PASSE**. Il jette au premier clic. |
+| il renomme les **noms de propriété** | `.value` ≡ `.data`, `.id` ≡ `.className` |
+
+Reproduit et conservé : deux modules dont l'un intervertit `setText` et `listen` **canonisent identiquement**.
+
+**Ce qui est retenu.** `tools/canon.mjs` ne renomme que ce que l'**alpha-renommage** a le droit de toucher —
+les identifiants **liés** — et laisse **littéral** tout ce dont l'orthographe porte du sens : mots réservés,
+noms de propriété après `.`, **noms externes** des clauses `import`/`export`, **toutes** les chaînes et tous
+les nombres, et les globales de l'allowlist (renommer une variable **libre** n'est pas un alpha-renommage).
+**23 tests, dont 11 négatifs**, chacun étant un programme que le prototype acceptait.
+
+**Conséquence assumée, et elle touche un chiffre publié.** La n°51 publie « 608 B minifié → **522 B**
+canonisé ». **Ces chiffres ne se reproduisent plus** : `canon` est désormais un flux de jetons séparés par
+espaces qui **préserve** les littéraux, et esbuild est **0.28.1** (celui que `build-filament.sh` épingle) et
+non celui du prototype. Le **couple de validation de la n°51 reste ALPHA-ÉQUIVALENT** sous la nouvelle
+implémentation — re-mesuré : **600 B minifié / 844 B canonisé des deux côtés**. La **conclusion** de la n°51
+tient ; ses **octets** sont superseded.
+
+**Limites nommées, à côté de l'outil** (`tools/canon.mjs`, en-tête) : **L1** renommage **par nom, pas par
+portée** (la limite que la n°51 nomme ; réelle **dans les deux sens**) · **L2** les noms libres hors
+allowlist sont renommés · **L3** pas d'AST, donc les **clés d'objet** sont renommées (`--strict-keys` le
+signale ; la sortie de `Counter` n'en contient aucune) · **L4** regex/division heuristique.
+
+## 57. La couture `@code` : le JS **survit**, vérifié et épinglé — pas supposé
+
+**Décision.** Le JS écrit à la main vit dans le bloc `@code` de `samples/Counter/Counter.razor`. **Aucune
+autre couture n'a été nécessaire** (ni fichier `.js` frère, ni directive).
+
+**Raison — vérifié depuis l'IR, pas depuis la doc.** Razor **lexe** `@code` comme du C# mais ne le **parse
+ni ne le type-check** : le bloc entier arrive comme **UN SEUL jeton opaque**
+`CSharpCodeIntermediateNode`, **verbatim**, **zéro diagnostic** — `const`, `=>`, `++` inclus. Le générateur
+le **splice tel quel** en tête de `mount()`. `CodeBlock_IsOpaque_AndCarriesJsVerbatim` l'épingle : un Razor
+qui se mettrait à interpréter ce bloc **casse un test** au lieu de mutiler l'état de l'app.
+
+**La règle que la couture impose, et qui n'est PAS une invention pour passer la porte.** Le template lit de
+l'**état** ; avec une couture JS, l'auteur déclare cet état comme un `signal` **à la main** (en Phase 3, le
+lifting `private int` → `Signal<int>` serait fait par le compilateur). `@currentCount` compile donc en
+`currentCount.value` — un **accès en propriété**, exactement le protocole de lecture de la n°22 (« `s.Value`
+se traduit en `s.value` caractère pour caractère »). Sans le `.value`, `setText` recevrait un **objet** et
+afficherait `[object Object]`. **Cette règle est LOCALE** (elle ne regarde que le site de lecture) ; inliner
+un handler ne l'est pas (il faut lire un **corps**) — c'est là que passe la frontière, et c'est pourquoi
+l'écart n°1 de la n°55 n'est pas rattrapable par le même argument.
+
+**Limite assumée.** La règle suppose que **tout binding lu par le template est un signal**. Un `@x` sur un
+`let x = 5` ordinaire émettrait `x.value` — faux. Le détecter exigerait d'analyser le JS de `@code`, ce que
+cette phase ne fait pas. Hors bare identifier (`@(a + b)`, `@Foo.Bar()`), le générateur **diagnostique**
+plutôt que de deviner (FIL010).
+
+## 58. Un exécutable console, pas un `ISourceGenerator` ni une cible MSBuild — arbitrage consigné
+
+**Décision.** `Filament.Generator` est une **app console** : `dotnet run --project ... -- <in.razor> <out.js>`.
+
+**Raison.** La §4.3 dit elle-même que Roslyn **ne peut pas** émettre du non-C# dans la compilation, et le JS
+est du non-C# : l'`ISourceGenerator` est **exclu par la spec**, pas par nous. La §4.3 veut à terme une cible
+MSBuild écrivant dans `obj/filament/` ; pour le POC, une console appelée par le script de build est **le
+chemin le plus court vers une mesure** (§10 : « prendre le chemin qui mesure le plus vite »). La cible MSBuild
+est un problème d'**emballage** qui ne change **aucun octet émis** : **reportée, pas oubliée.**
+
+**Dette assumée, non payée dans ce run.** `bench/build-filament.sh` **n'appelle pas encore** le générateur :
+il construit toujours `samples/Counter/counter.js`, l'answer key. **Donc C1/C3/C4 n'ont PAS été re-mesurés
+sur la sortie du générateur**, et le livrable imposé par les n°34/n°50 (« écrire le générateur pour le SEUL
+compteur, **et re-mesurer C1/C3/C4 sur SA sortie** ») est **fait à moitié**. Ce qui est établi ici : la
+sortie **s'exécute** (montée à `"0"`, clic → `"1"`, cinq clics → `"5"`) et **C3 tient sur la sortie générée**
+— **1 seul `MutationRecord` `characterData` par incrément**, observé, pas déduit. Ce qui **reste à faire** :
+brancher le générateur dans `build-filament.sh` et **re-mesurer C1/C4**. **La n°34 reste ouverte.**
+
+---
+
+# Phase 2 — arbitrages de la mesure sur la sortie du générateur (entrée `BENCH.md` n°5, 2026-07-16)
+
+## 59. La dette de la n°58 est **PAYÉE** — `build-filament.sh` appelle le générateur, et le label `-gen` isole son coût
+
+**Décision.** `bench/build-filament.sh` **supprime et ré-émet** `samples/filament-counter-gen/Counter.g.js`
+depuis `samples/Counter/Counter.razor` **à chaque build**, et un label **`filament-counter-gen`** monte cette
+sortie. **C1/C3/C4 sont désormais mesurés sur la sortie du générateur** — le livrable imposé par les
+n°34/n°50, que la n°58 laissait **fait à moitié**.
+
+**Raison — la comparaison ne vaut que si UNE SEULE variable bouge.** `filament-counter-gen/main.js` est
+`filament-counter/main.js` avec **UNE ligne changée** : l'import. Même runtime, même shell, même feuille de
+style — vérifié **par `cmp`, pas par lecture** : `index.html` et `css/app.css` sont **byte-identiques** entre
+les deux labels, et le CSS est byte-identique à celui que publie `blazor-counter-nojit`. **La seule variable
+entre les deux labels est QUI A ÉCRIT LE COMPOSANT**, donc le Δ de C1 entre eux est **le coût du générateur
+et de rien d'autre**. C'est ce qui rend le chiffre **attribuable** au lieu d'être une différence de bundle.
+
+**Le fichier émis n'est PAS commité, et la raison n'est pas la propreté.** Il est **gitignoré** et
+**régénéré inconditionnellement** (~1 s). Un fichier généré qui vit dans l'arbre est un fichier que
+**quelqu'un finit par éditer à la main** — et C1 serait alors mesuré sur un artefact que le générateur n'a
+pas produit **pendant que le label continue d'affirmer le contraire**. Cette défaillance serait
+**silencieuse**, c'est-à-dire exactement la classe que la §10 interdit. Le build **vérifie depuis
+l'ARTEFACT** (le fichier existe **et** porte la bannière du générateur), **jamais depuis le seul code de
+sortie**. Même motif que le test de porte, qui déplace sa propre sortie **hors** du dépôt.
+
+**Le chiffre, et son signe.** **+18 o gzip (+0,60 %) · +19 o brotli (+0,73 %)** sur les octets **du fil**
+(n°44) ; **0,18 % du budget de 10 000 o** ; **IQR 0 des deux côtés — le delta est RÉSOLU, pas du bruit**.
+**Attribué CONSTRUCTIVEMENT** : en neutralisant les deux écarts de la n°55 **un à la fois**, le bundle
+reproduit celui de l'answer key **À L'OCTET** (2 986 brut / 1 265 gzip des deux côtés). **La compilation du
+template coûte ZÉRO octet** ; **la totalité du +18 o est les deux écarts nommés** (nœuds blancs **11 o**,
+indirection du handler **7 o**). **Provenance re-vérifiée après la mesure** : reconstruire depuis la source
+reproduit les octets mesurés **bit pour bit** (`app.js` md5 `edbca7c9…`, `Counter.g.js` md5 `be5c37bc…`).
+**Le générateur est déterministe.**
+
+**Conséquence assumée, et elle est inconfortable.** **`build-filament.sh` DÉCIDE QUELS OCTETS EXISTENT À
+PESER, et il n'est PAS dans le périmètre du hash du harness** (`HARNESS_SOURCE_FILES` = `bench.mjs` +
+`server.mjs` + `expected-labels.json`). **Il a été modifié dans ce run et le hash n'a pas bougé d'un bit.**
+Le hash certifie le **driver**, pas l'**usine à artefacts** : la n°43 (« un hash ne peut pas être oublié »)
+a un trou **exactement là où la n°31 en avait un**. **Divulgué, non corrigé** — le corriger déplaçait le hash
+au milieu du run, donc perdait la comparabilité avec l'entrée n°4 sur l'axe **poids**, qui est précisément ce
+que ce run exploite (`filament-counter/app.js` md5 `425e2d6d…`, **identique à celui de l'entrée n°4**, poids
+reproduit à l'octet). **À faire dans la passe suivante : ajouter `build-filament.sh` et `publish-baseline.sh`
+au périmètre, ou inscrire leurs digests dans le JSON de résultat.**
+
+## 60. Le test de la n°53 était un **LEURRE** — prouvé par mutation, et la n°53 est amendée ici
+
+**Décision.** `RazorFrontEnd.CountDescriptors` est **SUPPRIMÉ**. Il y a désormais **UN SEUL**
+`CreateEngine()`, et `ParseResult` rapporte les descripteurs **du moteur qui a réellement parsé**. Un
+troisième test, `TheEngineIsWiredInExactlyOnePlace`, **échoue si un second moteur réapparaît**.
+
+**Raison — mesurée, pas raisonnée.** La n°53 exige : « **un test doit échouer si [la chaîne des tag helpers]
+disparaît** ». Le test qui portait ce nom, `TagHelperChain_ResolvesDescriptors_NotZero`, appelait
+`CountDescriptors` — qui **construisait son PROPRE `RazorProjectEngine` avec sa PROPRE copie du câblage**.
+**`CompilationTagHelperFeature` a été supprimé du chemin RÉEL de `Parse()`, et ce test est resté VERT.**
+**Le test nommé pour l'invariant ne pouvait pas échouer quand l'invariant disparaissait.** C'est **mot pour
+mot** le mode de défaillance documenté par les n°41/n°46 — réparer la ligne que pointe un test pendant que le
+trou identique subsiste **un cadre plus haut** — **survenu À L'INTÉRIEUR du test écrit pour l'empêcher**. Il
+n'avait l'air sûr que parce que la garde propre de `Parse()` levait, faisant rougir **d'autres** tests :
+**qu'un nettoyage retire cette garde et l'invariant n'était plus gardé du tout.**
+
+**Ce que la mutation a AUSSI établi, et qui est conservé comme CONTRÔLE.** Supprimer
+`AddDefaultImports("@using Microsoft.AspNetCore.Components.Web")` — le piège de la n°53, **reproduit LIVE**
+pendant ce run : `@onclick` devient un attribut littéral nommé `'@onclick'`, **sans aucun diagnostic**, et le
+bouton paraît **entièrement statique** — **fait ROUGIR le test d'IR** (`'onclick'` présent, aucun attribut ne
+commence par `@`, `EventCallback.Factory.Create` présent) **mais LAISSE VERT le test de COMPTAGE des
+descripteurs**. **Le comptage n'est donc PAS l'invariant** : le compte reste sain pendant que `@onclick` se
+mé-parse en silence. **Le contrôle est écrit sur le test**, pour que personne ne le « répare » en croyant
+bien faire. **C'est le test depuis l'ARTEFACT qui attrape, jamais le drapeau qu'on croit avoir passé**
+(n°29, n°43).
+
+**Conséquence assumée.** La n°53 reste **juste sur le fond** (les descripteurs sont indispensables, leur
+absence est silencieuse) ; **sa phrase « un test doit échouer si elle disparaît » était FAUSSE EN FAIT
+jusqu'à ce run**. Elle est **amendée ici plutôt que réécrite là-bas** : le journal enregistre ce qui a été
+arbitré **et quand**, et effacer un leurre après coup effacerait la seule preuve que ce dépôt en produit.
+
+## 61. Le générateur laissait tomber **HUIT constructions Razor EN SILENCE** — la séparabilité template/C# échoue une **TROISIÈME** fois, au niveau **DÉCLARATION**
+
+**Décision.** `AccountForDocument` **refuse tout ce qui n'est pas positivement dans une allowlist**, via
+**DEUX gates indépendants** : (1) le gate **DIRECTIVE**, piloté par la table des directives de Razor —
+**complet par construction**, et il porte le **span exact** ; (2) le gate **NŒUD**, une allowlist sur l'IR,
+qui attrape ce qui **ne s'écrit pas comme une directive**. **Tout diagnostic porte désormais une
+LOCALISATION** : `fichier(ligne,col): FIL0003: [raison] message`.
+
+**Raison — mesurée en LANÇANT le générateur, pas en lisant son code.** `Compile` allait chercher
+`BuildRenderTree` et `@code` dans la classe **et ne regardait rien d'autre**. Conséquence : **`@inject`,
+`@page`, `@layout`, `@attribute`, `@using`, `@inherits`, `@implements` et `@typeparam` compilaient tous vers
+un module PROPRE et PLAUSIBLE, la construction simplement ABSENTE.** `<SomeWidget />` était **pire** :
+`document.createElement('SomeWidget')`, **exit 0**, et **Razor lui-même ne rapporte RIEN** pour ce cas —
+reproduit avec la règle désactivée. **C'est « du JS silencieusement faux » (§10) DANS LE GÉNÉRATEUR LIVRÉ**,
+pas une hypothèse. **Aucun diagnostic ne portait de localisation du tout** : l'exigence « diagnostic
+localisé » de la spec était **simplement non tenue**.
+
+**Ce que cette découverte dit du DÉCOUPAGE de la spec, et c'est le vrai enseignement.** La n°54 a trouvé que
+la frontière Phase 2 / Phase 3 n'existe pas dans l'IR pour **`@foreach`**. La n°55 l'a retrouvée **à la
+couture `@code`**. **Voici la TROISIÈME occurrence, au niveau DÉCLARATION** : `@inject` et `@page` ne sont
+**ni du template, ni du `@code`** — ce sont des **déclarations**, une catégorie que le découpage « template
+vs logique » **ne nomme pas**, et que l'ancien compilateur **ne regardait donc pas**. `@inherits` /
+`@implements` / `@typeparam` sont **encore ailleurs** : ce ne sont **pas des enfants** du document, ils
+posent des **PROPRIÉTÉS sur la classe** — c'est **exactement** par là qu'ils passaient. **Une allowlist est
+le seul mode de défaillance acceptable ici** : une denylist ne peut pas énumérer ce que Razor lui réserve.
+
+**Les deux gates sont indépendants, et c'est VÉRIFIÉ, pas décoratif.** Gate 1 désactivé, le gate 2 **refuse
+encore** `@inject`/`@page`/`@layout` — **seule la localisation se dégrade** (`<no source span>`). Ni l'un ni
+l'autre seul ne donne **refusé + localisé**. Le gate 2 a d'ailleurs eu **zéro couverture** jusqu'à ce qu'un
+fixture que **lui seul** attrape soit trouvé : le no-oper laissait la suite **verte**, parce que toute
+construction des fixtures existants est une **directive**, donc attrapée par le gate 1 en premier. **Un
+backstop non testé est une revendication, pas un invariant.** `@attributes` → `SplatIntermediateNode` (il a
+un span, n'est pas une directive, n'est pas dans le switch) est le fixture qui le rend réel.
+
+**Un nouveau passage a dû être écrit, parce que Razor JETTE le span.** Vérifié : `@inject` →
+`ComponentInjectIntermediateNode` avec `Source == null` ; `@page` → `RouteAttributeExtensionNode`,
+`Source == null`. `DirectiveSpyPass` (`IRazorDirectiveClassifierPass`) lit le span **avant** qu'il ne
+disparaisse. **Il est PUR : il ne mute rien et n'a changé AUCUN octet émis** (la sortie est byte-identique au
+snapshot approuvé). **Erreur consignée plutôt que corrigée en douce** : le commentaire affirmait que son
+`Order = int.MinValue` le fait tourner « avant les passes d'abaissement ». **Muter l'`Order` laisse tout
+vert.** Sondé, une espionne par phase : la directive **survit à TOUTE la phase classifier** et **meurt dans
+une passe d'optimisation TARDIVE**. **L'`Order` est DÉFENSIF, pas porteur** ; ce qui est porteur, c'est que
+la passe **tourne** (la dé-enregistrer est **ROUGE**). Le test est renommé
+`DirectiveSpy_SeesTheSpan_ThatTheFinalIrHasLost` — **il n'a jamais testé l'ordre**.
+
+**Conséquence assumée — l'espace de noms des codes est CORRIGÉ, et cela SUPERSÈDE la n°57.** Le générateur
+frappait un schéma privé **`FIL001`…`FIL011`** qui **squatte l'espace de noms de la spec** (`FIL001` se lit
+comme le `FIL0001` réservé à la Phase 3 au premier coup d'œil). La Phase 2 émet désormais **exactement UN
+code : `FIL0003`**, plus une étiquette `[raison]`. Les défaillances de l'**outil** (câblage cassé, forme d'IR
+impossible) ne sont pas « votre Razor n'est pas supporté » et portent **`FIL-WIRING`**, qu'aucune lecture ne
+peut confondre avec un code de spec. **La référence à `FIL010` dans la n°57 est donc superseded : c'est
+`FIL0003 [compound-expression]`.** Le test quantifie **sur les 12 fixtures** plutôt que d'en nommer un, donc
+**un nouveau fixture est couvert le jour où il est ajouté**, et il asserte que `FIL0001`/`FIL0002`
+n'apparaissent **jamais**. **Et toute refusal N'ÉCRIT AUCUN FICHIER** (asserté) : un générateur qui erre et
+écrit quand même laisse au build le soin de décider s'il croit le code de sortie — **et quelque chose en aval
+croit toujours le fichier**.
+
+## 62. Verdict de la Phase 2 : **NON FRANCHIE** — et ce que le chiffre de `Counter` autorise la n°34 à conclure
+
+**Décision.** **`gateVerdict` = FAIL. La Phase 2 n'est PAS déclarée franchie.** Aucun chiffre de `Counter` ne
+peut y changer quoi que ce soit, **et le dire est le seul comportement compatible avec les n°34/n°50**, qui
+ont refusé de déclarer la Phase 1 franchie tant qu'une proposition porteuse restait non testée.
+
+**Raison.** La porte de la §6 est une **conjonction de trois termes**. **Deux échouent :**
+
+| Terme | Verdict |
+|---|---|
+| **`Rows`** | **NON FAIT** — hors du périmètre déclaré de la Phase 2 (n°54). Le générateur le **REFUSE** : 6 diagnostics **localisés**, exit **1**, **aucun fichier écrit**. |
+| **équivalence sur `Counter`** | **ÉCHOUE** — divergence au jeton canonique **#42**. Test de porte **commité ROUGE** (41 passés, 1 échoué ; **l'échec EST la porte**). |
+| **« les mesures sont inchangées »** | **tient** — C4 indistinguable **au plancher**, C3 identique, **C1 +18 o (+0,60 %)**, résolu et **entièrement attribué**. **La seule des trois qui passe.** |
+
+**Les deux échecs ne sont pas des défauts du générateur, et c'est ce qui les rend graves** : la n°54
+(frontière absente de l'IR pour `@foreach`) et la n°55 (**le périmètre de la Phase 2 contredit la porte de la
+Phase 2** — l'answer key **inline le corps** d'`Increment`, ce qui exige la Phase 3). **Coût de cette
+contradiction, désormais chiffré : 7 o gzip.** **`counter.js` n'a pas été touché** (sha256
+`e4249db742f48a53…`, git-clean) ; **l'assertion n'a été ni assouplie, ni skippée, ni inversée** (n°21/n°51).
+
+**Ce que le run établit malgré la porte rouge, exactement.** **La compilation du template est EXACTE au jeton
+près** — prouvé **constructivement** : les deux seuls écarts neutralisés ⇒ **ALPHA-ÉQUIVALENT** et bundle
+reproduit **à l'octet**.
+
+**RADICAL vs PRUDENT (§8) — la n°34 attendait CE chiffre. Voici ce qu'il autorise, et rien de plus.**
+
+> **La condition de viabilité de la variante RADICALE est REMPLIE POUR `Counter`, et pour `Counter` seul.**
+> Le JS d'un générateur C#, monté dans un navigateur, pèse **2 994 o sur le fil** (**70 % du budget C1
+> inutilisé**), fait **exactement 1 écriture DOM par incrément**, et est **indistinguable de l'answer key au
+> plancher de l'instrument**. **Rien dans ces données ne compte contre RADICAL.**
+
+**Et rien de plus — la n°34 RESTE OUVERTE.** **Une app SANS FLUX DE CONTRÔLE ne tranche pas l'architecture
+d'un framework.** `Counter` n'a ni `@if`, ni `@foreach`, ni `@key`, ni composition, ni attribut dynamique —
+**et sa logique est du JS écrit à la main** (n°57) : le **lifting d'état** qu'un vrai générateur doit faire
+**n'est pas dans ces octets**, donc **+18 o est une BORNE INFÉRIEURE**. Le **coût par nœud sur 1 000 lignes
+est INCONNU**, et c'est là que vivent le travail lourd en DOM **et toute la cible de tête de C4** (n°13/n°15 :
+`Rows` `create-warm`). **La n°52 pèse en sens INVERSE et n'a pas bougé** : le seul parser Razor réutilisable
+est **gelé en 2021, hors support**, et ce risque frappe **RADICAL plus fort que PRUDENT**. **Le choix ne se
+tranche pas sur cette donnée.**
+
+**Conséquence assumée — ce qui reste ouvert, nommément, et n'est pas absorbé en douce.** (a) **`Rows`** :
+demande la traduction C# bornée de la Phase 3 (n°54). (b) **La contradiction périmètre/porte de la n°55** :
+elle appartient au **propriétaire** — soit la porte se relit comme « équivalent **modulo** l'inlining que la
+Phase 3 fera », soit l'answer key est reconnue comme **présupposant la Phase 3**. **Ni l'un ni l'autre n'est
+un arbitrage d'implémenteur, et aucun des deux n'a été pris en douce ici.** (c) **La dette n°20 (« balisage
+exact »)** : **chiffrée pour `Counter` — 4 nœuds sur 7 — et TOUJOURS OUVERTE** ; c'est **l'answer key** qui
+diverge de la baseline, pas le générateur. (d) **n°30** (plancher d'allocation calibré) et **n°28**
+(`--shell-parity` sur tous les labels) : **toujours ouvertes**. (e) **La n°32 est TENUE, mais À LA MAIN** —
+voir la n°63, qui rectifie une affirmation fausse du rapport amont plutôt que de la publier.
+
+## 63. Rectification d'un rapport amont : le champ `floorLimited` **EXISTE** — la n°32 est tenue **à la main**, pas par l'instrument
+
+**Décision.** Le rapport de mesure amont affirmait : « *La n°32 dit que `increment-warm` est marqué
+`floorLimited`. **IL NE L'EST PAS.** Aucun champ de ce nom n'existe dans `bench.mjs` **ni dans aucun JSON de
+résultat** (grep des deux) » — et proposait de le consigner comme une revendication infalsifiable de plus, de
+la classe du `HARNESS_VERSION` périmé de la n°31. **La seconde moitié de cette affirmation est FAUSSE. Elle
+est rectifiée ici plutôt que publiée**, et la rectification va **dans le sens DÉFAVORABLE au rapport**, d'où
+sa consignation (n°46/n°48 : les erreurs d'un rapport se publient, surtout quand elles l'arrangent).
+
+**Le fait, vérifié par grep sur l'arbre, pas sur un run.** `bench/results/phase1-clean/summary.json` (l'entrée
+n°4) **marque** `increment-warm` **`"floorLimited": true`**, assorti d'une note explicite : « *3/10 Filament
+samples read exactly 0.0 ms, below the harness's ~0.1 ms resolution… The honest statement is “Filament is at
+least 11x faster” — NOT a measured 11x, which divides by a quantization artifact.* » L'entrée n°3 le marque
+également. **La n°32 est donc HONORÉE là où elle a été écrite**, et l'accusation d'inexistence tombe.
+
+**Ce qui RESTE vrai, et qui est la réserve réelle — plus étroite, mais réelle.** Le champ est **assemblé À LA
+MAIN dans `summary.json`** : **l'INSTRUMENT ne l'émet pas** (`bench.mjs` : **0 occurrence**), et **aucun JSON
+par config n'en porte**. **Ce run n'a produit AUCUN `summary.json`** — ses 11 JSON par config
+**n'auto-déclarent donc pas leur limite de quantisation**, et l'entrée n°5 doit l'établir **à la main**, en
+listant les échantillons distincts (`{0 · 0,1 · 0,2}` pour les deux labels Filament contre `{1 … 1,9}` pour
+Blazor). **C'est bien la classe de la n°31 — un champ tenu à la main peut périmer** — mais **il n'avait PAS
+péri** : il était correctement à `true`. La différence entre « le champ n'existe pas » et « le champ existe,
+il est correct, mais c'est un humain qui le pose » est **exactement** la différence entre accuser l'appareil
+et décrire sa limite.
+
+**Conséquence assumée.** **À faire** : faire émettre `floorLimited` par `bench.mjs` **par config**, calculé
+depuis les échantillons (p. ex. « au moins un échantillon à 0,0 ms » ou « étendue < 2 quanta »), pour que le
+scénario le plus affecté par le plancher **le déclare dans l'artefact** au lieu de dépendre d'un assembleur
+humain qui pense à le faire. **Tant que ce n'est pas fait, la n°32 tient par DISCIPLINE, pas par
+CONSTRUCTION** — et la discipline est précisément ce que ce dépôt a déjà vu échouer trois fois (n°28, n°31,
+n°43).
+
+**Leçon de méthode, puisqu'elle a failli coûter une fausse publication.** Le grep amont a très probablement
+porté sur `bench/results/phase2-gen/` (le run courant, qui n'a effectivement pas de `summary.json`) et sa
+conclusion a été généralisée à « **aucun** JSON de résultat ». **Un grep qui ne trouve rien ressemble
+exactement à un grep qui prouve une absence** — c'est le piège que ce dépôt s'est déjà infligé (n°43 : vérifier
+depuis l'**artefact**, jamais depuis le drapeau qu'on croit avoir passé). **La vérification a été refaite sur
+l'arbre entier avant écriture, et c'est ce qui a attrapé l'erreur.**

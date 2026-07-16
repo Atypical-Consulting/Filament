@@ -1,24 +1,43 @@
-# Filament — Phase 0 baseline + Phase 1 runtime
+# Filament — Phase 0 baseline + Phase 1 runtime + Phase 2 template generator
 
-This repository holds the **Phase 0 Blazor WebAssembly baseline** and the **Phase 1 hand-written
-`filament-runtime`** measured against it: the numbers that the Filament criteria **C1** (bundle
-weight), **C2** (weight vs Blazor) and **C4** (speed) are judged on.
+This repository holds the **Phase 0 Blazor WebAssembly baseline**, the **Phase 1 hand-written
+`filament-runtime`** measured against it, and the **Phase 2 Razor-template generator**: the numbers
+that the Filament criteria **C1** (bundle weight), **C2** (weight vs Blazor), **C3** (DOM writes) and
+**C4** (speed) are judged on.
 
-**There IS a Filament runtime here now** — `src/filament-runtime/`, a signals runtime, plus the
-hand-written sample apps it drives. **But there is still NO generator**:
-`src/Filament.Generator/`, `src/Filament.Core/` and `src/Filament.Analyzer/` are **empty
-directories**. The measured JS is the hand-written **answer key** a future C# generator must emit —
-so **every Phase 1 number is an optimistic lower bound, not "Filament's performance"**. Read
-`BENCH.md` entry #4's scope warning before quoting anything.
+**There IS a generator now** — `src/Filament.Generator/`, a console app that compiles a Razor
+template to direct DOM calls. **`BENCH.md` entry #5 is the first entry in this project's history
+whose numbers describe JS that a MACHINE emitted.** Read its scope warning before quoting anything;
+the two sentences that matter most are these:
+
+> **🔴 PHASE 2 IS NOT PASSED.** Its gate is a conjunction — *"the JS emitted for `Counter` **and**
+> `Rows` is equivalent to the hand-written JS, **and** the measurements are unchanged"*. **Two of the
+> three terms fail.** `Rows` was **not done** (out of Phase 2's declared scope — `@foreach` is raw C#
+> in the IR; DECISIONS.md #54), and **equivalence on `Counter` FAILS** at canonical token #42. **The
+> gate test is committed RED and `dotnet test` fails: that is the result, not a debt.** Neither
+> failure is a generator defect — see #55 (Phase 2's scope contradicts Phase 2's own gate) and #62.
+>
+> **🔴 ONLY THE TEMPLATE IS GENERATED.** The `@code` block of `samples/Counter/Counter.razor` is
+> **hand-written JavaScript**, spliced verbatim — that is Phase 2's declared scope ("la logique
+> `@code` reste écrite en JS à la main"). The state lifting (`private int` → `Signal<int>`) a real
+> generator must do **is not in these bytes**. The measured **+18 B** is a **LOWER BOUND** on the
+> generator's eventual cost, not its final cost (DECISIONS.md #57).
+
+`src/Filament.Core/` and `src/Filament.Analyzer/` are still **empty directories**.
 
 | File | What it is |
 |---|---|
-| `BENCH.md` | **Append-only** measurement register. **Entry #4 holds the C1/C4 numbers that count** (both frameworks, one harness, corrected runtime); entries #1–#3 are superseded but kept. **Entry #3's C4 ratios are superseded as quantities**; its C3 numbers still stand (C3 was not re-measured). Never edit an entry; rectify with a new one. |
+| `BENCH.md` | **Append-only** measurement register. **Entry #5 measures the GENERATOR's output** (C1/C3/C4, hand vs generated vs Blazor, one run). **Entry #4 holds the Phase 1 C1/C4 numbers** and is **not** superseded by #5 — #5 adds a label, it does not re-measure `Rows` or `create/update/swap/clear`. Entries #1–#3 are kept as archive. Never edit an entry; rectify with a new one. |
 | `DECISIONS.md` | Why each number was produced the way it was, and every arbitrage. Read this before disputing a result. |
 | `src/filament-runtime/` | The signals runtime (`signal`/`computed`/`effect`/`list`). `npm run verify` = build + typecheck + tests + **2 048 B size gate**. |
-| `samples/` | Hand-written apps (**the answer key**, not generator output). |
+| `src/Filament.Generator/` | **The Phase 2 generator.** A console app (`dotnet run -- <in.razor> <out.js>`), **not** an `ISourceGenerator` and not an MSBuild target — spec §4.3 excludes Roslyn source generators, since they cannot emit non-C# (DECISIONS.md #58). |
+| `tests/Filament.Generator.Tests/` | The generator's suite, **including the Phase 2 gate**. **1 test fails on purpose** (the gate). |
+| `tools/canon.mjs` | The alpha-equivalence comparator that **decides** the gate (DECISIONS.md #51/#56). `node tools/canon.test.mjs` → 23 tests. Its limitations are in its own header. |
+| `samples/Counter/Counter.razor` | The generator's **input**. Its markup is `baseline/Counter.Blazor/App.razor`'s, **verbatim, blank lines included** — the shared DOM contract. Its `@code` is **hand-written JS**. |
+| `samples/Counter/counter.js` | The Phase 1 **answer key** — the hand-written reference the generator is judged against. **Never edited to make the gate pass** (DECISIONS.md #21/#51). |
 | `bench/publish-baseline.sh` | Regenerates the four **Blazor** publish outputs. The only on-disk definition of those configs. |
-| `bench/build-filament.sh` | Builds the four **Filament** labels (2 production + 2 `-stats`). Static root is `<label>/` — **no `wwwroot/`**, unlike Blazor. |
+| `bench/build-filament.sh` | Builds the six **Filament** labels (3 production + 3 `-stats`), and **invokes the generator** for the `-gen` labels. Static root is `<label>/` — **no `wwwroot/`**, unlike Blazor. |
+| `bench/run-phase2-gen.sh` | Entry #5's measurement, in its **mirrored interleaved order**. The order is in the script on purpose; do not improvise it. |
 | `bench/harness/bench.mjs` | Framework-agnostic Playwright/CDP measurement driver. Emits a **content hash** identifying the harness into every result. |
 | `bench/harness/server.mjs` | Production-like static server with per-request content negotiation. |
 | `bench/results/*.json` | **The measured evidence.** Tracked in git on purpose. |
@@ -97,6 +116,63 @@ Things worth knowing before you run it:
 
 ---
 
+## Step 1b — The generator (Phase 2)
+
+```bash
+# Compile a Razor template to direct DOM calls. This is exactly what build-filament.sh
+# runs, and the output path is gitignored (#59).
+dotnet run --project src/Filament.Generator -- \
+  samples/Counter/Counter.razor samples/filament-counter-gen/Counter.g.js
+
+# The emitted module imports the runtime by a specifier resolved RELATIVE TO THE OUTPUT
+# DIRECTORY, by walking up to src/filament-runtime/src/index.ts. Emitting OUTSIDE the
+# repo therefore fails loudly -- `error FIL000: could not locate ... Pass --runtime` --
+# rather than emitting a module with a dangling import. Override it explicitly:
+dotnet run --project src/Filament.Generator -- \
+  samples/Counter/Counter.razor /tmp/Counter.g.js --runtime 'filament-runtime'
+
+# Inspect the Razor IR the generator sees (this is how #52/#54 were established).
+# NOTE THE ORDER: --dump-ir comes FIRST. `<file> --dump-ir` is not an error -- it
+# writes a file literally named "--dump-ir", which is exactly the kind of silent
+# nonsense this repo refuses. Verified by running both forms.
+dotnet run --project src/Filament.Generator -- --dump-ir samples/Counter/Counter.razor
+
+# The suite, INCLUDING the gate. Expect 41 passed, 1 FAILED.
+dotnet test tests/Filament.Generator.Tests/Filament.Generator.Tests.csproj
+
+# The comparator that decides the gate, and its own tests.
+node tools/canon.mjs <generated.js> samples/Counter/counter.js   # exit 0 = alpha-equivalent
+node tools/canon.test.mjs                                        # 23 passed
+```
+
+**`dotnet test` FAILS, on purpose, and it must stay failing until the gate is genuinely met.** The one
+red test is `Gate_GeneratedCounter_IsAlphaEquivalentToAnswerKey`. **A red gate IS the result**
+(`DECISIONS.md` #55/#62). Do not "fix" it by editing `samples/Counter/counter.js`: the answer key is
+the **reference**, the generator is what is **judged**, and a disagreement is a **report, not an
+edit** (#21/#51).
+
+Things worth knowing before you run it:
+
+- **Out-of-subset constructs raise a LOCATED diagnostic and write NO file** — never silently wrong JS
+  (spec §10). Phase 2 emits exactly one code, **`FIL0003`**, plus a `[reason]` tag; tool failures
+  carry `FIL-WIRING`. Try it:
+  `dotnet run --project src/Filament.Generator -- baseline/Rows.Blazor/RowsApp.razor samples/filament-counter-gen/Counter.g.js`
+  → **6 located diagnostics, exit 1, and NO file is written** (`DECISIONS.md` #54).
+- **`Rows` is refused on purpose.** `@foreach` is **raw C# text** in Razor's IR — unbalanced braces,
+  and the element is a **sibling** of the loop header. Translating it is **Phase 3** work (#54).
+- **The generator is a console app, not an `ISourceGenerator`.** Spec §4.3 says Roslyn cannot emit
+  non-C# into a compilation, and JS is non-C#; the source-generator route is excluded **by the spec**,
+  not by us. An MSBuild target is a **packaging** concern that changes no emitted byte (#58).
+- **It pins `Microsoft.AspNetCore.Razor.Language` 6.0.36 — the last published version, frozen in 2021
+  and out of support.** This is **not a preference**: every newer route is closed (the 10.x package
+  does not restore; the SDK DLL's API is internal; the syntax tree is internal in all versions). This
+  risk weighs **against** the RADICAL variant of spec §8 (#52).
+- **The emitted `samples/filament-counter-gen/Counter.g.js` is gitignored and re-emitted on every
+  build.** A committed generated file is one somebody eventually hand-edits, and C1 would then be
+  measured on a bundle the generator did not emit while the label still claimed it did (#59).
+
+---
+
 ## Step 2 — Measure
 
 **The static root differs by framework, and this is a documented footgun:**
@@ -157,6 +233,26 @@ node bench/harness/bench.mjs \
 run serves brotli. Capping to gzip serves real, verified gzip bytes rather than brotli bytes wearing
 a gzip label (`DECISIONS.md` #3).
 
+### Phase 2 — measuring the generator's output (entry #5)
+
+```bash
+bash bench/build-filament.sh            # 6 labels; re-emits Counter.g.js from Counter.razor
+bash bench/publish-baseline.sh blazor-counter-nojit blazor-counter-aot
+bash bench/run-phase2-gen.sh            # 8 configs C1/C4 in mirrored order, then 3 C3 passes
+```
+
+**The order is in the script, and it is the point.** Entry #4 had to disclose an order confound
+(reserve F): all Blazor ran first, all Filament last, so thermal drift was perfectly confounded with
+framework identity. `run-phase2-gen.sh` runs a **mirrored (counterbalanced)** order —
+`nojit, hand, gen, aot` on gzip and `aot, gen, hand, nojit` on brotli — so every config appears once
+in each half and **the two Filament labels sit adjacent in both passes**. **Do not improvise the
+order**; `bash bench/run-phase2-gen.sh gzip|br|c3` splits the passes **without** changing it.
+
+**C3 runs last and separately, deliberately.** The allocation probe leaves V8's sampling profiler on
+and forces GCs — a C4 median taken under it would be measuring the instrument. C3 runs on the
+`-stats` labels, which are the **only** bundles with instrumentation compiled in and **must never be
+weighed**.
+
 Useful flags: `--runs`, `--weight-runs`, `--warmup`, `--headed` (debug), `--route`, `--timeout`,
 `--quiet-ms`, `--port`. `--help` lists them all.
 
@@ -175,6 +271,7 @@ cd bench/harness && npm run selftest    # 440 passed, 0 failed at entry #2
 | `bench/results/<label>.json` | Per-config protocol result: weight, per-scenario median/IQR, environment, config, contract check. **Tracked in git.** |
 | `bench/results/brotli-weight-reference.json` | Hand-assembled brotli-vs-gzip summary. Derived from brotli runs, not emitted directly by `bench.mjs`. |
 | `bench/results/phase1-clean/` | **Entry #4's evidence**: 12 per-config JSONs (both frameworks, one harness), `summary.json`, `run.log`. **Tracked in git.** |
+| `bench/results/phase2-gen/` | **Entry #5's evidence**: 11 per-config JSONs — 8 C1/C4 (hand, **generated**, Blazor nojit, Blazor AOT × gzip/brotli) + 3 C3. All share harness hash `47e7e46f…`. **No `summary.json`** — see entry #5 reserve H. **Tracked in git.** |
 | `bench/publish/<label>/` | Publish output. Gitignored; regenerate with the script. |
 
 `--out` is the only thing that decides where a result is written; nothing is auto-discovered.
@@ -184,12 +281,44 @@ cd bench/harness && npm run selftest    # 440 passed, 0 failed at entry #2
 ## Interpreting the results
 
 **Read `BENCH.md` and `DECISIONS.md` before quoting any number.** Both carry reserves that change
-what the numbers mean. **`BENCH.md` entry #4 holds the C1/C4 numbers that count** — both frameworks
-re-measured on **one** harness, on the **bug-fixed** runtime. Entry #2 holds the **Blazor baseline**
-(its weight figures reproduce byte-exactly in entry #4 and are **not** superseded). Entries #1 and #3
-are kept as archive; **entry #3's C4 ratios are superseded as quantities** — every Blazor timing moved
-on the clean harness, and the old ratios **understated** Filament. **Entry #3's C3 numbers still
-stand**: C3 was **not** re-measured in entry #4.
+what the numbers mean. **`BENCH.md` entry #5 holds the generator numbers**; **entry #4 holds the
+Phase 1 C1/C4 numbers** — both frameworks re-measured on **one** harness, on the **bug-fixed**
+runtime. Entry #2 holds the **Blazor baseline** (its weight figures reproduce byte-exactly in entry #4
+and are **not** superseded). Entries #1 and #3 are kept as archive; **entry #3's C4 ratios are
+superseded as quantities** — every Blazor timing moved on the clean harness, and the old ratios
+**understated** Filament. **Entry #3's C3 numbers still stand**: C3 was **not** re-measured in
+entry #4, and entry #5 measures C3 on `Counter` only.
+
+### What entry #5 established about the generator — exactly this, and no more
+
+| | |
+|---|---|
+| **C1** | ✅ **PASS. 2,994 B gzip on the wire, 70% of the 10,000 B budget unused.** |
+| **Generator's cost vs the answer key** | 🟢 **+18 B gzip (+0.60%) · +19 B brotli (+0.73%)** — 0.18% of the budget. **IQR 0 both sides: resolved, not noise.** |
+| **C3** | ✅ Generated output does **exactly 1 DOM write per increment** (`characterData`). **So does Blazor** — this is a correctness bar, **not** a win. |
+| **C4** | Generated vs hand-written is **indistinguishable AT THE INSTRUMENT'S FLOOR**. **That is not a measurement of parity.** |
+| **Phase 2 gate** | 🔴 **FAIL** — `Rows` not done, equivalence on `Counter` fails at token #42. |
+
+**The +18 B is fully attributed, constructively.** Neutralising the two divergences of DECISIONS.md
+#55 one at a time reproduces the answer key's bundle **to the byte** (2,986 B raw / 1,265 B gzip both
+sides). **The template compilation costs ZERO bytes** over hand-written JS; the entire delta is those
+two named divergences (whitespace nodes **11 B**, handler indirection **7 B**).
+
+**Read the sign of that delta carefully — it is not a regression.** 11 of the 18 bytes are two
+`"\n\n"` text nodes **that Blazor also ships**. Measured in-browser: `#app.childNodes` is **Blazor 7,
+generated 5, answer key 3**. **The generator builds a DOM strictly CLOSER to Blazor's than the answer
+key does** — it is **the answer key that diverges from the baseline**, which nobody had noticed for
+`Counter`. Stripping them would silently bank the "~25% fewer DOM nodes, free" advantage
+`DECISIONS.md` #20 lists as an **open debt to pin before any comparison**. That debt is now
+**quantified for `Counter` (4 of 7 nodes)** and **still open**.
+
+**RADICAL vs PRUDENT (spec §8) is NOT settled by this.** `DECISIONS.md` #34 left the architecture
+choice waiting on exactly this number. What it licenses, precisely: **RADICAL's viability condition is
+met FOR `Counter`, and for `Counter` alone.** **Nothing here counts against RADICAL — and one app
+with no control flow does not settle a framework's architecture.** `Counter` has no `@if`, no
+`@foreach`, no `@key`, no composition, no dynamic attribute, **and its logic is hand-written JS**. The
+generator's per-node cost across 1,000 rows is **unknown**, and that is where the DOM-heavy work and
+**all of C4's headline target** live. **#34 stays open.**
 
 **Two things in particular, before you quote a speed number:**
 

@@ -1,0 +1,41 @@
+@* Counter — the Filament generator's INPUT. Phase 2.
+
+   THE TEMPLATE BELOW IS baseline/Counter.Blazor/App.razor's MARKUP, VERBATIM,
+   BLANK LINES INCLUDED. It is the SHARED DOM CONTRACT and must not be altered --
+   including the blank lines between the siblings, which Blazor's own compiler turns
+   into real "\n\n" text nodes (verified from its generated BuildRenderTree, which
+   emits AddMarkupContent(0, "<h1 id=\"title\">Counter</h1>\n\n")). They are part of
+   the contract precisely BECAUSE they are easy to drop without noticing.
+
+   THE @code BLOCK IS HAND-WRITTEN JAVASCRIPT, not C#. Phase 2 compiles the template
+   only -- "la logique @code reste ecrite en JS a la main" (spec 6).
+
+   WHY JS SURVIVES IN @code, VERIFIED AND NOT ASSUMED.
+   Razor lexes @code as C# but does not parse or type-check it: the whole block
+   arrives in the IR as ONE opaque CSharpCodeIntermediateNode token holding the body
+   verbatim, with ZERO Razor diagnostics. `--dump-ir` shows it, and
+   GeneratorTests.CodeBlock_IsOpaque_AndCarriesJsVerbatim pins it, byte for byte,
+   so that a Razor version that starts parsing this block FAILS A TEST instead of
+   silently mangling the app's state. The generator splices this text, untouched,
+   into the top of mount().
+
+   State is declared as a signal here because that lifting is Phase 3's job (a C#
+   `private int currentCount` would be lifted to Signal<int> by the compiler); with a
+   JS seam, the author does it by hand. That is what makes the template's
+   @currentCount compile to `currentCount.value` -- a read of a signal, per decision
+   22's property-access protocol -- and not to a bare `currentCount`, which would
+   setText an object and print "[object Object]". *@
+
+<h1 id="title">Counter</h1>
+
+<p>Current count: <span id="counter-value">@currentCount</span></p>
+
+<button id="increment" @onclick="Increment">Click me</button>
+
+@code {
+    const currentCount = signal(0);
+
+    const Increment = () => {
+        currentCount.value++;
+    };
+}
