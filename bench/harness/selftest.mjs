@@ -35,8 +35,14 @@ import os from 'node:os';
 import http from 'node:http';
 import zlib from 'node:zlib';
 import crypto from 'node:crypto';
-import { startServer, acceptsGzip, acceptsBrotli, negotiateEncoding, isCompressible } from './server.mjs';
-import { main as benchMain, quantile, summarize, loadExpectedLabels, findUntrackedRequests } from './bench.mjs';
+import {
+  startServer, acceptsGzip, acceptsBrotli, negotiateEncoding, isCompressible,
+  parseCliArgs, ENCODING_CEILINGS,
+} from './server.mjs';
+import {
+  main as benchMain, quantile, summarize, loadExpectedLabels, findUntrackedRequests,
+  representativeIndex, collectAotEvidence, classifyAotEvidence, SCENARIO_SPECS,
+} from './bench.mjs';
 
 const ASYNC_DELAY_MS = 60;
 
@@ -332,6 +338,46 @@ const CONST_LABEL_JS = mustReplace(
   'a constant-label generator',
 );
 
+/**
+ * THE fixture for the headline gate. Fully correct on the FIRST #run — it runs the
+ * real Park-Miller LCG and emits the byte-exact golden stream — and then reuses those
+ * 1000 interned strings on every later #run, doing ZERO of the 3000 multiply/modulo
+ * ops and ZERO of the 1000 three-part concatenations.
+ *
+ * This is the cheat CONST_LABEL_JS does not model. A constant-label app is refused on
+ * its first run, i.e. for a reason a correct-first-run/cached-thereafter app never
+ * triggers — so it proves nothing about the run create-warm actually times. This one
+ * passes a first-run-only gate byte-exactly and then posts a create-warm win on
+ * strictly less work, which is the exact shape of the failure the project cares most
+ * about: C4 decided on unequal work, reported as status "ok".
+ *
+ * Note it keeps the id counter honest (ids really are 1001..2000 on the second run),
+ * so it is the LABEL stream that must catch it, not the id check.
+ */
+const CACHED_LABEL_JS = mustReplace(
+  mustReplace(
+    ROWS_APP_JS,
+    `function buildRows(count) {
+  const frag = document.createDocumentFragment();`,
+    `/* Generate once, reuse forever. Correct on run 1, free on every run after. */
+let LABEL_CACHE = null;
+function labelsFor(count) {
+  if (!LABEL_CACHE) {
+    LABEL_CACHE = [];
+    for (let k = 0; k < count; k++) LABEL_CACHE.push(nextLabel());
+  }
+  return LABEL_CACHE;
+}
+function buildRows(count) {
+  const labels = labelsFor(count);
+  const frag = document.createDocumentFragment();`,
+    'a cached label generator',
+  ),
+  `    a.textContent = nextLabel();`,
+  `    a.textContent = labels[i];`,
+  'a cached label lookup',
+);
+
 /** #update touches only row 990 — 1 mutation instead of 100. */
 const LAZY_UPDATE_JS = mustReplace(
   ROWS_APP_JS,
@@ -385,6 +431,70 @@ const SYNC_ROWS_JS = mustReplace(
 }`,
   `function deferred(fn) { return fn; }`,
   'synchronous handlers',
+);
+
+/**
+ * ---- Boot-cost fixtures: the direct test of the cold/warm split ---------------
+ *
+ * These model a framework that defers one-time runtime initialisation to its first
+ * interaction — which is what Blazor does, and why the cold `create` number is
+ * ~72% runtime boot rather than row-building. The FIRST click of any button
+ * busy-waits BOOT_COST_MS before doing its DOM work; every later click does the
+ * work alone.
+ *
+ * The boot cost is paid INSIDE the measured window (after the click, before the
+ * mutation) — exactly where a real runtime pays it, and exactly where the harness
+ * cannot avoid billing it to the click. At 400 ms it is ~6.7x the fixture's 60 ms
+ * async dispatch delay, so the two variants cannot be confused:
+ *
+ *   create-cold  >= ~460 ms  (boot + dispatch + work)
+ *   create-warm  ~=   60 ms  (dispatch + work — boot was paid by the untimed setup)
+ *
+ * This is what makes the warm variants falsifiable rather than merely asserted. If
+ * the untimed setup silently did not run, or if the timed segment still enclosed
+ * it, create-warm would land at >= 460 ms and section 14 fails.
+ */
+const BOOT_COST_MS = 400;
+
+const BOOT_DEFERRED_SRC = `var booted = false;
+/* One-time runtime boot, paid by whichever interaction happens FIRST — the same
+   place a lazily-initialised framework pays it: inside the first click, inside the
+   measured window. A busy-wait (not a timer) so it is real main-thread work that no
+   amount of clever scheduling can hide. */
+function bootOnce() {
+  if (booted) return;
+  booted = true;
+  var end = performance.now() + ${BOOT_COST_MS};
+  while (performance.now() < end) { /* models runtime boot */ }
+}
+function deferred(fn) {
+  return function () {
+    Promise.resolve().then(function () {
+      setTimeout(function () { bootOnce(); fn(); }, ASYNC_DELAY_MS);
+    });
+  };
+}`;
+
+const PLAIN_DEFERRED_SRC = `function deferred(fn) {
+  return function () {
+    Promise.resolve().then(function () { setTimeout(fn, ASYNC_DELAY_MS); });
+  };
+}`;
+
+/** Rows app that pays a 400 ms runtime boot on its first interaction. */
+const BOOT_COST_ROWS_JS = mustReplace(
+  ROWS_APP_JS,
+  PLAIN_DEFERRED_SRC,
+  BOOT_DEFERRED_SRC,
+  'a one-time boot cost on the first interaction',
+);
+
+/** Counter app that pays a 400 ms runtime boot on its first interaction. */
+const BOOT_COST_COUNTER_JS = mustReplace(
+  COUNTER_APP_JS,
+  PLAIN_DEFERRED_SRC,
+  BOOT_DEFERRED_SRC,
+  'a one-time boot cost on the first increment',
 );
 
 /**
@@ -518,12 +628,19 @@ async function makeFixture(root) {
     nolabel: path.join(root, 'nolabel'),
     // Adversarial: each does less work than the contract requires.
     constlabel: path.join(root, 'constlabel'),
+    // Correct on the first #run, cached on every one after — the cheat that a
+    // first-run-only fairness gate cannot see, aimed at the run create-warm times.
+    cachedlabel: path.join(root, 'cachedlabel'),
     lazyupdate: path.join(root, 'lazyupdate'),
     halfswap: path.join(root, 'halfswap'),
     // Conforming, but synchronous — the vsync-quantization regression test.
     sync: path.join(root, 'sync'),
     // Conforming, but fetches from a Web Worker target (the WasmEnableThreads shape).
     worker: path.join(root, 'worker'),
+    // Conforming, but pays a 400 ms runtime boot on first interaction — the
+    // cold-vs-warm regression tests.
+    bootcost: path.join(root, 'bootcost'),
+    bootcounter: path.join(root, 'bootcounter'),
   };
   for (const d of Object.values(dirs)) await fsp.mkdir(d, { recursive: true });
 
@@ -533,10 +650,12 @@ async function makeFixture(root) {
     [dirs.deadclear, 'Dead-clear rows fixture', DEAD_CLEAR_JS],
     [dirs.nolabel, 'No-label-cell fixture', NO_LABEL_CELL_JS],
     [dirs.constlabel, 'Constant-label fixture', CONST_LABEL_JS],
+    [dirs.cachedlabel, 'Cached-label fixture', CACHED_LABEL_JS],
     [dirs.lazyupdate, 'One-row-update fixture', LAZY_UPDATE_JS],
     [dirs.halfswap, 'One-directional-swap fixture', HALF_SWAP_JS],
     [dirs.sync, 'Synchronous rows fixture', SYNC_ROWS_JS],
     [dirs.worker, 'Web-Worker rows fixture', WORKER_ROWS_JS],
+    [dirs.bootcost, 'Boot-cost rows fixture', BOOT_COST_ROWS_JS],
   ];
   for (const [dir, title, js] of rowsApps) {
     // eslint-disable-next-line no-await-in-loop
@@ -556,10 +675,69 @@ async function makeFixture(root) {
   );
   await fsp.writeFile(path.join(dirs.worker, 'worker-payload.data'), crypto.randomBytes(WORKER_PAYLOAD_BYTES));
 
-  await writeCommonAssets(dirs.counter);
-  await fsp.writeFile(path.join(dirs.counter, 'index.html'), COUNTER_HTML, 'utf8');
-  await fsp.writeFile(path.join(dirs.counter, 'app.js'), COUNTER_APP_JS, 'utf8');
+  for (const [dir, js] of [[dirs.counter, COUNTER_APP_JS], [dirs.bootcounter, BOOT_COST_COUNTER_JS]]) {
+    // eslint-disable-next-line no-await-in-loop
+    await writeCommonAssets(dir);
+    // eslint-disable-next-line no-await-in-loop
+    await fsp.writeFile(path.join(dir, 'index.html'), COUNTER_HTML, 'utf8');
+    // eslint-disable-next-line no-await-in-loop
+    await fsp.writeFile(path.join(dir, 'app.js'), js, 'utf8');
+  }
 
+  return dirs;
+}
+
+/**
+ * Synthetic publish trees for the AOT evidence check. Sizes and the fingerprinted
+ * filename shape are taken from this project's own publish output:
+ *   blazor-rows-aot    dotnet.native.ogsd35n1u1.wasm  11,380,806 B
+ *   blazor-rows-nojit  dotnet.native.kllr7zg72l.wasm   1,494,734 B
+ * Written sparsely (fsp.truncate) so 11 MB costs no real disk or time.
+ */
+async function makeAotFixture(root) {
+  const dirs = {
+    aot: path.join(root, 'aot-publish'),
+    nojit: path.join(root, 'nojit-publish'),
+    indeterminate: path.join(root, 'indeterminate-publish'),
+    nosignature: path.join(root, 'nosignature-publish'),
+    // A publish tree holding BOTH a stale 11 MB AOT runtime from an earlier build
+    // (never served) and the 4.5 MB runtime the app actually boots (served, and in
+    // the indeterminate band — e.g. a newer SDK). The largest-first sort puts the
+    // stale file at the head of the evidence list, so a classifier that prefers
+    // "conclusive" over "served" confirms an AOT claim from a file the browser never
+    // requested, and suppresses the INDETERMINATE warning about the one it did.
+    stale: path.join(root, 'stale-publish'),
+  };
+  const artifacts = [
+    [dirs.aot, 'dotnet.native.ogsd35n1u1.wasm', 11_380_806],
+    [dirs.nojit, 'dotnet.native.kllr7zg72l.wasm', 1_494_734],
+    // Between the thresholds: the harness must say "indeterminate", never guess.
+    [dirs.indeterminate, 'dotnet.native.mid1234567.wasm', 4_500_000],
+    [dirs.stale, 'dotnet.native.old0000000.wasm', 11_380_806],
+    [dirs.stale, 'dotnet.native.new1111111.wasm', 4_500_000],
+  ];
+  for (const [dir, name, size] of artifacts) {
+    const fw = path.join(dir, 'wwwroot', '_framework');
+    // eslint-disable-next-line no-await-in-loop
+    await fsp.mkdir(fw, { recursive: true });
+    // eslint-disable-next-line no-await-in-loop
+    const fh = await fsp.open(path.join(fw, name), 'w');
+    // eslint-disable-next-line no-await-in-loop
+    await fh.truncate(size);
+    // eslint-disable-next-line no-await-in-loop
+    await fh.close();
+    // Compressed siblings, exactly as `dotnet publish` emits them. The walker must
+    // read the RAW artifact and never mistake a .br/.gz for it — a .br of an AOT
+    // runtime is ~3 MB and would classify as "interpreted".
+    // eslint-disable-next-line no-await-in-loop
+    await fsp.writeFile(path.join(fw, name + '.br'), Buffer.alloc(1024));
+    // eslint-disable-next-line no-await-in-loop
+    await fsp.writeFile(path.join(fw, name + '.gz'), Buffer.alloc(2048));
+  }
+  // A framework with no AOT signature at all — e.g. Filament. Must yield
+  // "no evidence", never a false verdict.
+  await fsp.mkdir(dirs.nosignature, { recursive: true });
+  await fsp.writeFile(path.join(dirs.nosignature, 'app.js'), 'console.log(1)\n', 'utf8');
   return dirs;
 }
 
@@ -823,6 +1001,28 @@ async function runBench(args) {
   return code;
 }
 
+/**
+ * runBench, but capturing what the harness said while refusing. Exit 3 alone proves
+ * the app was refused; it does not prove it was refused for the RIGHT reason, and a
+ * fixture that trips an unrelated gate would silently stop testing the gate it was
+ * written for. bench.mjs writes its diagnostics with process.stderr.write, so they
+ * are intercepted here and still forwarded, keeping the run debuggable.
+ */
+async function runBenchCapturingStderr(args) {
+  const chunks = [];
+  const original = process.stderr.write.bind(process.stderr);
+  process.stderr.write = (chunk, ...rest) => {
+    chunks.push(typeof chunk === 'string' ? chunk : String(chunk));
+    return original(chunk, ...rest);
+  };
+  try {
+    const code = await benchMain(args);
+    return { code, stderr: chunks.join('') };
+  } finally {
+    process.stderr.write = original;
+  }
+}
+
 async function testEndToEnd(fixture, outDir) {
   section('4. End-to-end: CDP byte summing + timing against the vanilla fixture');
 
@@ -859,9 +1059,9 @@ async function testEndToEnd(fixture, outDir) {
   ok(urls.some((u) => u.endsWith('/') || u.endsWith('/index.html')), 'the navigation request itself is counted');
 
   // --- transferred != disk, and transferred < decoded (i.e. we measured the wire) ---
-  ok(r.weight.decodedBytesMedianRun > bytes,
+  ok(r.weight.decodedBytesRepresentativeRun > bytes,
     'transferred bytes are BELOW decoded bytes — we measured the compressed wire, not disk size',
-    `transferred=${bytes} decoded=${r.weight.decodedBytesMedianRun}`);
+    `transferred=${bytes} decoded=${r.weight.decodedBytesRepresentativeRun}`);
 
   // --- independent cross-check against the server's own ledger ---
   const cc = r.weight.crossCheck;
@@ -876,7 +1076,7 @@ async function testEndToEnd(fixture, outDir) {
 
   // --- timing: the async-click race must be defeated ---
   section('5. Async-click race: fixture defers every mutation by 60 ms');
-  for (const name of ['create', 'update', 'swap', 'clear']) {
+  for (const name of ['create-cold', 'create-warm', 'update', 'swap', 'clear']) {
     const s = r.scenarios[name];
     eq(s.status, 'ok', `${name}: status ok`);
     eq(s.n, 5, `${name}: 5 samples recorded`);
@@ -896,9 +1096,44 @@ async function testEndToEnd(fixture, outDir) {
       `${name}: msToPaint median (${s.toPaint.median}) >= msToMutation median (${s.median})`);
     ok(typeof s.toPaint.note === 'string' && /vsync/i.test(s.toPaint.note),
       `${name}: msToPaint carries the note explaining the vsync offset is the harness's`);
+
+    // Every scenario must state, in the JSON next to its number, whether that
+    // number carries a runtime-boot term. A reader who quotes `median` without
+    // reading the docs still cannot mistake a cold number for a rendering one.
+    ok(s.runtime === 'cold' || s.runtime === 'warm', `${name}: declares runtime cold|warm`, s.runtime);
+    eq(typeof s.headline, 'boolean', `${name}: declares whether it is the headline number`);
+    ok(Array.isArray(s.untimedSetup), `${name}: records its untimed setup steps (empty for cold)`);
+    ok(typeof s.measures === 'string' && s.measures.length > 40, `${name}: documents what it measures`);
   }
-  ok(r.scenarios.create.diagnostics.pageErrors.length === 0, 'no page errors during the rows run',
-    JSON.stringify(r.scenarios.create.diagnostics.pageErrors));
+  ok(r.scenarios['create-cold'].diagnostics.pageErrors.length === 0, 'no page errors during the rows run',
+    JSON.stringify(r.scenarios['create-cold'].diagnostics.pageErrors));
+
+  // --- cold and warm are BOTH reported, and only warm is the headline ---
+  eq(r.scenarios['create-cold'].runtime, 'cold', 'create-cold is reported and marked cold');
+  eq(r.scenarios['create-warm'].runtime, 'warm', 'create-warm is reported and marked warm');
+  eq(r.scenarios['create-cold'].headline, false, 'create-cold is NOT the headline (it carries runtime boot)');
+  eq(r.scenarios['create-warm'].headline, true, 'create-warm IS the headline for C4');
+  for (const n of ['update', 'swap', 'clear']) {
+    eq(r.scenarios[n].runtime, 'warm', `${n}: still warm (it always had an untimed #run setup)`);
+    // The same beat create-warm gets, recorded in the JSON that claims they are
+    // equivalent. Asserted on a REAL run, not just on the spec table.
+    const setup = r.scenarios[n].untimedSetup;
+    ok(/idle beat/.test(setup[setup.length - 1]),
+      `${n}: the JSON records the same settle beat create-warm gets, immediately before the timed click`,
+      JSON.stringify(setup));
+  }
+
+  // --- the timed-iteration count is COMPUTED, not hand-counted ---
+  eq(r.totals.scenarioCount, 5, 'totals: 5 rows scenarios');
+  eq(r.totals.runsPerScenario, 5, 'totals: runs per scenario recorded');
+  eq(r.totals.timedIterationsPlanned, 25, 'totals: planned timed iterations = 5 scenarios x 5 runs');
+  eq(r.totals.timedIterationsRecorded, 25, 'totals: recorded count is summed from the retained samples');
+  eq(r.totals.timedIterationFailures, 0, 'totals: no failures');
+  eq(
+    r.totals.timedIterationsRecorded,
+    Object.values(r.scenarios).reduce((a, s) => a + s.n, 0),
+    'totals: the recorded count re-derives exactly from the per-scenario sample counts',
+  );
 
   // --- the fairness fixture is wired up and its identity recorded ---
   const golden = await loadExpectedLabels();
@@ -917,6 +1152,23 @@ async function testEndToEnd(fixture, outDir) {
   ok(Array.isArray(cg.observed.first5) && cg.observed.first5[0] === golden.first5[0],
     'contract gate compared real label bytes against the golden stream',
     JSON.stringify(cg.observed.first5));
+
+  // --- the gate covers the click create-warm TIMES, not just the first one ---
+  eq(cg.observed.secondRunRowCount, 1000, 'contract gate drove the SECOND #run (the click create-warm times)');
+  ok(Array.isArray(cg.observed.secondRunFirst5) && cg.observed.secondRunFirst5[0] === golden.secondRun.first5[0],
+    'contract gate compared the SECOND run\'s label bytes against the second golden stream',
+    JSON.stringify(cg.observed.secondRunFirst5));
+  eq(cg.observed.secondRunRow1000, golden.secondRun.row1000,
+    'contract gate checked the second run\'s 1000th label — the LCG really advanced 3000 more draws');
+  ok(cg.observed.secondRunFirst5[0] !== cg.observed.first5[0],
+    'the two runs really did emit different streams (the LCG is seeded per page load, never per click)',
+    `${cg.observed.first5[0]} vs ${cg.observed.secondRunFirst5[0]}`);
+  // The monotonic-id claim in protocol.monotonicState, asserted rather than narrated.
+  eq(cg.observed.firstRunFirstId, '1', 'first run ids start at 1');
+  eq(cg.observed.firstRunLastId, '1000', 'first run ids end at 1000');
+  eq(cg.observed.secondRunFirstId, '1001', 'second run ids CONTINUE at 1001 — the counter is never reset');
+  eq(cg.observed.secondRunLastId, '2000', 'second run ids end at 2000');
+  eq(cg.observed.secondRunFirstId, golden.secondRunFirstId, 'and that matches the golden fixture');
 
   // --- service workers blocked by default; no invisible bytes ---
   eq(r.config.serviceWorkers, 'block', 'service workers are BLOCKED by default (byte-tracking blind spot)');
@@ -942,7 +1194,35 @@ async function testEndToEnd(fixture, outDir) {
   ok(!!r.environment.playwright, `Playwright version recorded: ${r.environment.playwright}`);
   ok(Array.isArray(r.weight.topRequests) && r.weight.topRequests.length > 0, 'per-request breakdown present');
   ok(r.weight.topRequests.length <= 15, 'per-request breakdown capped at top 15');
-  ok(r.scenarios.create.samples.length === 5, 'raw samples retained in the JSON');
+  ok(r.scenarios['create-cold'].samples.length === 5, 'raw samples retained in the JSON');
+
+  // --- the declared AOT flag is separated from observed evidence ---
+  eq(r.environment.aotDeclared, false, 'the SELF-DECLARED aot flag is recorded under its own name');
+  eq(r.environment.aotObserved, null,
+    'aotObserved is null for a fixture with no AOT signature — the harness declines to guess');
+  ok(!!r.environment.aotVerification, 'the full AOT verification record is emitted');
+  eq(r.environment.aotVerification.basis, 'no-signature-matched',
+    'the verification names WHY it could not observe (no .NET runtime artifact in a vanilla-JS fixture)');
+  eq(r.environment.aotVerification.warnings.length, 0,
+    'declaring --no-aot on an unverifiable build is not a warning (only an unverified TRUE claim is)',
+    JSON.stringify(r.environment.aotVerification.warnings));
+  eq(r.environment.aotVerification.verified, false, 'and it is honestly reported as NOT verified');
+
+  // --- the per-run breakdown names the run it came from, honestly ---
+  const rep = r.weight.representativeRun;
+  ok(!!rep, 'weight names the run its breakdown was quoted from');
+  ok(rep.index >= 0 && rep.index < r.weight.toInteractive.samples.length,
+    'representative run index is a real run index', `${rep.index}`);
+  eq(rep.totalBytes, r.weight.toInteractive.samples[rep.index],
+    'representativeRun.totalBytes is that run\'s actual total');
+  // 2 weight runs => both are equidistant from the interpolated median, so the
+  // documented tie-break (lower total) decides. Deterministic, and it can never
+  // flatter a weight number by quoting the heavier of the two.
+  eq(rep.totalBytes, Math.min(...r.weight.toInteractive.samples),
+    'with an even run count the tie resolves to the LOWER total, as documented');
+  ok(typeof rep.isExactlyTheMedian === 'boolean',
+    'representativeRun states whether it is EXACTLY the median rather than assuming it');
+  ok(/NEAREST the interpolated/.test(rep.selection), 'representativeRun documents its selection rule');
 
   // --- counter app ---
   section('7. Counter app');
@@ -958,11 +1238,19 @@ async function testEndToEnd(fixture, outDir) {
   ]);
   eq(code2, 0, 'bench.mjs exited 0 for the counter fixture');
   const c = JSON.parse(await fsp.readFile(counterOut, 'utf8'));
-  eq(c.scenarios.increment.status, 'ok', 'increment: status ok');
-  ok(c.scenarios.increment.median >= ASYNC_DELAY_MS - 5,
-    `increment: median (${c.scenarios.increment.median} ms) reflects the real deferred update`);
+  for (const n of ['increment-cold', 'increment-warm']) {
+    eq(c.scenarios[n].status, 'ok', `${n}: status ok`);
+    ok(c.scenarios[n].median >= ASYNC_DELAY_MS - 5,
+      `${n}: median (${c.scenarios[n].median} ms) reflects the real deferred update`);
+  }
+  eq(c.scenarios['increment-cold'].runtime, 'cold', 'increment-cold marked cold');
+  eq(c.scenarios['increment-warm'].runtime, 'warm', 'increment-warm marked warm');
+  eq(c.scenarios['increment-cold'].headline, false, 'increment-cold is NOT the headline');
+  eq(c.scenarios['increment-warm'].headline, true, 'increment-warm IS the headline');
   ok(c.weight.toInteractive.median > 0, 'counter: transferred bytes non-zero',
     `got ${c.weight.toInteractive.median}`);
+  eq(c.totals.timedIterationsPlanned, 10, 'counter totals: 2 scenarios x 5 runs = 10 planned');
+  eq(c.totals.timedIterationsRecorded, 10, 'counter totals: 10 recorded');
 
   return { rowsResult: r, counterResult: c };
 }
@@ -991,9 +1279,25 @@ async function testFailureReporting(fixture, outDir) {
   ok(/timed out/i.test(b.scenarios.clear.failures[0].error), 'clear: failure reason is the predicate timeout',
     b.scenarios.clear.failures[0].error);
   // The working scenarios in the same app must still report normally.
-  eq(b.scenarios.create.status, 'ok', 'create still ok in the same app (failure is scoped to the scenario)');
-  ok(b.scenarios.create.median > 0, 'create still produced a number');
+  eq(b.scenarios['create-cold'].status, 'ok', 'create-cold still ok in the same app (failure is scoped to the scenario)');
+  ok(b.scenarios['create-cold'].median > 0, 'create-cold still produced a number');
   eq(b.scenarios.clear.toPaint.median, null, 'clear: msToPaint median is null too — neither timing is fabricated');
+
+  // create-warm's untimed setup is #run THEN #clear, and this fixture's #clear only
+  // works after #swaprows — so the SETUP itself hangs. That must be a failure with a
+  // null median, exactly like a timed-segment failure: an untimed setup that
+  // silently did not happen would leave the timed click measuring a cold runtime
+  // while the JSON still called the scenario "warm". This is the negative proof that
+  // the setup is real work the harness actually waits for.
+  eq(b.scenarios['create-warm'].status, 'failed',
+    'create-warm: a hanging UNTIMED SETUP is a failure, not a silently-skipped setup');
+  eq(b.scenarios['create-warm'].median, null, 'create-warm: no number is reported when its setup could not run');
+  ok(/timed out/i.test(b.scenarios['create-warm'].failures[0].error),
+    'create-warm: the failure names the setup timeout', b.scenarios['create-warm'].failures[0].error);
+  eq(b.totals.timedIterationsRecorded, 3,
+    'totals: only the 3 scenarios that produced samples are counted (create-cold, update, swap)');
+  eq(b.totals.timedIterationsPlanned - b.totals.timedIterationsRecorded, b.totals.timedIterationFailures,
+    'totals: planned - recorded == the iterations refused a number');
 
   // A PLAINLY dead button never even reaches the stopwatch now: the contract gate
   // clicks #clear and refuses the app outright. Strictly earlier than the timed
@@ -1051,6 +1355,14 @@ async function testUnequalWorkIsRefused(fixture, outDir) {
       expect: /deterministic sequence requires|label generator is constant/,
     },
     {
+      // The one aimed at the HEADLINE. Its first #run is byte-perfect, so it is
+      // refused only by the second-run assertion — the gate that did not exist.
+      dir: fixture.cachedlabel,
+      label: 'cachedlabel',
+      what: 'a correct first #run, then cached labels on the run create-warm TIMES',
+      expect: /on the second #run, row 0 label is "adorable pink desk" but the deterministic sequence requires "mushy blue mouse"/,
+    },
+    {
       dir: fixture.lazyupdate,
       label: 'lazyupdate',
       what: '#update touching 1 row instead of 100',
@@ -1067,15 +1379,43 @@ async function testUnequalWorkIsRefused(fixture, outDir) {
   for (const c of cases) {
     const out = path.join(outDir, `selftest-${c.label}.json`);
     // eslint-disable-next-line no-await-in-loop
-    const code = await runBench([
+    const { code, stderr } = await runBenchCapturingStderr([
       '--dir', c.dir, '--app', 'rows', '--label', `selftest-${c.label}`,
       '--runs', '1', '--weight-runs', '1', '--timeout', '2500', '--out', out, '--no-aot',
     ]);
     eq(code, 3, `${c.label} (${c.what}): exits 3 — numbers REFUSED`);
+    // Refused for the RIGHT reason. Without this, a fixture could trip an unrelated
+    // gate and the assertion above would still pass while testing nothing.
+    ok(c.expect.test(stderr),
+      `${c.label}: refused by the gate it was written to defeat, and the diagnostic names it`,
+      `expected ${c.expect} in the refusal`);
     // eslint-disable-next-line no-await-in-loop
     const wrote = await fsp.readFile(out, 'utf8').catch(() => null);
     eq(wrote, null, `${c.label}: no results file written — it cannot become a headline number`);
   }
+
+  // The cached-label fixture's whole point is that it is correct where the old gate
+  // looked. State that as an assertion rather than a comment: its FIRST run really is
+  // byte-identical to the golden stream, so nothing but the second-run gate refuses it.
+  const golden = await loadExpectedLabels();
+  const cachedStderr = (await runBenchCapturingStderr([
+    '--dir', fixture.cachedlabel, '--app', 'rows', '--label', 'selftest-cachedlabel-why',
+    '--runs', '1', '--weight-runs', '1', '--timeout', '2500',
+    '--out', path.join(outDir, 'selftest-cachedlabel-why.json'), '--no-aot',
+  ])).stderr;
+  // Every problem it is refused for is a SECOND-run problem. That is the
+  // counterfactual stated as an assertion: the first run, #update, #swaprows and
+  // #clear all satisfied it, so every gate that existed before this change passed it
+  // and create-warm — the headline — would have been reported "ok" on strictly less
+  // work. Only the second-run stream sees it.
+  const complaints = cachedStderr.split('\n').filter((l) => l.startsWith('  - '));
+  ok(complaints.length > 0 && complaints.every((l) => /on the second #run/.test(l)),
+    'cachedlabel: EVERY problem it is refused for is on the SECOND #run — the first run, #update, ' +
+    '#swaprows and #clear all pass, i.e. every gate that existed before this change waved it through',
+    complaints.filter((l) => !/on the second #run/.test(l)).join(' | ') || `${complaints.length} complaints`);
+  ok(golden.secondRun.first5[0] !== golden.first5[0],
+    'the two golden streams differ, which is what makes the second-run gate able to see this at all',
+    `${golden.first5[0]} vs ${golden.secondRun.first5[0]}`);
 }
 
 /**
@@ -1106,15 +1446,43 @@ async function testSubFrameWorkIsVisible(fixture, outDir) {
   }
 
   // The headline metric must be able to distinguish work that differs. create builds
-  // 1000 rows; clear empties them. If both reported the frame interval — the old
+  // 1000 rows; swap moves two. If both reported the frame interval — the old
   // behaviour — this ratio would be ~1.
-  const ratio = s.scenarios.create.median / Math.max(s.scenarios.clear.median, 0.001);
+  //
+  // Measured on create-COLD: this assertion predates the cold/warm split and was
+  // always about the cold number, so it stays pointed at it.
+  //
+  // The denominator is SWAP, not clear. Against clear this assertion was a latent
+  // flake that happened to pass: on this fixture create-cold is bimodal (~1.8 ms
+  // when V8 declines to tier up the builder, ~4.4 ms when it does) and clear is a
+  // steady ~0.9 ms, so create/clear lands anywhere from 2.1x to 4.9x and a `> 3`
+  // threshold is a coin toss. That fragility has nothing to do with the vsync
+  // property under test. swap is two insertBefore calls at a steady ~0.1 ms, so
+  // create/swap is ~19-46x — the same claim, tested against a work difference an
+  // order of magnitude larger. This STRENGTHENS the assertion rather than relaxing
+  // it: the floor below is half the observed 0.1 ms clock granularity, so even a
+  // 0-reading swap cannot manufacture a pass the numbers have not earned.
+  const ratio = s.scenarios['create-cold'].median / Math.max(s.scenarios.swap.median, 0.05);
   ok(ratio > 3,
-    `create/clear median ratio is ${ratio.toFixed(1)}x — the metric resolves different amounts of work`,
+    `create-cold/swap median ratio is ${ratio.toFixed(1)}x — the metric resolves different amounts of work`,
     'a vsync-quantized clock would flatten this to ~1x');
+
+  // Observation, not an assertion — it is real but too small to bound reliably.
+  // This fixture injects NO boot cost and still shows create-cold materially above
+  // create-warm, because the first #run also pays V8's JIT warmup and the
+  // allocator's first touch of 1000 fresh nodes. Worth seeing: it means the cold
+  // number carries first-run cost even for a framework with no runtime at all, so
+  // "cold" is contaminated by strictly more than the boot term the warm variant was
+  // introduced to remove.
   process.stdout.write(
-    `  note create=${s.scenarios.create.median}ms clear=${s.scenarios.clear.median}ms ` +
-    `swap=${s.scenarios.swap.median}ms | toPaint: create=${s.scenarios.create.toPaint.median}ms ` +
+    `  note (sync fixture, NO injected boot) create-cold=${s.scenarios['create-cold'].median}ms vs ` +
+    `create-warm=${s.scenarios['create-warm'].median}ms — first-run JIT/allocator warmup is visible ` +
+    'even in vanilla JS\n',
+  );
+  process.stdout.write(
+    `  note create-cold=${s.scenarios['create-cold'].median}ms create-warm=${s.scenarios['create-warm'].median}ms ` +
+    `clear=${s.scenarios.clear.median}ms swap=${s.scenarios.swap.median}ms | toPaint: ` +
+    `create-warm=${s.scenarios['create-warm'].toPaint.median}ms ` +
     `clear=${s.scenarios.clear.toPaint.median}ms swap=${s.scenarios.swap.toPaint.median}ms\n`,
   );
 }
@@ -1140,10 +1508,12 @@ async function testWorkerTargetVisibility(fixture, outDir) {
   const elapsed = Date.now() - started;
   eq(code, 0, 'a Web-Worker app still benchmarks cleanly (inFlight is not pinned by the worker script)');
   const w = JSON.parse(await fsp.readFile(out, 'utf8'));
-  eq(w.scenarios.create.status, 'ok', 'create: status ok despite the worker target');
-  ok(w.scenarios.create.median > 0, 'create produced a real number');
-  // Each iteration would have burned the full 8s maxSettleMs if inFlight stayed pinned.
-  ok(elapsed < 8000 * (1 + 1 + 4),
+  eq(w.scenarios['create-cold'].status, 'ok', 'create-cold: status ok despite the worker target');
+  ok(w.scenarios['create-cold'].median > 0, 'create-cold produced a real number');
+  // Each iteration would have burned the full 8s maxSettleMs if inFlight stayed
+  // pinned. Bound = 8s x (1 weight run + 1 contract gate + 5 scenarios x 1 run,
+  // where the warm scenarios settle twice).
+  ok(elapsed < 8000 * (1 + 1 + 7),
     `run did not stall on maxSettleMs (${(elapsed / 1000).toFixed(1)}s elapsed)`,
     'a pinned inFlight would add 8s to every page load');
 
@@ -1199,6 +1569,342 @@ function testUntrackedReconciliation() {
   ).length, 0, 'no false positives when CDP saw everything (headers make CDP >= server body)');
 }
 
+/**
+ * ===========================================================================
+ * THE test for this change. Everything else here guards a number from being
+ * wrong; this guards a number from being ABOUT THE WRONG THING.
+ *
+ * Criterion C4 asks how fast a framework renders. The cold `create` number
+ * cannot answer that: for a Blazor build ~72% of it is runtime boot, so a
+ * framework that boots in ~0 ms wins C4 without rendering a single row faster —
+ * a PASS for entirely the wrong reason, indistinguishable in the JSON from a
+ * real one.
+ *
+ * The bootcost fixture makes that failure mode concrete and falsifiable: a
+ * 400 ms one-time boot paid inside the first interaction's measured window.
+ * The warm variant must remove it. If it does not, these assertions fail and
+ * the harness cannot report a warm number it has not earned.
+ * ===========================================================================
+ */
+async function testWarmVariantsExcludeSetupCost(fixture, outDir) {
+  section('14. Warm variants EXCLUDE the untimed setup cost (C4 measures rendering, not boot)');
+
+  // ---- rows: create-cold vs create-warm -------------------------------------
+  const out = path.join(outDir, 'selftest-bootcost.json');
+  const code = await runBench([
+    '--dir', fixture.bootcost, '--app', 'rows', '--label', 'selftest-bootcost',
+    '--scenarios', 'create-cold,create-warm', '--runs', '3', '--weight-runs', '1',
+    '--out', out, '--no-aot',
+  ]);
+  eq(code, 0, 'the boot-cost fixture is contract-conforming and runs clean');
+  const r = JSON.parse(await fsp.readFile(out, 'utf8'));
+  const cold = r.scenarios['create-cold'];
+  const warm = r.scenarios['create-warm'];
+
+  eq(cold.status, 'ok', 'create-cold: status ok');
+  eq(warm.status, 'ok', 'create-warm: status ok');
+  eq(cold.untimedSetup.length, 0, 'create-cold has NO untimed setup — its first click is the timed one');
+  ok(/#run/.test(warm.untimedSetup[0])
+    && warm.untimedSetup.some((s) => /#clear/.test(s))
+    && /idle beat/.test(warm.untimedSetup[warm.untimedSetup.length - 1]),
+    'create-warm records its untimed setup (#run, #clear, and the beat before the clock starts) in the JSON',
+    JSON.stringify(warm.untimedSetup));
+
+  // ---- THE proof ------------------------------------------------------------
+  const COLD_FLOOR = BOOT_COST_MS + ASYNC_DELAY_MS - 20;
+  const WARM_CEILING = BOOT_COST_MS * 0.5;
+
+  ok(cold.median >= COLD_FLOOR,
+    `create-cold median (${cold.median} ms) >= ${COLD_FLOOR} ms — the cold number DOES carry the ${BOOT_COST_MS} ms boot`,
+    'if this fails the fixture is not modelling boot contamination and the rest of this section proves nothing');
+  ok(cold.samples.every((v) => v >= COLD_FLOOR),
+    'create-cold: EVERY sample carries the boot cost (each iteration really is a cold runtime)',
+    JSON.stringify(cold.samples));
+
+  ok(warm.median < WARM_CEILING,
+    `create-warm median (${warm.median} ms) < ${WARM_CEILING} ms — the boot cost is EXCLUDED from the timed segment`,
+    `if the untimed setup had not run, or if the timed window still enclosed it, this would be >= ${COLD_FLOOR}`);
+  ok(warm.samples.every((v) => v < WARM_CEILING),
+    'create-warm: EVERY sample excludes the boot cost — not just the median',
+    JSON.stringify(warm.samples));
+
+  // The timed segment is still real work, not a fabricated ~0. The fixture defers
+  // every mutation by 60 ms, so a warm number below that would mean the clock had
+  // stopped before the DOM changed.
+  ok(warm.median >= ASYNC_DELAY_MS - 5,
+    `create-warm median (${warm.median} ms) still >= ${ASYNC_DELAY_MS - 5} ms — the timed segment measures REAL deferred work`,
+    'warm must exclude the setup, not collapse to zero');
+
+  const delta = cold.median - warm.median;
+  ok(delta >= BOOT_COST_MS * 0.85,
+    `cold - warm = ${delta.toFixed(1)} ms, recovering the ${BOOT_COST_MS} ms boot term that the cold number hides`,
+    'this delta is exactly why the cold create number cannot be used as a rendering measurement');
+  process.stdout.write(
+    `  note create-cold=${cold.median}ms create-warm=${warm.median}ms delta=${delta.toFixed(1)}ms ` +
+    `(injected boot=${BOOT_COST_MS}ms)\n`,
+  );
+
+  // A subset run must be visibly a subset — it can never be mistaken for a full one.
+  eq(r.config.scenariosComplete, false, 'a --scenarios subset is recorded as an INCOMPLETE run');
+  eq(r.totals.timedIterationsPlanned, 6, 'totals track the subset (2 scenarios x 3 runs), not the app\'s full set');
+  eq(r.totals.timedIterationsRecorded, 6, 'totals: all 6 recorded');
+
+  // ---- counter: the STRUCTURAL proof, independent of any clock ---------------
+  //
+  // increment-warm's timed predicate is #counter-value === "2". The only way that
+  // can ever become true is if an untimed increment already took it 0 -> 1. So the
+  // scenario merely PASSING is proof the setup ran — no timing argument, no
+  // threshold, nothing to tune. Had the setup silently been skipped, the timed
+  // click would have produced "1" and the predicate would have timed out.
+  const cOut = path.join(outDir, 'selftest-bootcounter.json');
+  const cCode = await runBench([
+    '--dir', fixture.bootcounter, '--app', 'counter', '--label', 'selftest-bootcounter',
+    '--runs', '3', '--weight-runs', '1', '--out', cOut, '--no-aot',
+  ]);
+  eq(cCode, 0, 'the boot-cost counter fixture runs clean');
+  const c = JSON.parse(await fsp.readFile(cOut, 'utf8'));
+  const iCold = c.scenarios['increment-cold'];
+  const iWarm = c.scenarios['increment-warm'];
+
+  eq(iWarm.status, 'ok',
+    'increment-warm PASSES — and its predicate is #counter-value === "2", which is STRUCTURALLY ' +
+    'unreachable unless the untimed setup increment really ran');
+  eq(iCold.status, 'ok', 'increment-cold: status ok');
+  ok(iCold.median >= COLD_FLOOR,
+    `increment-cold median (${iCold.median} ms) carries the ${BOOT_COST_MS} ms boot`);
+  ok(iWarm.median < WARM_CEILING,
+    `increment-warm median (${iWarm.median} ms) excludes the boot paid by its untimed setup`);
+  ok(iWarm.median >= ASYNC_DELAY_MS - 5,
+    `increment-warm median (${iWarm.median} ms) still measures the real deferred increment`);
+  ok(iWarm.samples.every((v) => v < WARM_CEILING),
+    'increment-warm: every sample excludes the boot cost', JSON.stringify(iWarm.samples));
+  process.stdout.write(
+    `  note increment-cold=${iCold.median}ms increment-warm=${iWarm.median}ms ` +
+    `delta=${(iCold.median - iWarm.median).toFixed(1)}ms\n`,
+  );
+}
+
+/**
+ * The --aot flag was recorded verbatim and never checked: the JSON would state
+ * aot:true for a build where AOT never engaged, and no reader could tell. These
+ * prove the harness now derives an INDEPENDENT verdict from the served bytes, and
+ * that it refuses to guess when it cannot.
+ */
+async function testAotVerification(aotFixture) {
+  section('15. The self-declared --aot flag is independently VERIFIED against served artifacts');
+
+  const aotEv = await collectAotEvidence(aotFixture.aot);
+  const nojitEv = await collectAotEvidence(aotFixture.nojit);
+  const midEv = await collectAotEvidence(aotFixture.indeterminate);
+  const noneEv = await collectAotEvidence(aotFixture.nosignature);
+  const staleEv = await collectAotEvidence(aotFixture.stale);
+
+  // The served-path lists a real weight run would produce for each tree. `verified`
+  // requires the evidence to have been on the wire, so supplying these is not
+  // decoration — it is the input the claim is confirmed against.
+  const AOT_SERVED = ['/wwwroot/_framework/dotnet.native.ogsd35n1u1.wasm'];
+  const NOJIT_SERVED = ['/wwwroot/_framework/dotnet.native.kllr7zg72l.wasm'];
+
+  // --- the walker finds the fingerprinted runtime and reads its RAW size ---
+  eq(aotEv.length, 1, 'AOT publish: exactly one signature match (the .br/.gz siblings are NOT mistaken for it)');
+  eq(aotEv[0].rawBytes, 11_380_806, 'AOT publish: raw size read from the real artifact, not a compressed sibling');
+  eq(aotEv[0].verdict, 'aot', 'AOT publish: verdict "aot"');
+  ok(/^wwwroot\/_framework\/dotnet\.native\./.test(aotEv[0].path),
+    'the fingerprinted filename (dotnet.native.<hash>.wasm) is matched at any depth', aotEv[0].path);
+  eq(nojitEv.length, 1, 'non-AOT publish: one signature match');
+  eq(nojitEv[0].rawBytes, 1_494_734, 'non-AOT publish: raw size read');
+  eq(nojitEv[0].verdict, 'interpreted', 'non-AOT publish: verdict "interpreted"');
+  eq(noneEv.length, 0, 'a framework with no AOT signature yields NO evidence (not a false verdict)');
+
+  // --- a truthful declaration, corroborated by an artifact that was SERVED ---
+  const okAot = classifyAotEvidence(true, aotEv, AOT_SERVED);
+  eq(okAot.observed, true, 'declared --aot=true, observed AOT: observed true');
+  eq(okAot.agrees, true, 'declared and observed agree');
+  eq(okAot.verified, true, 'the claim is VERIFIED, not merely recorded');
+  eq(okAot.warnings.length, 0, 'no warning for a corroborated claim');
+  eq(okAot.declared, true, 'the declared flag is preserved alongside the observation');
+
+  const okNojit = classifyAotEvidence(false, nojitEv, NOJIT_SERVED);
+  eq(okNojit.observed, false, 'declared --no-aot, observed interpreted: observed false');
+  eq(okNojit.verified, true, 'the non-AOT claim is verified too');
+  eq(okNojit.warnings.length, 0, 'no warning for a corroborated non-AOT claim');
+
+  // --- THE failure mode: a false declaration is caught and shouted about ---
+  const lying = classifyAotEvidence(true, nojitEv, NOJIT_SERVED);
+  eq(lying.observed, false, 'declared --aot=true over a 1.49 MB interpreted runtime: observed FALSE');
+  eq(lying.agrees, false, 'the harness reports that declared and observed DISAGREE');
+  eq(lying.verified, false, 'and refuses to call the claim verified');
+  eq(lying.declared, true, 'the false declaration is still recorded verbatim — never silently rewritten');
+  eq(lying.warnings.length, 1, 'exactly one loud warning');
+  ok(/AOT MISMATCH/.test(lying.warnings[0]), 'the warning is unmissable', lying.warnings[0]);
+  ok(/1494734 B/.test(lying.warnings[0]), 'the warning quotes the observed raw size as evidence', lying.warnings[0]);
+
+  const lyingOther = classifyAotEvidence(false, aotEv, AOT_SERVED);
+  eq(lyingOther.observed, true, 'declared --no-aot over an 11.38 MB AOT runtime: observed TRUE');
+  eq(lyingOther.agrees, false, 'the reciprocal contradiction is caught too');
+  ok(/AOT MISMATCH/.test(lyingOther.warnings[0]), 'and warned about', lyingOther.warnings[0]);
+
+  // --- an unverifiable TRUE claim is reported as unverified, never confirmed ---
+  const unverifiable = classifyAotEvidence(true, noneEv);
+  eq(unverifiable.observed, null, 'no signature: observed stays null — the harness does not guess');
+  eq(unverifiable.agrees, null, 'agreement is null, not a false true');
+  eq(unverifiable.verified, false, 'an unverifiable claim is NOT verified');
+  ok(/AOT UNVERIFIED/.test(unverifiable.warnings[0]),
+    'declaring --aot=true on a build that cannot corroborate it warns', JSON.stringify(unverifiable.warnings));
+  eq(classifyAotEvidence(false, noneEv).warnings.length, 0,
+    'but --no-aot on an unverifiable build is silent (nothing is being claimed)');
+
+  // --- the indeterminate band says so rather than guessing ---
+  eq(midEv[0].verdict, 'indeterminate', 'a 4.5 MB runtime falls between the thresholds: verdict "indeterminate"');
+  const mid = classifyAotEvidence(true, midEv);
+  eq(mid.observed, null, 'indeterminate evidence yields observed null, not a coin flip');
+  eq(mid.basis, 'indeterminate', 'and the basis says exactly that');
+  ok(mid.warnings.some((w) => /AOT INDETERMINATE/.test(w)),
+    'the indeterminate band is warned about so the thresholds can be recalibrated',
+    JSON.stringify(mid.warnings));
+
+  // --- "served" means served: an unserved artifact CANNOT confirm a claim ---
+  //
+  // The cross-check used to populate a field and stop there: `verified` was computed
+  // without reference to it, so the JSON would report verified:true from bytes the
+  // browser never requested — a claim confirmed by a file that played no part in the
+  // run. Servedness is now a REQUIREMENT, and these are the assertions that hold it
+  // to that.
+  const served = classifyAotEvidence(true, aotEv, AOT_SERVED);
+  eq(served.evidence[0].servedInWeightRun, true,
+    'evidence read from disk is confirmed to have actually been SERVED during the weight run');
+
+  const notServed = classifyAotEvidence(true, aotEv, ['/index.html']);
+  eq(notServed.evidence[0].servedInWeightRun, false,
+    'an artifact present in the publish dir but never requested is flagged as not served');
+  eq(notServed.observed, true, 'the unserved artifact is still REPORTED (it is a fact about the directory)');
+  eq(notServed.verified, false,
+    'but it CANNOT verify the claim — an 11 MB file the browser never requested may be a stale build');
+  ok(notServed.warnings.some((w) => /NOT SERVED/.test(w)),
+    'and the reader is told exactly that, rather than being handed a silent verified:false',
+    JSON.stringify(notServed.warnings));
+
+  // Servedness unknown is not servedness proven: omitting the list cannot be the
+  // cheap way to a confirmed claim.
+  const unknownServed = classifyAotEvidence(true, aotEv);
+  eq(unknownServed.verified, false,
+    'no served-path list supplied: the claim is NOT verified (unknown is not confirmed)');
+  ok(unknownServed.warnings.some((w) => /SERVEDNESS UNKNOWN/.test(w)),
+    'and that is stated too', JSON.stringify(unknownServed.warnings));
+
+  // --- the stale-artifact trap: served evidence outranks conclusive evidence ---
+  //
+  // A leftover 11 MB AOT runtime from an earlier build sits next to the 4.5 MB
+  // runtime the app actually boots (indeterminate band, e.g. a newer SDK). Sorting
+  // is largest-first, so the stale file heads the list. Selecting "conclusive" before
+  // "served" would confirm aot=true from it AND suppress the INDETERMINATE warning
+  // about the runtime that was really measured.
+  eq(staleEv.length, 2, 'stale publish: both matching runtimes are collected');
+  eq(staleEv[0].rawBytes, 11_380_806, 'stale publish: the 11 MB leftover sorts FIRST (largest-first)');
+  eq(staleEv[1].rawBytes, 4_500_000, 'stale publish: the runtime actually booted sorts second');
+  const stale = classifyAotEvidence(true, staleEv, ['/wwwroot/_framework/dotnet.native.new1111111.wasm']);
+  eq(stale.observed, null,
+    'the verdict comes from the SERVED runtime (indeterminate), NOT the unserved 11 MB leftover');
+  eq(stale.verified, false, 'so an --aot=true claim over it is not verified');
+  eq(stale.basis, 'indeterminate', 'and the basis names the band the served runtime fell in');
+  ok(stale.warnings.some((w) => /AOT INDETERMINATE/.test(w)),
+    'the served runtime\'s INDETERMINATE warning is SURFACED, not suppressed by the stale file',
+    JSON.stringify(stale.warnings));
+  ok(stale.warnings.some((w) => /AOT UNVERIFIED/.test(w)),
+    'and the unverifiable --aot=true claim is called out', JSON.stringify(stale.warnings));
+  ok(stale.evidence.some((e) => e.rawBytes === 11_380_806 && e.servedInWeightRun === false),
+    'the stale artifact is still recorded in evidence[], flagged as never served — visible, not authoritative');
+}
+
+/** Unit test for the representative-run selection that used to mislabel itself. */
+function testRepresentativeRun() {
+  section('16. The per-run breakdown is quoted from a run it does not lie about (unit)');
+  // Odd count: a run genuinely holds the median.
+  eq(representativeIndex([300, 100, 200]), 2, 'odd count: the run holding the median (200) is selected');
+  eq(representativeIndex([5]), 0, 'single run');
+  // Even count: the median is interpolated and NO run holds it. The old code took
+  // the upper-middle element and the JSON called it "the run whose total is the
+  // median" — with [100, 200] it reported the 200 run as "the median" of 150.
+  eq(representativeIndex([100, 200]), 0, 'even count: the tie resolves to the LOWER total, deterministically');
+  eq(representativeIndex([200, 100]), 1, 'even count: same run chosen regardless of arrival order');
+  // Nearest, not upper-middle: with [100, 190, 200, 210] the median is 195 and the
+  // nearest run is 190 — the old upper-middle rule would have picked 200.
+  eq(representativeIndex([100, 190, 200, 210]), 1, 'even count: the NEAREST run to the median is chosen');
+  eq(representativeIndex([]), -1, 'no runs: no index');
+}
+
+/**
+ * Defect (a): server.mjs's own CLI rejected --max-encoding, so the standalone
+ * server could not reproduce the capped serving mode bench.mjs had used to produce
+ * a published number. A measurement nobody can re-derive by hand is not reproducible.
+ */
+function testServerCli() {
+  section('17. The standalone server CLI can reproduce every serving mode bench.mjs uses');
+  eq(parseCliArgs(['--dir', '/x']).maxEncoding, 'br', 'default is br (no cap, production-like)');
+  eq(parseCliArgs(['--dir', '/x', '--max-encoding', 'gzip']).maxEncoding, 'gzip',
+    '--max-encoding gzip is ACCEPTED (it used to throw "unknown argument")');
+  eq(parseCliArgs(['--dir', '/x', '--max-encoding=identity']).maxEncoding, 'identity',
+    '--max-encoding=identity inline form accepted');
+  eq(parseCliArgs(['--dir', '/x', '--max-encoding', 'br']).maxEncoding, 'br', '--max-encoding br accepted');
+  eq(parseCliArgs(['--dir', '/x', '--port', '9000']).port, 9000, '--port still parsed');
+  eq(parseCliArgs(['--dir', '/x', '--quiet']).quiet, true, '--quiet parsed');
+
+  let threw = null;
+  try { parseCliArgs(['--dir', '/x', '--max-encoding', 'bogus']); } catch (e) { threw = e.message; }
+  ok(threw && /must be one of br \| gzip \| identity/.test(threw),
+    'an invalid --max-encoding is a usage error listing the valid values', String(threw));
+
+  let threw2 = null;
+  try { parseCliArgs(['--nope']); } catch (e) { threw2 = e.message; }
+  ok(threw2 && /unknown argument/.test(threw2), 'genuinely unknown arguments are still rejected');
+
+  // The ceiling the CLI accepts must be exactly the set the server implements —
+  // otherwise the CLI could accept a mode the server cannot serve.
+  ok(ENCODING_CEILINGS.every((e) => parseCliArgs(['--dir', '/x', '--max-encoding', e]).maxEncoding === e),
+    'the CLI accepts exactly the encodings the server implements', ENCODING_CEILINGS.join('|'));
+}
+
+/**
+ * Every warm scenario must be measured under the SAME settling regime.
+ *
+ * The idle beat was originally applied only to the two NEW warm variants, while
+ * update/swap/clear — all `headline: true`, all feeding reported medians — went from
+ * the setup's #run straight into their timed click. So create-warm got two chained
+ * rAFs plus a >= 50 ms macrotask of protection and the three scenarios it claims
+ * parity with got measure()'s single rAF + setTimeout(0), which by this file's own
+ * docstring is not enough to have been through layout and paint. Four scenarios, two
+ * regimes, described in the JSON as equivalent.
+ *
+ * The fix routes them all through setupRows(), and this pins the property: it reads
+ * SCENARIO_SPECS, which is what the JSON publishes, so a future edit that beats one
+ * scenario and not another fails here.
+ */
+function testWarmScenariosSettleIdentically() {
+  section('18. Every WARM scenario settles before its timed click (one regime, not two)');
+  const warm = Object.entries(SCENARIO_SPECS).filter(([, s]) => s.runtime === 'warm');
+  const cold = Object.entries(SCENARIO_SPECS).filter(([, s]) => s.runtime === 'cold');
+
+  ok(warm.length === 5, `all five warm scenarios are covered: ${warm.map(([n]) => n).join(', ')}`,
+    `got ${warm.length}`);
+  for (const [name, spec] of warm) {
+    ok(spec.setup.some((s) => /idle beat/.test(s)),
+      `${name}: its untimed setup includes an idle beat`, JSON.stringify(spec.setup));
+    ok(/idle beat/.test(spec.setup[spec.setup.length - 1]),
+      `${name}: the idle beat is the LAST thing before the clock starts`, JSON.stringify(spec.setup));
+  }
+  // The reciprocal: a cold scenario must have no setup at all, or it is not cold.
+  for (const [name, spec] of cold) {
+    eq(spec.setup.length, 0, `${name}: a cold scenario has NO untimed setup — its first click is the timed one`);
+  }
+  // update/swap/clear and create-warm must agree on how they are settled, which is
+  // the specific claim SCENARIO_SPECS['create-warm'].measures makes in prose.
+  const beatsOf = (n) => SCENARIO_SPECS[n].setup.filter((s) => /idle beat/.test(s)).length;
+  ok(['update', 'swap', 'clear'].every((n) => beatsOf(n) === 1),
+    'update/swap/clear each get exactly the one beat their single #run setup earns');
+  eq(beatsOf('create-warm'), 2,
+    'create-warm gets one per untimed interaction (#run, #clear) — the same rule, applied twice');
+}
+
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
@@ -1211,18 +1917,24 @@ const outDir = path.join(scratch, 'out');
 process.stdout.write(`Filament bench harness self-test\nfixture: ${fixtureRoot}\n`);
 await fsp.mkdir(outDir, { recursive: true });
 const fixture = await makeFixture(fixtureRoot);
+const aotFixture = await makeAotFixture(path.join(scratch, 'aotfixture'));
 
 try {
   testAcceptEncodingParsing();
   testStatistics();
   testUntrackedReconciliation();
+  testRepresentativeRun();
+  testServerCli();
+  testWarmScenariosSettleIdentically();
   await testServer(fixture);
+  await testAotVerification(aotFixture);
   await testEndToEnd(fixture, outDir);
   await testFailureReporting(fixture, outDir);
   await testContractPreflight(fixture, outDir);
   await testUnequalWorkIsRefused(fixture, outDir);
   await testSubFrameWorkIsVisible(fixture, outDir);
   await testWorkerTargetVisibility(fixture, outDir);
+  await testWarmVariantsExcludeSetupCost(fixture, outDir);
 } finally {
   if (!keep) {
     await fsp.rm(scratch, { recursive: true, force: true }).catch(() => {});

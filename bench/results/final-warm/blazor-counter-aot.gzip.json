@@ -1,0 +1,529 @@
+{
+  "schemaVersion": 3,
+  "label": "blazor-counter-aot",
+  "app": "counter",
+  "url": "http://127.0.0.1:59407/",
+  "servedDir": "/Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-counter-aot/wwwroot",
+  "startedAt": "2026-07-16T13:14:09.645Z",
+  "finishedAt": "2026-07-16T13:15:03.454Z",
+  "ok": true,
+  "contractCheck": {
+    "problems": [],
+    "observed": {
+      "initialValue": "0"
+    }
+  },
+  "expectedLabels": null,
+  "environment": {
+    "machine": {
+      "hostname": "Mac",
+      "model": "Mac17,6",
+      "cpu": "Apple M5 Max",
+      "cpuCount": 18,
+      "arch": "arm64",
+      "totalMemBytes": 68719476736
+    },
+    "os": {
+      "platform": "darwin",
+      "release": "25.5.0",
+      "version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
+      "productVersion": "26.5.1"
+    },
+    "chrome": {
+      "channel": "chrome",
+      "version": "150.0.7871.124",
+      "headless": true
+    },
+    "dotnetSdk": "10.0.301",
+    "node": "v26.5.0",
+    "playwright": "1.61.1",
+    "aot": true,
+    "aotDeclared": true,
+    "aotObserved": true,
+    "aotVerification": {
+      "declared": true,
+      "observed": true,
+      "agrees": true,
+      "verified": true,
+      "basis": "dotnet-wasm-native-runtime-size",
+      "evidence": [
+        {
+          "signatureId": "dotnet-wasm-native-runtime-size",
+          "path": "_framework/dotnet.native.xc7yj6pp2h.wasm",
+          "rawBytes": 11362554,
+          "verdict": "aot",
+          "thresholds": {
+            "aotAtLeastBytes": 6000000,
+            "interpretedAtMostBytes": 3000000
+          },
+          "rationale": "With RunAOTCompilation=true the .NET WASM toolchain compiles the application and framework assemblies to native WebAssembly and links them into dotnet.native.wasm; without it that file is just the interpreter runtime and the assemblies ship separately as .wasm/.dll payloads. Measured on this project: ~11.37 MB AOT vs ~1.49 MB interpreted (7.6x).",
+          "servedInWeightRun": true
+        }
+      ],
+      "warnings": [],
+      "note": "declared = the --aot CLI flag, self-reported by the operator and never trusted on its own. observed = an independent verdict derived from the RAW size of an artifact matching a known AOT signature (see evidence[].rationale). verified = observed agrees with declared AND the artifact it was derived from was SERVED during the weight run (evidence[].servedInWeightRun) — a file that was never requested may be a leftover from an earlier build and cannot confirm anything about the build that was measured. observed:null means no evidence was available for this framework, NOT that AOT is absent — the harness declines to guess rather than confirming a claim it cannot check."
+    },
+    "harnessVersion": "1.2.0"
+  },
+  "totals": {
+    "scenarioCount": 2,
+    "scenarioNames": [
+      "increment-cold",
+      "increment-warm"
+    ],
+    "runsPerScenario": 10,
+    "timedIterationsPlanned": 20,
+    "timedIterationsRecorded": 20,
+    "timedIterationFailures": 0,
+    "warmupIterationsDiscarded": 0,
+    "note": "timedIterationsRecorded is summed from the per-scenario sample counts actually retained, so it is derived from the same data the medians are, and cannot drift from it. planned - recorded == the iterations that failed and were refused a number."
+  },
+  "config": {
+    "runs": 10,
+    "warmup": 0,
+    "weightRuns": 3,
+    "scenarios": [
+      "increment-cold",
+      "increment-warm"
+    ],
+    "allScenariosForApp": [
+      "increment-cold",
+      "increment-warm"
+    ],
+    "scenariosComplete": true,
+    "actionTimeoutMs": 10000,
+    "idleBeatMs": 50,
+    "networkQuietMs": 2000,
+    "maxSettleMs": 30000,
+    "serviceWorkers": "block",
+    "maxEncoding": "gzip",
+    "encodingNote": "Negotiation CAPPED at \"gzip\" via --max-encoding, so the transferred bytes are gzip bytes and are labelled as such. Chrome accepts brotli, and an uncapped run would transfer measurably fewer bytes; this cap therefore makes the weight a CONSERVATIVE (upper-bound) figure. Any framework compared against it must be measured under the same cap.",
+    "compression": "Content negotiated per request, smallest encoding the client accepts: brotli before gzip. Precompressed sibling (.br/.gz) when present, else on-the-fly at publish-equivalent quality (brotli q11 / gzip level 9). Eligibility is a denylist of already-compressed formats, so an unanticipated extension is compressed rather than silently shipped raw."
+  },
+  "protocol": {
+    "weight": "Transferred bytes = sum of CDP Network.loadingFinished.encodedDataLength (falling back to Network.responseReceived header bytes + summed Network.dataReceived.encodedDataLength when loadingFinished reports 0) over every request, from navigation until the app-ready contract hook is clickable AND the network has been idle for networkQuietMs. This is wire bytes, not disk size and not decompressed size. Cold cache is enforced three ways: a fresh BrowserContext per iteration, CDP Network.setCacheDisabled, and Cache-Control: no-store from the server.",
+    "timing": "All timestamps are taken in-page. A click is followed by a MutationObserver-driven wait for a DOM predicate; the clock stops INSIDE the observer callback at the instant the predicate is observed true (msToMutation, the headline metric). Frame boundaries are never used as a proxy for completion, so an asynchronously dispatched handler (e.g. Blazor @onclick) cannot produce a fabricated sub-millisecond time. msToPaint additionally waits one requestAnimationFrame + setTimeout(0); because the predicate resolves at an arbitrary phase of the vsync cycle, msToPaint carries a 0-16.7ms offset contributed by the display and the harness rather than the framework, and is reported separately so it can never be mistaken for framework cost. A predicate already true before the click is rejected as vacuous. A predicate that does not become true within actionTimeoutMs throws and is recorded as a failure, never as a number. An iteration whose network has not gone idle is a failure too, not a silently inflated sample.",
+    "predicates": "Scenario predicates are TOTAL: #update requires all 100 targeted rows to carry the suffix and sampled non-targeted rows to lack it; #swaprows requires BOTH index 1 and index 998 to hold the other's original id. A partial implementation times out as a failure rather than stopping the clock early and reporting the shortfall as speed.",
+    "workloadEquality": "verifyContract drives #run -> #update -> #swaprows -> #clear -> #run untimed and asserts the full post-condition of each. BOTH #run clicks are gated against the deterministic Park-Miller label stream (expected-labels.json, hash recorded above): rows 0-4 and 999 of the FIRST run (LCG draws 1..3000, the stream create-cold times) and of the SECOND run on the same page (draws 3001..6000, the stream create-warm — the headline — times), plus every row id in both runs (1..1000 then 1001..2000, the monotonic counter). Gating only the first run would leave the headline click asserted by nothing but \"1000 rows exist\", which an app that generates the stream once and reuses the interned strings satisfies while doing none of the LCG or concatenation work on the run that is timed. An app that emits constant labels, caches its labels after the first run, resets the id counter, updates fewer rows, or duplicates instead of swapping is refused with exit code 3 rather than reported as fast.",
+    "coldVsWarm": "Every scenario carries `runtime` (\"cold\" | \"warm\") and `headline` (whether it answers the question its name asks). A COLD scenario times the first click after a fresh page load, so a framework that initialises its runtime lazily boots INSIDE the measured window and the number is boot + work. For a Blazor build the boot term is the majority of cold `create`, which means a framework with no runtime to boot wins that scenario without rendering anything faster — the metric would be reporting startup and calling it rendering. A WARM scenario runs an identical interaction UNTIMED first (see scenarios[].untimedSetup), so the runtime is booted and the measured window is the work alone. update/swap/clear were always warm — they have always had an untimed #run setup — so create-warm/increment-warm make create/increment consistent with them rather than introducing a new kind of measurement. Every warm scenario is separated from its timed click by the SAME idle beat (two chained requestAnimationFrames, so the setup has been through style/layout/paint, plus a >= config.idleBeatMs macrotask to drain post-render bookkeeping), so the four are measured under one settling regime rather than the setup tail of some of them being billed to their timed click. Both variants are reported; cold is a real user-visible cost and is not deleted, it is simply not a rendering number. Compare frameworks on the warm variants, and only ever against the same variant.",
+    "monotonicState": "Per the DOM contract, row ids are monotonic and never reset, and the label LCG is seeded only at page load. A warm scenario's timed #run therefore emits ids 1001..2000 with the LCG continuing, and increment-warm's timed click goes 1 -> 2 rather than 0 -> 1. This is intended and the harness deliberately does NOT reset the seed or the id counter to make the timed run look identical to the setup run: the WORK is identical either way (1000 rows, 3000 LCG draws, 1000 three-part concatenations; one increment), and resetting hidden state would be the harness manufacturing a condition no user is ever in.",
+    "statistics": "MEDIAN and IQR (p75 - p25) over `runs` iterations, using linear-interpolation quantiles (type 7, the numpy/R default). The mean is never reported. Per-run BREAKDOWNS in `weight` are quoted from weight.representativeRun — the run nearest the median, which for an even run count is not the median itself and no longer claims to be.",
+    "aot": "environment.aot / environment.aotDeclared is the operator's --aot claim and is never trusted on its own. environment.aotObserved is an INDEPENDENT verdict derived from the raw size of an artifact matching a known AOT signature, and environment.aotVerification carries the evidence, the thresholds and the reasoning. aotVerification.verified is true ONLY when the verdict agrees with the claim AND the artifact it came from was SERVED during the weight run (evidence[].servedInWeightRun): a file present in the publish directory but never requested may be a leftover from an earlier build, so it can corroborate nothing about the build that was measured, and evidence selection prefers served artifacts before it prefers conclusive ones. A disagreement is a loud warning and sets aotVerification.agrees=false; an unverifiable claim sets aotObserved=null and is reported as UNVERIFIED rather than confirmed. The harness never rewrites the declared flag to match the evidence. This is metadata verification only: it touches no timing, no byte total and no predicate, and a framework with no signature is measured identically, just not corroborated.",
+    "agnosticism": "This harness contains no framework-specific code path. Only --dir/--route change between frameworks; every app is driven exclusively through the shared DOM contract."
+  },
+  "weight": {
+    "unit": "bytes",
+    "method": "CDP Network.loadingFinished.encodedDataLength summed across all requests from navigation until app-interactive AND network idle",
+    "toInteractive": {
+      "n": 3,
+      "samples": [
+        4849976,
+        4849976,
+        4849976
+      ],
+      "median": 4849976,
+      "p25": 4849976,
+      "p75": 4849976,
+      "iqr": 0,
+      "min": 4849976,
+      "max": 4849976
+    },
+    "afterFirstInteraction": {
+      "n": 3,
+      "samples": [
+        4849976,
+        4849976,
+        4849976
+      ],
+      "median": 4849976,
+      "p25": 4849976,
+      "p75": 4849976,
+      "iqr": 0,
+      "min": 4849976,
+      "max": 4849976
+    },
+    "lazyLoadedOnInteractionBytes": 0,
+    "representativeRun": {
+      "index": 0,
+      "totalBytes": 4849976,
+      "medianBytes": 4849976,
+      "isExactlyTheMedian": true,
+      "selection": "The run whose transferred total is NEAREST the interpolated (type-7) median of all weight runs; ties resolve to the lower total, then the lower index. Every per-run breakdown below (decodedBytesRepresentativeRun, requestCount, bytesByOrigin, topRequests, crossCheck, serverEncodings, untrackedRequests) is quoted from THIS run. For an even number of weight runs the median falls between two runs and no run holds it, so isExactlyTheMedian is false and this is the nearer of the two — it is not, and is no longer called, \"the median run\"."
+    },
+    "decodedBytesRepresentativeRun": 14708442,
+    "requestCount": 39,
+    "bytesByOrigin": {
+      "http://127.0.0.1:59407": 4849976
+    },
+    "topRequests": [
+      {
+        "url": "http://127.0.0.1:59407/_framework/dotnet.native.xc7yj6pp2h.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 3793100,
+        "decodedBytes": 11362554,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/System.Private.CoreLib.mrsyhegwn0.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 430256,
+        "decodedBytes": 1483541,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/System.Text.Json.zoy55ga6o0.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 111846,
+        "decodedBytes": 371477,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/Microsoft.AspNetCore.Components.a0buhynxtq.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 59934,
+        "decodedBytes": 173333,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/dotnet.runtime.a6jcqbs390.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 57575,
+        "decodedBytes": 198479,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/dotnet.native.j8f08z3zq2.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 52296,
+        "decodedBytes": 225058,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/Microsoft.AspNetCore.Components.WebAssembly.wb0mjofewd.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 39782,
+        "decodedBytes": 118037,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/System.Collections.Immutable.5yf3197osf.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 20998,
+        "decodedBytes": 50965,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/Microsoft.AspNetCore.Components.Web.vp9uwfvdwd.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19829,
+        "decodedBytes": 55573,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/Microsoft.Extensions.DependencyInjection.gl0hjdtukf.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19616,
+        "decodedBytes": 46869,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/Microsoft.JSInterop.1e4spf3pgw.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19390,
+        "decodedBytes": 45845,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/blazor.webassembly.958z1vx7fr.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19171,
+        "decodedBytes": 60576,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/System.Private.Uri.sbvgv9pnfb.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 18192,
+        "decodedBytes": 62229,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/System.Diagnostics.DiagnosticSource.1leoa7afb2.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 16064,
+        "decodedBytes": 39701,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:59407/_framework/System.Runtime.InteropServices.JavaScript.croji9aeof.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 15801,
+        "decodedBytes": 43285,
+        "redirectCount": 0
+      }
+    ],
+    "crossCheck": {
+      "cdpTransferredBytes": 4849976,
+      "serverBodyBytes": 4839394,
+      "serverRequestCount": 39,
+      "deltaBytes": 10582,
+      "note": "CDP counts wire bytes (compressed body + response headers); the server counts body bytes only. delta ~= response header overhead. A negative delta or a delta far larger than ~300 B/request indicates a measurement problem."
+    },
+    "serverEncodings": {
+      "gzip": {
+        "responses": 39,
+        "bytes": 4839394
+      }
+    },
+    "untrackedRequests": [],
+    "servedPaths": [
+      "/",
+      "/_framework/dotnet.v42ml45n3q.js",
+      "/css/app.css",
+      "/_framework/blazor.webassembly.958z1vx7fr.js",
+      "/_framework/dotnet.runtime.a6jcqbs390.js",
+      "/_framework/dotnet.native.j8f08z3zq2.js",
+      "/_framework/dotnet.native.xc7yj6pp2h.wasm",
+      "/_framework/Microsoft.AspNetCore.Components.a0buhynxtq.wasm",
+      "/_framework/Microsoft.AspNetCore.Components.Web.vp9uwfvdwd.wasm",
+      "/_framework/Microsoft.AspNetCore.Components.WebAssembly.wb0mjofewd.wasm",
+      "/_framework/Microsoft.Extensions.Configuration.iioypx27wr.wasm",
+      "/_framework/Microsoft.Extensions.Configuration.Abstractions.yon0cmfmx7.wasm",
+      "/_framework/Microsoft.Extensions.Configuration.Json.ghc4h4g85o.wasm",
+      "/_framework/Microsoft.Extensions.DependencyInjection.gl0hjdtukf.wasm",
+      "/_framework/Microsoft.Extensions.DependencyInjection.Abstractions.bo5cdr4d3f.wasm",
+      "/_framework/Microsoft.Extensions.Logging.uf2egbcy8t.wasm",
+      "/_framework/Microsoft.Extensions.Logging.Abstractions.68vclg0u0r.wasm",
+      "/_framework/Microsoft.Extensions.Options.tpqms2b2vq.wasm",
+      "/_framework/Microsoft.Extensions.Primitives.gj02865wqu.wasm",
+      "/_framework/Microsoft.JSInterop.1e4spf3pgw.wasm",
+      "/_framework/Microsoft.JSInterop.WebAssembly.cbdj3f5i9f.wasm",
+      "/_framework/System.Collections.Concurrent.cp88ascywi.wasm",
+      "/_framework/System.Collections.Immutable.5yf3197osf.wasm",
+      "/_framework/System.Collections.ir73odxr47.wasm",
+      "/_framework/System.ComponentModel.e6bm8wniqf.wasm",
+      "/_framework/System.Console.8by3hjlvol.wasm",
+      "/_framework/System.Diagnostics.DiagnosticSource.1leoa7afb2.wasm",
+      "/_framework/System.IO.Pipelines.rn8hjkm2d3.wasm",
+      "/_framework/System.Linq.ol7tzm14zn.wasm",
+      "/_framework/System.Memory.os6bs91oco.wasm",
+      "/_framework/System.Private.Uri.sbvgv9pnfb.wasm",
+      "/_framework/System.Runtime.InteropServices.JavaScript.croji9aeof.wasm",
+      "/_framework/System.Runtime.na45s73cni.wasm",
+      "/_framework/System.Security.Cryptography.gw42xixz5p.wasm",
+      "/_framework/System.Text.Encodings.Web.9hpdpvajns.wasm",
+      "/_framework/System.Text.Json.zoy55ga6o0.wasm",
+      "/_framework/System.Text.RegularExpressions.xasdat9n2l.wasm",
+      "/_framework/System.Private.CoreLib.mrsyhegwn0.wasm",
+      "/_framework/Counter.Blazor.0ogg6odzdc.wasm"
+    ],
+    "warnings": []
+  },
+  "scenarios": {
+    "increment-cold": {
+      "scenario": "increment-cold",
+      "status": "ok",
+      "ok": true,
+      "runtime": "cold",
+      "headline": false,
+      "untimedSetup": [],
+      "measures": "Fresh page load, then the FIRST #increment click is timed (0 -> 1). Includes any one-time runtime boot deferred to first interaction, so this is boot + increment.",
+      "metric": "msToMutation",
+      "n": 10,
+      "samples": [
+        15.7,
+        16,
+        12.3,
+        13.6,
+        17.2,
+        16.4,
+        16.6,
+        15.7,
+        16.2,
+        17.5
+      ],
+      "median": 16.1,
+      "p25": 15.7,
+      "p75": 16.55,
+      "iqr": 0.85,
+      "min": 12.3,
+      "max": 17.5,
+      "unit": "ms",
+      "toPaint": {
+        "n": 10,
+        "samples": [
+          21.3,
+          22.1,
+          17.7,
+          19.3,
+          22.5,
+          21.8,
+          21.7,
+          21.3,
+          21.8,
+          22.6
+        ],
+        "median": 21.75,
+        "p25": 21.3,
+        "p75": 22.025,
+        "iqr": 0.725,
+        "min": 17.7,
+        "max": 22.6,
+        "unit": "ms",
+        "note": "msToMutation plus one requestAnimationFrame + setTimeout(0). The predicate resolves in a MutationObserver microtask at an arbitrary phase of the vsync cycle, so this carries a 0-16.7ms additive offset contributed by the display refresh and this harness, NOT by the framework. Its IQR is largely vsync phase jitter. Never compare frameworks on this number; it is reported so the ~16ms quantum is visibly the harness's."
+      },
+      "failureCount": 0,
+      "failures": [],
+      "diagnostics": {
+        "transferredBytesToInteractive": [
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976
+        ],
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    },
+    "increment-warm": {
+      "scenario": "increment-warm",
+      "status": "ok",
+      "ok": true,
+      "runtime": "warm",
+      "headline": true,
+      "untimedSetup": [
+        "#increment (untimed, 0 -> 1)",
+        "idle beat"
+      ],
+      "measures": "Fresh page load; one UNTIMED #increment (0 -> 1) boots the runtime, then a second, identical #increment (1 -> 2) is TIMED. This is the increment cost with the boot term removed.",
+      "metric": "msToMutation",
+      "n": 10,
+      "samples": [
+        1,
+        0.9,
+        1.1,
+        1,
+        1.1,
+        1,
+        1,
+        1,
+        1,
+        1.1
+      ],
+      "median": 1,
+      "p25": 1,
+      "p75": 1.075,
+      "iqr": 0.075,
+      "min": 0.9,
+      "max": 1.1,
+      "unit": "ms",
+      "toPaint": {
+        "n": 10,
+        "samples": [
+          1.2,
+          1.3,
+          9.3,
+          1.2,
+          1.5,
+          1.4,
+          1.3,
+          1.3,
+          1.3,
+          1.3
+        ],
+        "median": 1.3,
+        "p25": 1.3,
+        "p75": 1.375,
+        "iqr": 0.075,
+        "min": 1.2,
+        "max": 9.3,
+        "unit": "ms",
+        "note": "msToMutation plus one requestAnimationFrame + setTimeout(0). The predicate resolves in a MutationObserver microtask at an arbitrary phase of the vsync cycle, so this carries a 0-16.7ms additive offset contributed by the display refresh and this harness, NOT by the framework. Its IQR is largely vsync phase jitter. Never compare frameworks on this number; it is reported so the ~16ms quantum is visibly the harness's."
+      },
+      "failureCount": 0,
+      "failures": [],
+      "diagnostics": {
+        "transferredBytesToInteractive": [
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976,
+          4849976
+        ],
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    }
+  }
+}

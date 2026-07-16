@@ -14,7 +14,7 @@ bench/publish/
 # bench/results/ is DELIBERATELY NOT ignored. Those JSON files are the measured
 # evidence behind BENCH.md -- the whole point of the baseline. Ignoring them was
 # the reproducibility gap flagged as BENCH.md open reserve #4.
-# Everything under bench/results/ except the .json evidence stays out:
-bench/results/*
-!bench/results/
-!bench/results/*.json
+#
+# No pattern here on purpose: `bench/results/*` followed by `!bench/results/*.json`
+# does NOT work, because git cannot re-include a file whose parent directory is
+# excluded -- it silently dropped every file under bench/results/final-warm/.

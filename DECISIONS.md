@@ -249,3 +249,311 @@ Consigné ici pour que ces points ne se règlent pas par défaut, en silence :
   commandes de publication et le harness doivent être commités et taggés avec les résultats.
 - **Mesurer `create` hors coût de boot** — par un second `create` chronométré dans la même page,
   pour que C4 mesure la construction de lignes et non le premier appel.
+
+---
+
+# Arbitrages du gate Phase 0 — 2026-07-16
+
+Les décisions n°13 à n°19 ont été prises **au gate Phase 0**, après l'entrée n°1 de `BENCH.md` et
+avant de geler les cibles de Filament. Elles **supersèdent** les chiffres de tête de l'entrée n°1
+(voir entrée n°2). Les décisions n°1 à n°12 restent le registre de ce qui a été arbitré au round 1.
+
+---
+
+## 13. `create` est mesuré à froid ET à chaud ; le CHAUD est le chiffre de tête de C4
+
+**Décision.** `create` et `increment` sont dédoublés en `-cold` et `-warm`. **`create-warm` est le
+chiffre de tête de C4** ; `create-cold` est conservé, mesuré et publié, mais **n'est jamais un titre**.
+
+**Raison.** Le `create` froid est le **premier clic sur une page fraîchement chargée** : il porte le
+boot du runtime Blazor. Filament boote en ~0 ms et **gagnerait `create` sur le seul boot, sans afficher
+une seule ligne plus vite** — C4 passerait pour la mauvaise raison, et la panne serait **silencieuse**
+puisqu'elle ressemblerait à une victoire légitime. La réserve n°1 de l'entrée n°1 le signalait déjà et
+demandait explicitement de « mesurer `create` hors coût de boot **par un second `create` chronométré
+dans la même page** ». C'est fait.
+
+**Ce que la mesure directe donne, et ce qu'elle corrige.** La décision du gate estimait le coût réel de
+construction de lignes à **~9,85 ms interprété / ~9,05 ms AOT** (soit un ratio AOT de 1,09× : l'AOT et
+l'interprété quasiment à égalité sur le rendu). **La mesure directe dit autre chose :**
+
+| | Estimation du gate | Mesure directe (`create-warm`, brotli) | Écart |
+|---|---:|---:|---|
+| Interprété (`rows-nojit`) | ~9,85 ms | **13,70 ms** | estimation **28 % trop basse** |
+| AOT (`rows-aot`) | ~9,05 ms | **7,35 ms** | estimation **23 % trop haute** |
+| Ratio AOT | 1,09× | **1,86×** | l'AOT est **bien plus** en avance |
+
+**La rationale de la décision est validée ; son arithmétique est superseded.** C4 se juge désormais
+contre **7,35 ms (AOT, cible dure)** et **13,70 ms (non-AOT)**, et **la cible AOT est nettement plus
+dure que le gate ne le supposait**.
+
+**Les deux défauts sont réels, et aucun ne domine proprement.** Le rapport de mesure amont voulait
+conclure que la méthode de soustraction (`create-cold − increment-cold`) est structurellement cassée.
+Une première rédaction de cette décision a rejeté cette explication en citant un seul appariement —
+base gzip, AOT : 23,65 − 16,10 = 7,55 contre 7,45 mesuré, soit 0,10 ms d'écart. **Ce chiffre est le
+meilleur des quatre appariements disponibles ; le citer seul flattait la méthode.** Les quatre, tous
+à entrées du même round :
+
+| Appariement | Dérivé | Mesuré | Écart |
+|---|---|---|---|
+| `rows-nojit`, br | 17,00 | 13,70 | **+24,1 %** |
+| `rows-nojit`, gzip | 16,00 | 13,70 | +16,8 % |
+| `rows-aot`, br | 8,05 | 7,35 | +9,5 % |
+| `rows-aot`, gzip | 7,55 | 7,45 | +1,3 % |
+
+Deux conclusions, pas une. **(1) L'instrument est instable** : `increment` non-AOT vaut 25,55 ms à
+l'entrée n°1 et 17,10 ms à l'entrée n°2, **sans le moindre recouvrement d'échantillons** (décision
+n°18) — c'est ce qui a produit l'estimation 9,85 ms. **(2) L'algèbre est biaisée** : même à entrées
+saines, le dérivé **surestime le chaud dans les quatre cas, jamais l'inverse**. Le signe systématique
+n'est pas du bruit, il a une cause identifiée — voir la conséquence ci-dessous : `create-warm` hérite
+d'un tas GC réchauffé, donc dérivé et chaud ne mesurent pas la même grandeur.
+
+La leçon n'est donc pas « se méfier de l'instrument, pas de l'algèbre » : c'est **ne pas dériver quand
+on peut mesurer**. C'est exactement ce qu'a fait le round n°2.
+
+**Conséquence assumée.** `create-warm` bénéficie d'un tas GC réchauffé qu'un premier visiteur n'a
+jamais : c'est une **borne basse** du coût de construction de lignes. C'est le prix à payer pour mesurer
+du rendu et non du boot. Le harness impose la **même séquence à tout framework**, donc la comparaison
+reste équitable — **mais Filament devra être poussé par le même chemin, sinon 13,70/7,35 ms ne veulent
+rien dire.** `create-cold` reste publié parce qu'il est **réel et visible par l'utilisateur** : c'est le
+coût d'un vrai premier chargement, il ne doit simplement jamais être confondu avec du rendu.
+
+---
+
+## 14. Base brotli en tête pour C2, gzip mesuré et conservé
+
+**Décision.** Le ratio 50× de **C2 se juge en brotli**. La base gzip reste mesurée, publiée et
+conservée dans la table. Ceci **tranche** le « point non tranché » de la décision n°3.
+
+**Raison.** Un hébergeur statique réel **sert du brotli** : `dotnet publish` émet les siblings `.br`, et
+Chrome annonce toujours `gzip, deflate, br, zstd`. Le chiffre brotli est donc **celui qu'un utilisateur
+réel télécharge**. C'est aussi la **cible la plus dure** : Blazor est 17,7 % à 31,0 % plus petit en
+brotli (mesuré : −17,72 % non-AOT, −31,02 % AOT), donc la cible C2 se resserre de 37 761 o à
+**31 068 o**. Choisir gzip aurait été choisir la base **généreuse envers Filament** — exactement le
+genre de facilité que ce POC existe pour refuser. La décision n°3 avait retenu gzip comme base
+conservatrice **et remonté le point comme non tranché** ; il est ici tranché **dans le sens hostile à
+Filament**.
+
+**gzip reste dans la table pour une raison précise, pas par symétrie** : **C1 est exprimé en gzip**
+(voir décision n°16). Supprimer la base gzip rendrait C1 invérifiable.
+
+**Règle liante, sans exception.** **Filament doit être mesuré sous le MÊME `--max-encoding` que la
+baseline qu'il affronte.** Comparer un Filament brotli à un Blazor gzip — ou l'inverse — **n'est pas un
+ratio de 50×, c'est un artefact d'encodage**. Le harness enregistre `config.maxEncoding` et
+`weight.serverEncodings` dans chaque JSON précisément pour que cette triche soit détectable après coup :
+ce round vérifie **39/39 réponses en `br`** dans les runs brotli et **39/39 en `gzip`** dans les runs
+gzip. Les chiffres gzip sont de **vrais octets gzip**, pas des octets brotli ré-étiquetés.
+
+**Correction d'une citation erronée du rapport amont.** Le rapport parle de « the agreed BROTLI headline
+basis » et attribue la règle de base identique à la « decision #2 ». **Les deux sont faux au moment où
+il l'écrit** : la décision n°3 disait le contraire (« Les chiffres de tête sont en gzip ») et marquait
+explicitement le point comme **non tranché** ; la règle de base identique est la n°3, pas la n°2 (la n°2
+porte sur AOT vs non-AOT) ; et l'estimation 9,85/9,05 qu'il attribue à la « decision #1 » vient de
+`README.md` sourcé à « BENCH.md reserve #1 », la décision n°1 portant sur .NET 10 vs .NET 11. **Le
+présent paragraphe est ce qui rend la base brotli effectivement décidée** — elle ne l'était pas avant.
+
+---
+
+## 15. Poids : C2 se juge contre non-AOT, vitesse : C4 se juge contre AOT — et jamais l'inverse
+
+**Décision.** Confirmation et re-chiffrage de la décision n°2 sur les mesures finales. **C2 se juge
+contre `blazor-rows-nojit`** (le plus petit bundle : 1 553 388 o br) et **C4 contre `blazor-rows-aot`**
+(le run le plus rapide : `create-warm` 7,35 ms).
+
+**Raison.** L'échappatoire est **parfaitement symétrique**, donc doublement tentante : l'AOT est
+**2,16× plus lourd** en brotli mais **1,86× plus rapide** au rendu. Revendiquer 50× de poids contre la
+config AOT (cible molle : **67 016 o**, 2,16× plus permissive) **tout en** comparant la vitesse à la
+config non-AOT (cible molle : **13,70 ms**, 1,86× plus permissive) reviendrait à choisir **la moitié
+facile de chaque critère** — et chacune des deux tricheries est invisible prise isolément. C'est
+précisément pourquoi les deux moitiés sont nommées **ensemble, dans le même paragraphe**, et pourquoi
+`BENCH.md` porte l'avertissement anti-cherry-picking à côté des cibles et non en note de bas de page.
+
+**Ce que cela fixe.** C2 et C4 nomment **délibérément des configs différentes**. C'est le cadrage le
+plus hostile à Filament que les données permettent, et c'est celui qu'on retient.
+
+---
+
+## 16. C1 (< 10 ko gzip) est le verrou de poids qui contraint réellement, pas C2
+
+**Décision.** **C1 = `< 10 ko gzip`.** C'est **C1**, et non C2, qui est le **verrou contraignant** sur
+le poids : **C2 passe automatiquement si C1 passe.**
+
+**Raison — arithmétique, sur les mesures de l'entrée n°2 :**
+
+| Comparaison | Calcul | Résultat |
+|---|---|---:|
+| C1 contre C2, **même base gzip** | 37 761 / 10 000 | **C1 est 3,78× plus strict** |
+| C1 contre C2, base de tête brotli | 31 068 / 10 000 | **C1 est 3,11× plus strict** |
+
+**L'argument ne dépend d'aucun transfert de ratio de compression.** Pour un même contenu, brotli est en
+pratique **toujours ≤** gzip. Donc un artefact Filament à ≤ 10 000 o gzip pèse **≤ 10 000 o en
+brotli**, très en dessous des **31 068 o** qu'exige C2 en brotli — avec **≥ 3,1× de marge**. Que l'on
+lise « 10 ko » comme 10 000 o ou 10 240 o ne change rien (3,03× à 3,11× de marge en brotli).
+
+**Conséquence à ne pas perdre de vue.** « Filament bat Blazor par 50× sur le poids » sera **le résultat
+le moins exigeant** que Filament produira. C'est un titre spectaculaire et **presque gratuit** une fois
+C1 tenu. **Le vrai test de poids est C1**, et c'est lui qu'il faut surveiller.
+
+**Provenance, consignée honnêtement.** L'entrée n°1 consignait C1 comme **CHIFFRE MANQUANT** parce que
+la spec n'est pas sur le disque. **Elle ne l'est toujours pas** : recherche refaite ce jour — aucun
+fichier de spec, aucun cahier des charges, et `grep « 10 ko »` dans le dépôt retourne **zéro
+occurrence**. **C1 est donc consigné sur la seule autorité du propriétaire au gate**, pas depuis un
+document vérifiable. Si la spec réapparaît et dit autre chose, **c'est la spec qui gagne**, et une
+entrée n°3 devra le consigner. Cette valeur n'a **pas** été inventée pour combler le trou : elle est
+tracée à sa source, qui est une personne et non un fichier.
+
+---
+
+## 17. Reproductibilité : **la décision n°3 du gate n'est PAS honorée** — état réel
+
+**Décision.** Consigner l'état **réel** de la reproductibilité plutôt que de la déclarer close. La
+décision n°3 du gate exige que les trous soient comblés. **Ils ne le sont pas.** Ce paragraphe existe
+pour que ce constat ne se règle pas par défaut, en silence.
+
+**Ce qui EST comblé** (réel, vérifié) :
+- **`bench/publish-baseline.sh` existe et est commité** : les commandes de publication ne vivent plus
+  dans l'historique shell d'un opérateur. Réserve n°3 de l'entrée n°1 **levée**.
+- **`RunAOTCompilation` reste en ligne de commande, jamais dans un `.csproj`** (`grep -rn` sur
+  `baseline/` ne trouve que des commentaires) : **un seul arbre source produit les deux configs**, comme
+  l'exige la décision n°9.
+- **Les deux `.csproj` sont identiques à l'octet** (`diff` vide), `PublishTrimmed` **et**
+  `InvariantGlobalization` explicites des deux côtés. Réserve n°8 **levée**.
+- **Les deux apps servent un shell identique à `<title>` près** ; `favicon.png` supprimé ; **39
+  requêtes** partout. Réserve n°9 **levée**.
+- **L'AOT est vérifié depuis l'artefact et non depuis le drapeau** (`aotObserved` dans les 8 JSON).
+  Dette de la décision n°10 **payée**.
+- **Un commit existe** (`6402831`) — contre zéro au round 1.
+
+**Ce qui N'EST PAS comblé, et qui bloque la décision n°3** :
+1. **Les 8 JSON de tête sont gitignorés.** `git ls-files bench/results/final-warm/` ⇒ **0**.
+   `git check-ignore -v` ⇒ `.gitignore:18:bench/results/*`. La négation `!bench/results/*.json` **ne
+   rattrape pas un sous-répertoire** — git ne descend jamais dans un répertoire exclu. Le commentaire du
+   `.gitignore` proclame que les résultats sont « DELIBERATELY NOT ignored » : **les fichiers réellement
+   rapportés sont ignorés**. Le trou signalé au round 1 est **comblé pour les 5 anciens JSON et rouvert
+   pour les 8 nouveaux**. → `!bench/results/**/*.json`, puis commiter les 8 fichiers.
+2. **Le harness qui a produit ces chiffres n'est pas commité** (`bench.mjs`, `selftest.mjs`,
+   `server.mjs`, `expected-labels.json` tous modifiés). **Un `git clone` de HEAD donne un code
+   matériellement différent** : `grep -c secondRun` sur le `bench.mjs` de HEAD ⇒ **0**, donc la garde
+   anti-fabrication sur laquelle s'appuie l'entrée n°2 **n'existe pas à HEAD**. « Code identique pour
+   chaque config » est vrai du répertoire de travail — **et le répertoire de travail n'est pas ce qu'on
+   peut checkouter**.
+3. **`README.md` publie l'estimation superseded comme un fait** (« ~9.85 ms interpreted / ~9.05 ms
+   AOT »), annonce **249** assertions de selftest (réel : **440**) et documente l'ancien chemin de
+   sortie. **Un inconnu qui suit le README rejoue l'ANCIEN protocole et cite un chiffre que l'équipe
+   sait déjà faux.**
+4. **Le sha256 de fixture cité en décision n°5 est périmé** : le journal dit `72733c72…`, le disque et
+   les 8 résultats disent `877b1461…` (élargissement légitime au 2ᵉ `#run`, journal non suivi).
+
+**Position assumée.** « Reproductible » est une affirmation sur **ce qu'un inconnu peut checkouter et
+rejouer**. Les preuves, l'instrument qui les a produites et le registre qui les consigne sont
+**absents du commit**. Le rapport de mesure amont concède que la décision n°3 n'est « NOT closed » mais
+**localise le trou uniquement dans l'étape de publication** : il est **aussi** dans les résultats et
+dans le harness. **Les mesures sont presque certainement correctes ; elles ne sont pas encore
+reproductibles.** C'est la raison n°1 pour laquelle le gate n'est pas déclaré passé.
+
+---
+
+## 18. Les entrées n°1 et n°2 ne sont PAS directement comparables (irréproductibilité de 33 %)
+
+**Décision.** Consigner comme **découverte de premier plan** — et non comme note de bas de page —
+qu'un scénario de l'entrée n°1 **ne se reproduit pas**, et **refuser** l'affirmation de comparabilité du
+rapport amont.
+
+**Le fait.** `blazor-counter-nojit` / `increment`, **même machine, même Chrome, même SDK, même base
+gzip, même `n = 10`** :
+
+| | Médiane | Échantillons |
+|---|---:|---|
+| Entrée n°1 (harness **1.1.0**) | **25,55 ms** | `[27, 25.4, 24.5, 25.7, 27, 21.4, 26.1, 24.2, 26, 24.7]` |
+| Entrée n°2 (harness **1.2.0**) | **17,10 ms** | `[17.3, 17.8, 13.1, 16.1, 17.5, 16.9, 16.9, 17.9, 18, 16.7]` |
+
+**Aucun recouvrement d'échantillons** (21,4–27,0 contre 13,1–18,0). **8,45 ms, soit 33 %.** Ce n'est pas
+du bruit.
+
+**Cause la plus probable, et pourquoi elle n'est pas certifiée.** `harnessVersion` est passé de **1.1.0
+à 1.2.0**, et `bench.mjs` documente lui-même que le code précédent « discarded the settle result
+entirely at both call sites » : les itérations 1.1.0 chronométraient un clic **sur un réseau non
+stabilisé**, en course avec du téléchargement et du décodage en vol, ce qui **gonflait l'échantillon**.
+Le sens de l'écart est cohérent : **c'est l'entrée n°1 qui était gonflée et l'entrée n°2 qui est
+correcte**. Mais **l'hypothèse n'a pas été testée** — elle est donc consignée comme telle et non comme
+un fait.
+
+**Ce qui est refusé.** Le rapport amont affirme « .NET SDK 10.0.301 (== the pinned Phase 0 baseline SDK,
+**so results remain comparable to BENCH.md entry #1**) ». **Cette inférence est rejetée** : la
+comparabilité y est déduite de la seule identité du SDK, alors que (a) le chemin chronométré du harness
+a **matériellement changé**, (b) les artefacts ont été **republiés** (empreintes `ogsd35n1u1` →
+`nm0j57lo9u`, `lz2nl4qo4f` → `xc7yj6pp2h` : **tailles identiques, octets différents** — le rapport parle
+à tort de « byte-exact », alors qu'il compare des **tailles**), et (c) un scénario a bougé de **33 % sans
+recouvrement**. **Règle retenue : ne jamais comparer un chiffre de l'entrée n°1 à un chiffre de l'entrée
+n°2. L'entrée n°2 supersède ; l'entrée n°1 reste l'archive de ce qui a été mesuré ce matin-là.**
+
+---
+
+## 19. Machine non quiescée : divulguer et laisser l'IQR arbitrer, plutôt que nettoyer ou taire
+
+**Décision.** Ne rien tuer, **divulguer**, et **laisser l'IQR arbitrer empiriquement** au lieu de
+plaider depuis le load average. Reconduction de la décision n°11 dans des conditions **pires**.
+
+**Raison.** La machine était **plus contaminée** que lors de l'entrée n°1 : deux processus `koine-mcp`
+emballés (~100 % et ~98 % CPU, ~27 Go de RSS cumulés, 4 h+), plus OrbStack et l'agent Logitech — soit
+~2,5 cœurs sur 18 (**~14 %** de la capacité, contre ~2,3 % au round 1), avec 5,5 Go de swap sur 7,2 Go.
+Tout appartient à l'utilisateur : le tuer risquait d'interrompre son travail.
+
+**Pourquoi les chiffres tiennent — empiriquement, pas par plaidoirie.** La contamination **n'a
+démontrablement pas mordu** : `rows-nojit/create-cold` — le chiffre que la décision n°8 et la réserve
+n°12 désignaient comme **le plus mou de la matrice et la baseline même de C4** — passe d'un IQR de
+**5,55 ms (16 % de la médiane)** à **0,675 ms (2,0 %)**, un **resserrement d'environ 8×** malgré ~6× plus
+de bruit CPU nominal. Mécanisme : 18 cœurs, et les fautifs sont **2 threads épinglés tournant en
+boucle** ; l'ordonnanceur macOS a gardé le thread principal mono-thread de Chrome headless sur des cœurs
+performance libres. **Le load average compte les threads exécutables, pas la contention réellement
+subie par Chrome.** Les 3 échantillons de poids sont identiques à l'octet dans les 8 runs, et 5 des 10
+paires chaudes concordent **à la médiane exacte** entre deux sessions navigateur indépendantes.
+
+**Correction d'un chiffre flatteur du rapport amont.** Le rapport présente ce resserrement comme « ~8x »
+en comparant l'IQR **gzip** de l'entrée n°1 à l'IQR **brotli** de l'entrée n°2. À base égale
+(gzip contre gzip), c'est **5,55 → 1,60 = 3,5×**. **Le facteur 8 exige l'appariement inter-bases.** Le
+resserrement est réel et la conclusion tient dans les deux cas ; le chiffre annoncé, lui, était choisi.
+
+**Réserve assumée, non maquillée.** Une machine réellement inactive reste préférable, et **27 Go de RSS
+emballé poussant le swap est un risque latent** : un défaut de page dans une fenêtre chronométrée est
+exactement ce qui gonfle l'IQR. **Les IQR disent que ce n'est pas arrivé ici.** Un re-run sur machine
+quiescée coûterait **~12 minutes** et lèverait la dernière réserve si le gate veut zéro doute.
+**Indépendamment du benchmark** : les `koine-mcp` emballés sont un vrai problème pour l'utilisateur et
+méritent une investigation/un redémarrage.
+
+---
+
+## 20. Ce qui reste à trancher après le gate Phase 0 (dettes ouvertes, non arbitrées)
+
+La décision n°12 listait les dettes du round 1. Mise à jour :
+
+**Réglées** : base gzip/brotli (n°14) · valeur de C1 (n°16, sur autorité du propriétaire, spec toujours
+absente) · shell `index.html` identique · `PublishTrimmed` explicite des deux côtés · `create` hors boot
+(n°13) · vérification de l'AOT depuis l'artefact.
+
+**Toujours ouvertes** :
+- **Versionner les preuves et le harness** — **le trou le plus grave** (n°17). Les 8 JSON de tête sont
+  gitignorés, le harness n'est pas commité, le README publie un chiffre superseded. **Bloquant pour la
+  décision n°3 du gate.**
+- **Balisage exact des lignes** — le contrat n'exige toujours que `cellsPerRow >= 2`. Blazor émet **4
+  éléments/ligne** (dont un `<a class="lbl">` décoratif), Filament pourrait n'en émettre que **3** et
+  satisfaire le même contrat : ~25 % de nœuds DOM en moins, **gratuitement**. Ce handicap est **cuit
+  dans les 13,70/7,35 ms**. **À épingler avant toute comparaison de `create-warm`.**
+- **`publish-baseline.sh` : chemin AOT flaky (~50 %) et non sûr en parallèle.** Les configs appariées
+  partagent un arbre source et le script commence par `rm -rf obj bin`. **La décision n°9 attribue la
+  panne à un « cache périmé » : c'est une mauvaise attribution** — les assets compressés sont bien
+  produits, sous un hash différent de celui qu'attend l'étape de copie ; c'est une **course dans un
+  seul build propre**, et une publication non-AOT du même arbre réussit proprement. Le message d'erreur
+  du script **enverra le prochain opérateur sur une fausse piste**. → Boucle de réessai bornée,
+  correction du texte, sérialisation des configs partageant un arbre. **Le chemin AOT du script n'a
+  jamais été démontré de bout en bout** — c'est pourtant lui qui produit le chiffre de tête de C4.
+- **Défauts du harness relevés par l'audit** (3 majeurs, 3 mineurs — réserve E de l'entrée n°2). Aucun
+  n'invalide la baseline mesurée, **mais** : la garde d'équité ne gate pas le prédicat du clic
+  chronométré de `create-warm` ; le « settle beat » n'est appliqué qu'aux nouveaux scénarios chauds, si
+  bien que **les quatre scénarios chauds sont mesurés sous des régimes de stabilisation différents** ;
+  `classifyAotEvidence` peut poser `verified: true` depuis un artefact jamais servi. À corriger **avant**
+  que ces chiffres arbitrent Filament.
+- **Baseline « Blazor par défaut », pas « Blazor minimal »** (`System.Text.Json` ~8 % du poids, jamais
+  utilisé par un compteur).
+- **`n = 10`, une machine, un Chrome, un OS.** Suffisant pour un POC ; **insuffisant** pour une
+  revendication de performance publiable.
+- **Re-run sur machine quiescée** (~12 min) pour lever la dernière réserve de la n°19.

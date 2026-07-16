@@ -1,4 +1,22 @@
 {
+  "note": [
+    "Golden fixture for the deterministic Park-Miller label stream: seed 42.0, three draws",
+    "per row (adjective, colour, noun), 25/11/13 word lists. The LCG is seeded ONCE per page",
+    "load and is never reset per #run click, so the Nth #run on a page emits a DIFFERENT",
+    "1000-label stream from the (N-1)th.",
+    "",
+    "firstRun  = the first #run on a freshly loaded page (LCG draws 1..3000, ids 1..1000).",
+    "            This is what create-cold times.",
+    "secondRun = the second #run on the SAME page (LCG draws 3001..6000, ids 1001..2000).",
+    "            This is what create-warm times, and create-warm is C4's headline.",
+    "",
+    "Both are asserted by verifyContract. Gating only firstRun would leave the headline",
+    "number ungated: an app that runs the real LCG once and reuses the interned strings on",
+    "every later #run passes a first-run-only gate byte-exactly, then does ZERO of the 3000",
+    "multiply/modulo ops and ZERO of the 1000 three-part concatenations on the run that is",
+    "actually timed. The two streams below MUST differ, and loadExpectedLabels refuses a",
+    "fixture in which they do not."
+  ],
   "first5": [
     "adorable pink desk",
     "unsightly purple sandwich",
@@ -6,5 +24,17 @@
     "important brown house",
     "mushy red desk"
   ],
-  "row1000": "important white pizza"
+  "row1000": "important white pizza",
+  "firstRunFirstId": "1",
+  "secondRun": {
+    "first5": [
+      "mushy blue mouse",
+      "expensive yellow keyboard",
+      "large blue car",
+      "large white pony",
+      "unsightly black house"
+    ],
+    "row1000": "odd pink pizza"
+  },
+  "secondRunFirstId": "1001"
 }

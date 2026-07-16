@@ -339,3 +339,538 @@ Ces réserves ne sont **pas** résolues. Elles sont consignées telles quelles.
 ---
 
 *Fin de l'entrée n°1. Ne pas modifier — ajouter une entrée n°2 pour toute rectification.*
+
+---
+
+## Entrée n°2 — 2026-07-16 — Phase 0 : mesure finale (`create` à chaud, base brotli)
+
+**Cette entrée rectifie et supersède les chiffres de tête de l'entrée n°1. Elle ne l'efface pas.**
+L'entrée n°1 reste le registre de ce qui a été mesuré le matin du 2026-07-16 ; ce qu'elle contient
+demeure vrai *en tant que mesure*. Ce qui change ici, ce sont **les chiffres qui font foi pour C2 et
+C4**, et une réserve de l'entrée n°1 (« mesurer `create` hors coût de boot ») est désormais **levée
+par la mesure directe** au lieu d'être estimée par soustraction.
+
+Runs : 2026-07-16, 13:11–13:23 UTC. JSON bruts : `bench/results/final-warm/<label>.{br,gzip}.json`
+(8 fichiers, 10 runs chacun). Les 5 JSON de l'entrée n°1 dans `bench/results/` sont **intacts**.
+
+### Pourquoi une seconde entrée : les deux décisions du propriétaire au gate Phase 0
+
+Ces deux décisions sont **liantes** et sont reproduites verbatim, parce qu'elles expliquent pourquoi
+deux rounds existent et lequel fait foi.
+
+> **1. `create` est mesuré à FROID ET à CHAUD ; le CHAUD est le chiffre de tête de C4.**
+> Rationale: the cold create number is ~72% Blazor runtime boot, not row-building. Filament boots in
+> ~0ms and would "win" create on boot alone, making C4 pass for the wrong reason. Boot-adjusted, the
+> real row-building cost is ~9.85ms interpreted / ~9.05ms AOT.
+
+> **2. Le poids est reporté sur les DEUX bases gzip et brotli ; BROTLI est le chiffre de tête du
+> ratio 50× de C2.**
+> Rationale: real static hosts serve brotli and `dotnet publish` emits .br siblings. Brotli is the
+> honest, HARDER target (Blazor is 17.7-31.0% smaller under br). gzip stays in the table because the
+> spec states C1's threshold in gzip. Filament must later be held to the SAME basis — comparing
+> Filament-gzip against Blazor-brotli (or vice versa) is not a real comparison.
+
+> **3. Les trous de reproductibilité doivent être comblés** (les vérificateurs sceptiques ont jugé la
+> baseline non reproductible alors même que les mesures ont survécu à la réfutation).
+
+**Ce qui a changé matériellement entre les deux rounds** (à lire avant toute comparaison entrée n°1
+↔ entrée n°2) :
+
+| Élément | Entrée n°1 | Entrée n°2 |
+|---|---|---|
+| Harness | `harnessVersion` **1.1.0** | **1.2.0** — le chemin chronométré a changé (voir réserve A) |
+| Scénarios `create`/`increment` | un seul, à froid | **dédoublés** : `-cold` et `-warm` |
+| Base de tête | gzip | **brotli** (gzip conservé et mesuré) |
+| Artefacts | publication du matin | **republiés** (csproj harmonisé, `favicon.png` supprimé) |
+| Fixture `expected-labels.json` | sha256 `72733c72…` | sha256 `877b1461…` (élargie au 2ᵉ `#run`) |
+
+### Environnement
+
+| Élément | Valeur |
+|---|---|
+| Machine | Apple M5 Max (Mac17,6), 18 cœurs, 64 Gio de RAM, arm64 |
+| OS | macOS 26.5.1 (Darwin 25.5.0) |
+| Navigateur | Google Chrome 150.0.7871.124, **headless**, via Playwright 1.61.1 |
+| Node | v26.5.0 |
+| .NET SDK | 10.0.301 (identique à l'entrée n°1) — `wasm-tools` 10.0.109 |
+| Harness | `bench/harness/bench.mjs` **v1.2.0** (≠ entrée n°1) |
+| Date des runs | 2026-07-16, 13:11–13:23 UTC |
+
+**Charge machine (divulgation honnête — pire que l'entrée n°1).** La machine n'était **pas quiescée**,
+et davantage contaminée sur le papier que le run que l'entrée n°1 signalait déjà comme non quiescé :
+
+- Deux processus `koine-mcp` emballés (PID 33344 ~100 % CPU, PID 33355 ~98 % CPU), chacun épinglant un
+  cœur entier depuis 4 h+, parentés par `/Applications/Claude.app`. PID 33355 avait atteint ~24 Go de
+  RSS (~27 Go cumulés) en fin de run. Ces processus **fuient/tournent à vide**, ils ne servaient pas
+  la mesure.
+- `OrbStack Helper` 21–48 % CPU ; `logioptionsplus_updater` 9–47 % CPU.
+- E/S disque de fond soutenues ~16–19 k tps / ~65–75 Mo/s ; swap 5,5 Go sur 7,2 Go utilisés.
+- CPU inactif 82–85 % ; load average 3,8–7,2. Soit ~2,5 cœurs occupés sur 18 (~14 % de la capacité,
+  contre ~2,3 % à l'entrée n°1).
+
+Rien n'a été tué : tout appartient à l'utilisateur. **Pourquoi les chiffres tiennent quand même —
+argument empirique, pas excuse** : l'IQR arbitre, et la contamination ne mord pas. `rows-nojit/create-cold`
+— le chiffre que l'entrée n°1 désignait comme le plus mou de la matrice (réserve n°12) — passe d'un
+IQR de **5,55 ms (16 % de la médiane)** à **0,675 ms (2,0 %)**, soit un **resserrement d'environ 8×**
+malgré ~6× plus de bruit CPU nominal. Mécanisme : 18 cœurs, et les fautifs sont 2 threads épinglés qui
+tournent en boucle ; l'ordonnanceur macOS a gardé le thread principal mono-thread de Chrome headless
+sur des cœurs performance libres. Le load average compte les threads exécutables, pas la contention
+réellement subie par Chrome.
+
+**Réserve non maquillée** : une machine réellement inactive reste préférable, et les ~27 Go de RSS
+emballé poussant le swap sont un risque latent (un défaut de page dans une fenêtre chronométrée est
+exactement ce qui gonfle l'IQR). Les IQR disent que ce n'est pas arrivé ici. Un re-run sur machine
+quiescée coûterait ~12 min et lèverait la dernière réserve. **Recommandation indépendante du
+benchmark** : l'utilisateur devrait investiguer/redémarrer les `koine-mcp` emballés — c'est un vrai
+problème en soi.
+
+### Protocole
+
+Identique à l'entrée n°1 sur les points structurants (Release, cache froid, médiane+IQR, `n = 10`,
+`msToMutation`, timeout = échec), avec ces différences :
+
+1. **Intégrité du harness vérifiée AVANT de mesurer** : `node selftest.mjs` ⇒ **440 passed, 0 failed**
+   (l'entrée n°1 en annonçait 249 ; le harness a grossi). Point décisif : le selftest pilote une
+   fixture **synthétique à boot de 400 ms délibérément injecté** et confirme `cold = 461,4 ms` contre
+   `warm = 61,3 ms` (delta **400,1 ms**). **L'horloge à chaud est donc prouvée contre une vérité
+   terrain connue**, et non supposée. Reproduit indépendamment par un vérificateur : 440/0, delta
+   400,1 ms.
+2. **Cache froid imposé de TROIS façons indépendantes par itération** : `BrowserContext` neuf, CDP
+   `Network.setCacheDisabled`, et `Cache-Control: no-store` serveur. Zéro avertissement de violation.
+3. **Poids** = somme des `encodedDataLength` (CDP `Network.loadingFinished`) — octets sur le fil, ni
+   taille disque ni décompressé. 3 runs de poids.
+4. **8 configs × 10 runs = 280/280 itérations chronométrées**, 0 échec, 0 timeout, 0 avertissement.
+5. **Configs jouées STRICTEMENT en séquence** (horodatages vérifiés : 13:11:08→13:12:01,
+   13:12:21→13:13:14, … 13:21:14→13:23:18 — aucun chevauchement).
+6. **Service workers bloqués** ; `untrackedRequests` vide dans les 8 runs.
+7. **AOT vérifié depuis l'artefact, pas depuis le drapeau** (dette n°10 de `DECISIONS.md` : **payée**).
+   Le harness inspecte les artefacts servis et enregistre `aotObserved` ; déclaré == observé dans les
+   8 runs. Base : `dotnet-wasm-native-runtime-size`. Re-vérifié à la main sur disque ce jour :
+
+   | Config | `dotnet.native.*.wasm` | Octets |
+   |---|---|---:|
+   | `blazor-rows-nojit` | `kllr7zg72l` | 1 494 734 |
+   | `blazor-counter-nojit` | `kllr7zg72l` | 1 494 734 |
+   | `blazor-rows-aot` | `nm0j57lo9u` | **11 380 806** |
+   | `blazor-counter-aot` | `xc7yj6pp2h` | **11 362 554** |
+
+   Rapport AOT/non-AOT = **7,60×**. Les empreintes AOT ont **changé** depuis l'entrée n°1
+   (`ogsd35n1u1`/`lz2nl4qo4f` → `nm0j57lo9u`/`xc7yj6pp2h`) : les tailles sont identiques, **les octets
+   ne le sont pas**. C'est la trace de la republication (voir réserve B).
+8. **Encodage réellement honoré, vérifié et non supposé** : `weight.serverEncodings` montre `br` sur
+   **39/39** réponses dans les runs brotli et `gzip` sur **39/39** dans les runs gzip. Les chiffres
+   gzip sont de **vrais octets gzip**, pas des octets brotli ré-étiquetés.
+9. **Garde d'égalité de charge élargie** : la fixture `expected-labels.json` couvre désormais le
+   **second `#run`** — celui que `create-warm` chronomètre. `contractCheck` observe
+   `secondRunFirstId = "1001"`, `secondRunLastId = "2000"` et un flux de labels **distinct** du
+   premier (`« mushy blue mouse »…` contre `« adorable pink desk »…`). Une app qui mettrait ses labels
+   en cache après un premier `#run` correct **ne peut plus passer**. `contractCheck.problems == []`
+   partout.
+
+#### Commande de rejeu
+
+```bash
+./bench/publish-baseline.sh          # les 4 configs (voir réserve D : le chemin AOT est FLAKY)
+
+# Base brotli (TÊTE) et base gzip, par config. Exemple pour rows-nojit :
+node bench/harness/bench.mjs --dir bench/publish/blazor-rows-nojit/wwwroot \
+  --app rows --label blazor-rows-nojit --runs 10 --weight-runs 3 \
+  --max-encoding br   --headless --no-aot --out bench/results/final-warm/blazor-rows-nojit.br.json
+node bench/harness/bench.mjs --dir bench/publish/blazor-rows-nojit/wwwroot \
+  --app rows --label blazor-rows-nojit --runs 10 --weight-runs 3 \
+  --max-encoding gzip --headless --no-aot --out bench/results/final-warm/blazor-rows-nojit.gzip.json
+# idem pour blazor-rows-aot (--aot), blazor-counter-nojit / blazor-counter-aot (--app counter)
+```
+
+> ⚠️ **Ce rejeu ne fonctionne pas depuis un `git clone` de HEAD** : le harness qui a produit ces
+> chiffres n'est **pas commité**. Voir réserve C — c'est bloquant pour la décision n°3.
+
+---
+
+## Résultats — Phase 0, mesure finale
+
+### Poids transféré (octets sur le fil, cache froid, médiane de 3 runs de poids)
+
+**Base de tête = brotli** (décision n°2 du gate). gzip conservé : c'est la base dans laquelle C1 est
+exprimé.
+
+| Config | App | AOT | **brotli (o)** | **Kio br** | gzip (o) | Kio gzip | Gain br | Requêtes |
+|---|---|---|---:|---:|---:|---:|---:|---:|
+| `blazor-counter-nojit` | Counter | non | **1 551 670** | 1 515,3 | 1 885 613 | 1 841,4 | −17,71 % | 39 |
+| `blazor-counter-aot`   | Counter | oui | **3 353 458** | 3 274,9 | 4 849 976 | 4 736,3 | −30,86 % | 39 |
+| `blazor-rows-nojit`    | Rows    | non | **1 553 388** | 1 517,0 | 1 888 029 | 1 843,8 | −17,72 % | 39 |
+| `blazor-rows-aot`      | Rows    | oui | **3 350 819** | 3 272,3 | 4 857 650 | 4 743,8 | −31,02 % | 39 |
+
+- **Poids parfaitement déterministe** : les 3 échantillons de poids sont **identiques à l'octet** dans
+  chacun des 8 runs (IQR = 0 partout).
+- **Rows fait maintenant 39 requêtes et non 40** : `favicon.png` (1 148 o) a été supprimé et le shell
+  utilise `<link rel="icon" href="data:,">`. La réserve n°9 de l'entrée n°1 est **levée** : les deux
+  apps servent désormais un shell identique à `<title>` près.
+- **La fourchette de gain brotli de l'entrée n°1 (−17,71 % à −31,00 %) est reproduite exactement**
+  (−17,71 % à −31,02 %) depuis une mesure fraîche et cette fois **valide au protocole**. L'entrée n°1
+  notait que ses temps brotli étaient à `--runs 1` ; **son poids brotli, lui, était déjà à
+  `--weight-runs 3`** — donc ce n'est pas une mesure invalide qui est corrigée, c'est une mesure
+  **re-prise sur les artefacts republiés** (écart ~1,2 ko, cohérent avec la suppression du favicon).
+- **L'AOT alourdit toujours** : ×2,16 en brotli (3 350 819 / 1 553 388). C2 et C4 tirent en sens
+  opposés — inchangé depuis l'entrée n°1.
+
+### Temps — Rows (`msToMutation`, médiane et IQR, n = 10, base brotli)
+
+| Scénario | Froid/chaud | Tête | non-AOT méd. | IQR | AOT méd. | IQR | Gain AOT |
+|---|---|---|---:|---:|---:|---:|---:|
+| `create-cold` (1000 lignes) | froid | non | 34,15 ms | 0,675 | 23,90 ms | 2,35 | 1,43× |
+| **`create-warm`** (1000 lignes) | chaud | **OUI** | **13,70 ms** | 0,25 | **7,35 ms** | 0,275 | **1,86×** |
+| `update` (1 ligne / 10) | chaud | oui | 12,60 ms | 0,175 | 3,60 ms | 0,175 | 3,50× |
+| `swap` | chaud | oui | 12,65 ms | 0,175 | 3,45 ms | 0,275 | 3,67× |
+| `clear` | chaud | oui | 4,20 ms | 0,4 | 2,90 ms | 0,3 | 1,45× |
+
+### Temps — Counter (`msToMutation`, médiane et IQR, n = 10, base brotli)
+
+| Scénario | Froid/chaud | Tête | non-AOT méd. | IQR | AOT méd. | IQR | Gain AOT |
+|---|---|---|---:|---:|---:|---:|---:|
+| `increment-cold` | froid | non | 17,15 ms | 1,2 | 15,85 ms | 0,575 | 1,08× |
+| **`increment-warm`** | chaud | **OUI** | **1,30 ms** | 0,175 | **1,00 ms** | 0,075 | 1,30× |
+
+### Contrôle d'encodage : les temps sont-ils indépendants de l'encodage ?
+
+Les temps sont pris après chargement et stabilisation : ils **ne doivent pas** dépendre de l'encodage
+de transfert. Deux runs expédiant 1,55 Mo contre 1,89 Mo sur le fil doivent donner la même médiane.
+
+**Constat honnête, corrigé par rapport au rapport de mesure amont** : il y a **10** paires de
+scénarios chauds (2 `increment-warm` + 8 Rows chauds), pas 7. **9 sur 10 concordent à ≤ 0,10 ms**,
+dont 5 **à la médiane exacte** (`counter-nojit/increment-warm` 1,3/1,3 ; `counter-aot/increment-warm`
+1,0/1,0 ; `rows-nojit/create-warm` 13,7/13,7 ; `rows-nojit/swap` 12,65/12,65 ; `rows-aot/clear`
+2,9/2,9). **La 10ᵉ ne concorde pas à ≤ 0,10 ms** : `rows-nojit/update` = 12,60 br contre 12,90 gzip,
+soit **0,30 ms (2,4 %)**. Écart maximal toutes catégories : **1,05 ms (3,1 %)** sur
+`rows-nojit/create-cold` — un scénario **froid**, seul endroit où un terme de boot ajoute
+légitimement de la variance.
+
+> **Rectification d'un chiffre du rapport amont.** Le rapport de mesure affirmait « Every WARM scenario
+> (all 7) agreed within <= 0.10 ms » sous un titre « PASS, strongly ». C'est **faux sur deux points** :
+> il y a 10 paires chaudes et non 7, et `rows-nojit/update` s'écarte de 0,30 ms. Le rapport énonce
+> lui-même ce 0,30 ms dans la note du scénario concerné : **son résumé contredit ses propres données**,
+> et l'erreur va dans le sens flatteur. La conclusion de fond tient (le harness mesure du rendu, pas du
+> téléchargement), mais elle tient à **9/10 à ≤ 0,10 ms**, pas à 10/10.
+
+### Recoupements de validité
+
+| Contrôle | Résultat |
+|---|---|
+| CDP contre grand livre serveur | CDP > corps serveur dans les 8 runs, de 10 501–10 584 o sur 39 requêtes = **269,3–271,4 o/requête** = en-têtes de réponse. Aucun delta négatif (aucun sous-comptage), aucun 404. |
+| Déterminisme du poids | 3/3 échantillons identiques à l'octet, 8/8 runs. |
+| `create-warm` ≪ `create-cold` | Vrai dans les 4 configs (voir analyse boot). L'horloge à chaud n'est pas cassée. |
+| Contrat DOM | `problems == []` dans les 8 runs ; 1000 lignes, 2 cellules/ligne, swap 2↔999, `updateMissedCount = 0`, `clear → 0`. |
+| Anti-fabrication | Le `#run` chronométré de `create-warm` produit un flux de labels **distinct** du premier (ids 1001–2000). Un cache de labels est refusé. |
+
+---
+
+## Analyse du boot : combien de `create` est-ce du rendu ?
+
+C'est le cœur de la décision n°1 du gate, et **le point où cette entrée corrige à la fois l'entrée n°1
+et le rapport de mesure amont.**
+
+### Ce que la mesure directe dit (base brotli)
+
+| Config | `create-cold` | `create-warm` | cold − warm | Proxy de boot (`increment-cold` − `increment-warm`) | Résidu |
+|---|---:|---:|---:|---:|---:|
+| `rows-nojit` | 34,15 | **13,70** | 20,45 (59,9 % du froid) | 15,85 (**46,4 %** du froid) | **4,60** |
+| `rows-aot` | 23,90 | **7,35** | 16,55 (69,2 % du froid) | 14,85 (**62,1 %** du froid) | **1,70** |
+
+**Lecture.** `cold − warm` **n'est pas** « le boot ». Le proxy de boot indépendant (mesuré sur Counter,
+dont le payload ne diffère que de 0,2 %) vaut 15,85 ms (non-AOT) / 14,85 ms (AOT). Le **résidu** —
+4,60 ms non-AOT, 1,70 ms AOT — est du **réchauffement de chemin de code au premier appel**
+(étagement de l'interpréteur), pas du boot. Le selftest le dit explicitement : une fixture **sans
+aucun boot injecté** montre quand même `create-cold` nettement au-dessus de `create-warm`.
+
+> **Rectification d'un chiffre du rapport amont.** Le rapport annonce « `~20.45 ms (60%) is runtime
+> boot » et « cold create is ~60-72% boot ». C'est une **mauvaise étiquette** : 20,45 ms est
+> `cold − warm`, pas le boot. Le boot mesuré indépendamment vaut **46,4 %** de `rows-nojit/create-cold`
+> (et non 60 %). Environ **4,6 ms de ce qui est appelé « boot » est en réalité du réchauffement de
+> premier appel.** La conclusion qualitative du gate — le `create` froid est majoritairement autre
+> chose que de la construction de lignes — **tient** ; le pourcentage exact non.
+
+### La décision n°1 du gate est vindiquée sur le fond, son estimation arithmétique est superseded
+
+La décision n°1 chiffrait la construction de lignes hors boot à **~9,85 ms interprété / ~9,05 ms AOT**
+et concluait implicitement que l'AOT et l'interprété sont quasi à égalité sur le rendu (9,85/9,05 =
+**1,09×**). **La mesure directe dit autre chose :**
+
+| | Estimation du gate | **Mesure directe (`create-warm`)** | Écart |
+|---|---:|---:|---|
+| Interprété | ~9,85 ms | **13,70 ms** | l'estimation était **28 % trop basse** |
+| AOT | ~9,05 ms | **7,35 ms** | l'estimation était **23 % trop haute** |
+| Ratio AOT | 1,09× | **1,86×** | l'AOT est **bien plus** en avance qu'estimé |
+
+**La conséquence est concrète : C4 doit être jugé contre 13,70 ms (interprété) / 7,35 ms (AOT), et la
+cible AOT est nettement plus dure que le gate ne le supposait.** La rationale de la décision n°1
+(« mesurer le chaud directement ») est **validée** ; seule son arithmétique est superseded.
+
+### Mais le diagnostic du rapport amont sur la CAUSE est faux, et c'est important
+
+Le rapport affirme que la soustraction « n'a pas seulement ajouté du bruit, elle a **inversé** la
+conclusion », parce qu'elle « soustrait un terme de boot lui-même partiellement recouvert avec le
+travail sur les lignes ». **Cette explication ne résiste pas aux données de ce run.** Refaite avec les
+entrées **du même round** (base gzip, pour rester homogène avec l'entrée n°1) :
+
+| Config | `create-cold` − `increment-cold` | `create-warm` mesuré | Écart de la méthode |
+|---|---:|---:|---:|
+| `rows-aot` | 23,65 − 16,10 = **7,55** | **7,45** | **0,10 ms** |
+| `rows-nojit` | 33,10 − 17,10 = **16,00** | **13,70** | 2,30 ms (sens attendu : étagement de l'interpréteur) |
+
+**La méthode de soustraction reproduit le chiffre chaud AOT à 0,10 ms près.** Elle n'est donc **pas
+structurellement cassée**. Ce qui a bougé, ce n'est pas la méthode, **c'est son entrée** — voir la
+réserve A, qui est la vraie découverte de ce round et que le rapport amont n'a pas faite.
+
+---
+
+## Ce que C1, C2 et C4 exigent désormais de Filament — chiffres fermes
+
+### C1 — plafond absolu de bundle : **< 10 ko gzip**
+
+L'entrée n°1 consignait C1 comme **CHIFFRE MANQUANT** (spec absente du disque). **La valeur est
+désormais fixée par le propriétaire au gate Phase 0 : `< 10 ko gzip`.**
+
+> **Provenance à ne pas oublier** : la spec n'est **toujours pas sur le disque** (recherche refaite ce
+> jour : aucun fichier de spec, aucun cahier des charges ; `grep` de « 10 ko » dans le dépôt : zéro
+> occurrence). C1 est donc consigné **sur l'autorité du propriétaire**, pas depuis un document
+> vérifiable. Si la spec réapparaît et dit autre chose, **c'est la spec qui gagne** et une entrée n°3
+> devra le consigner.
+
+### C2 — battre la baseline Blazor d'un facteur 50 sur le poids
+
+La cible **dure** est le **plus petit** bundle Blazor : la config **non-AOT**.
+
+**Base de tête = brotli (décision n°2 du gate). Filament doit rester à ou sous :**
+
+| Cible C2 | Baseline Blazor | **Cible brotli (TÊTE)** | Cible gzip (secondaire) |
+|---|---:|---:|---:|
+| **contre `blazor-rows-nojit`** | 1 553 388 o br | **31 068 o = 30,34 Kio** | 37 761 o = 36,88 Kio |
+| **contre `blazor-rows-aot`** | 3 350 819 o br | 67 016 o = 65,45 Kio | 97 153 o = 94,88 Kio |
+
+*(Les cibles contre l'AOT sont données pour référence et **ne doivent jamais servir de titre** :
+elles sont 2,16× plus permissives.)*
+
+### **C1 est ~3× plus strict que C2 — c'est donc C1 qui contraint le poids**
+
+C'est le point le plus opérationnel de cette entrée :
+
+| Comparaison | Calcul | Résultat |
+|---|---|---:|
+| C1 contre C2, **même base gzip** | 37 761 / 10 000 | **C1 est 3,78× plus strict** |
+| C1 contre C2, base de tête brotli | 31 068 / 10 000 | **C1 est 3,11× plus strict** |
+
+**Conséquence, énoncée sans ambiguïté : C1 est le verrou de poids qui contraint réellement, et C2 passe
+automatiquement si C1 passe.** L'argument est solide et ne dépend d'aucun transfert de ratio : pour un
+même contenu, brotli est en pratique **toujours ≤** gzip. Donc un artefact Filament à ≤ 10 000 o gzip
+pèse ≤ 10 000 o en brotli, ce qui est **très en dessous** des 31 068 o exigés par C2 en brotli — avec
+au moins **3,1× de marge**. *(Que l'on lise « 10 ko » comme 10 000 o ou 10 240 o ne change rien :
+3,03× à 3,11× de marge en brotli, 3,69× à 3,78× en gzip.)*
+
+**Ce que cela implique pour la suite** : annoncer « Filament bat Blazor par 50× » sera **le résultat le
+moins exigeant** que Filament aura à produire sur le poids. Le vrai test de poids est C1.
+
+### C4 — médianes par scénario à ne pas dépasser
+
+La cible **dure** est le **run le plus rapide** de Blazor : la config **AOT**. Base brotli, `n = 10`.
+
+| Scénario | **Filament ne doit pas dépasser (AOT — cible dure)** | *(non-AOT, pour information)* |
+|---|---:|---:|
+| **`create-warm`** (1000 lignes) — **le chiffre de tête de C4** | **7,35 ms** | *13,70 ms* |
+| `update` (1 ligne / 10) | **3,60 ms** | *12,60 ms* |
+| `swap` | **3,45 ms** | *12,65 ms* |
+| `clear` | **2,90 ms** | *4,20 ms* |
+| `increment-warm` (Counter) | **1,00 ms** | *1,30 ms* |
+| *`create-cold` (contexte, jamais un titre de C4)* | *23,90 ms* | *34,15 ms* |
+
+### ⚠️ Avertissement anti-cherry-picking : C2 et C4 nomment des configs DIFFÉRENTES, et c'est délibéré
+
+- **Le poids se juge contre `nojit`** (1 553 388 o br) : c'est le **plus petit** bundle Blazor.
+- **La vitesse se juge contre `aot`** (`create-warm` 7,35 ms) : c'est le **run le plus rapide** de Blazor.
+
+**Revendiquer un gain de poids de 50× contre la config AOT (cible molle : 67 016 o, 2,16× plus
+permissive) tout en comparant la vitesse à la config non-AOT (cible molle : 13,70 ms, 1,86× plus
+permissive) reviendrait à choisir la moitié facile de chaque critère.** Ce serait une double
+tricherie, chacune invisible prise isolément. Filament affronte la **meilleure moitié de chaque**,
+jamais un homme de paille. **Et Filament doit être mesuré sous le MÊME `--max-encoding` que la
+baseline qu'il affronte** : un Filament brotli contre un Blazor gzip n'est pas un ratio de 50×, c'est
+un artefact d'encodage.
+
+### Échecs
+
+**Aucun échec de scénario, aucun timeout, aucun nombre fabriqué, aucune config en échec.**
+8 configs × 10 runs = **280/280 itérations chronométrées retenues**, 0 échec, 0 timeout, 0 prédicat en
+échec, 0 avertissement du harness, 0 problème de contrat, 0 requête non tracée, 0 violation de cache
+froid. Toutes les valeurs ci-dessus sont des médianes/IQR mesurées ; aucune n'est estimée ou
+interpolée.
+
+**Un échec de publication est consigné** (il ne s'agit pas d'un échec de mesure, mais il conditionne le
+rejeu) : voir réserve D — le chemin AOT de `publish-baseline.sh` échoue ~50 % du temps au premier essai.
+
+---
+
+## Réserves ouvertes de l'entrée n°2
+
+Remontées par deux vérificateurs sceptiques indépendants. **Les deux ont conclu `trustworthy: false`
+— non pas sur les mesures, qui ont survécu à toutes leurs tentatives de réfutation, mais sur la
+couche d'interprétation et sur la reproductibilité.** Elles sont listées, pas enterrées.
+
+### A. **Irréproductibilité de 33 % entre l'entrée n°1 et l'entrée n°2 — la vraie découverte de ce round**
+
+C'est la réserve la plus importante, et le rapport de mesure amont **ne l'a pas vue**.
+
+`blazor-counter-nojit`, scénario `increment`, **même machine, même Chrome, même SDK, même base gzip,
+même `n = 10`** :
+
+| | Médiane | Échantillons |
+|---|---:|---|
+| **Entrée n°1** (harness 1.1.0) | **25,55 ms** | `[27, 25.4, 24.5, 25.7, 27, 21.4, 26.1, 24.2, 26, 24.7]` |
+| **Entrée n°2** (harness 1.2.0) | **17,10 ms** | `[17.3, 17.8, 13.1, 16.1, 17.5, 16.9, 16.9, 17.9, 18, 16.7]` |
+
+**Les deux ensembles d'échantillons ne se recouvrent pas du tout** (n°1 : 21,4–27,0 ; n°2 : 13,1–18,0).
+Écart de **8,45 ms, soit 33 %**. Ce n'est pas du bruit.
+
+**Cause la plus probable : le harness lui-même.** `harnessVersion` est passé de **1.1.0 à 1.2.0**, et
+`bench.mjs` documente que le code précédent « discarded the settle result entirely at both call
+sites », de sorte que les itérations 1.1.0 chronométraient un clic sur un réseau non stabilisé, « racing
+in-flight download and decode work, inflating that sample ». **Autrement dit : c'est l'entrée n°1 qui
+était gonflée, et l'entrée n°2 qui est correcte** — ce qui est cohérent avec le sens de l'écart. Mais
+**cela reste une hypothèse non testée**, et c'est exactement pourquoi c'est consigné comme réserve.
+
+**Conséquence directe sur la « réfutation » de la décision n°1** : l'estimation ~9,85/~9,05 du gate
+n'était pas le produit d'une méthode cassée, c'était `35,40 − 25,55` et `23,45 − 14,40` **avec l'entrée
+n°1 comme entrée**. Puisque `25,55` ne se reproduit pas, l'estimation ne pouvait pas se reproduire. La
+méthode, elle, reproduit le chaud AOT à **0,10 ms** avec les entrées du même round.
+
+> **Le rapport de mesure amont affirme que « results remain comparable to BENCH.md entry #1 » en
+> s'appuyant sur la seule identité du SDK.** C'est **faux** : le chemin chronométré du harness a changé
+> (1.1.0 → 1.2.0), les artefacts ont été republiés, et un scénario de l'entrée n°1 a bougé de 33 % sans
+> le moindre recouvrement d'échantillons. **Les deux entrées ne sont pas directement comparables.**
+
+### B. Les artefacts ont été republiés — « byte-exact » est le mauvais mot
+
+Le rapport amont affirme que les runtimes sont « **byte-exact** against the four verifier agents'
+reports (11 362 554 / 11 380 806 / 1 494 734 / 1 494 734) ». **Ce sont des TAILLES, pas des octets.**
+Les empreintes de contenu ont changé (`ogsd35n1u1` → `nm0j57lo9u`, `lz2nl4qo4f` → `xc7yj6pp2h`) :
+**taille identique, contenu différent**. C'est précisément la preuve de la republication que le rapport
+ne mentionne pas. Sans conséquence sur les conclusions ; consigné parce que le mot figurait dans un
+rapport titré « NO fabricated numbers ».
+
+### C. **BLOQUANT pour la décision n°3 — les preuves et l'instrument ne sont PAS versionnés**
+
+La décision n°3 du gate exige que les trous de reproductibilité soient **comblés**. **Ils ne le sont
+pas.** Vérifié sur le dépôt ce jour :
+
+1. **Les 8 JSON de tête sont GITIGNORÉS.** `git ls-files bench/results/final-warm/` ⇒ **0 fichier**.
+   `git check-ignore -v` ⇒ `.gitignore:18:bench/results/*`. La négation `!bench/results/*.json` ne
+   rattrape **pas** un sous-répertoire : git ne descend jamais dans un répertoire exclu. Le commentaire
+   du `.gitignore` proclame que les résultats sont « DELIBERATELY NOT ignored » — **les fichiers
+   réellement rapportés ici sont ignorés**. Le trou signalé au round précédent est **comblé pour les 5
+   anciens JSON et rouvert pour les 8 nouveaux.** → Correctif : `!bench/results/**/*.json`, puis
+   commiter les 8 fichiers.
+2. **Le harness qui a produit ces chiffres n'est pas commité** : `bench.mjs`, `selftest.mjs`,
+   `server.mjs`, `expected-labels.json` sont tous **modifiés et non commités**. Un `git clone` de HEAD
+   donne un code **matériellement différent** : `grep -c secondRun` sur le `bench.mjs` de HEAD ⇒ **0**.
+   **La garde anti-fabrication sur laquelle repose le contrôle d'égalité de charge de cette entrée
+   n'existe pas à HEAD.** Le selftest à 440 assertions n'existe que dans le répertoire de travail ;
+   HEAD est à 249.
+3. **`README.md` publie l'estimation superseded comme un fait** : il affirme toujours « Boot-adjusted,
+   real row building is ~9.85 ms interpreted / ~9.05 ms AOT » (mesuré : 13,70 / 7,35 ; AOT 1,86× et non
+   1,09×), annonce « 249 assertions » (réel : 440) et documente `--out bench/results/<label>.json`, pas
+   la matrice gzip/brotli de `final-warm/`. **Un inconnu qui suit le README rejoue l'ANCIEN protocole
+   et cite un chiffre que l'équipe sait déjà faux.**
+4. **La fixture citée dans `DECISIONS.md` n°5 est périmée** : le journal cite le sha256 `72733c72…`, la
+   fixture sur le disque et dans les 8 résultats est `877b1461…` (élargissement légitime au 2ᵉ `#run`,
+   mais le journal n'a pas suivi).
+
+### D. **`bench/publish-baseline.sh` : chemin AOT flaky et non sûr en parallèle — hérité, non corrigé**
+
+Quatre agents vérificateurs indépendants le rapportent, et c'est confirmé structurellement :
+
+- **Non sûr en concurrence** : `blazor-rows-nojit` et `blazor-rows-aot` partagent **un seul arbre
+  source** (`baseline/Rows.Blazor`), donc `obj/` et `bin/` ; idem pour les deux Counter. Le **premier
+  acte** du script pour chaque config est `rm -rf "$project_dir/obj" "$project_dir/bin"`. Lancer les
+  configs appariées en parallèle permet à un run de purger `obj/` sous un build en vol. Ce round n'a
+  survécu que **par chance d'ordonnancement**. → Sérialiser `rows-nojit → rows-aot` et
+  `counter-nojit → counter-aot` (le parallélisme entre les deux arbres est sûr).
+- **Flaky au premier essai** : `MSB3030`/`MSB3073` sur **~50 %** des publications AOT propres. Preuve
+  de cause racine : les assets compressés **sont** produits, mais sous un hash différent de celui que
+  l'étape de copie attend (attendu `…-zoy55ga6o0-zoy55ga6o0.br`, présent `…-w0tmafab2t-w0tmafab2t.br`)
+  — une course **à l'intérieur d'un seul build propre**, pas un cache périmé. Une publication non-AOT du
+  même arbre réussit proprement : **l'AOT est requis pour déclencher le bug**.
+- **`DECISIONS.md` n°9 attribue cette panne à un « cache périmé » : c'est une MAUVAISE ATTRIBUTION**,
+  et le message d'erreur du script lui-même (« the obj/ purge above did not cover a stale cache — see
+  DECISIONS.md #9 ») **enverra le prochain opérateur sur une fausse piste**. Le script venait de faire
+  `rm -rf obj bin` quelques microsecondes plus tôt.
+- **Le chemin AOT du script n'a jamais été démontré de bout en bout** : le message de commit délimite
+  lui-même sa vérification à « publish-baseline.sh runs both **non-AOT** configs and is idempotent ».
+  Le chemin qui produit le chiffre de tête AOT de C4 (7,35 ms) est celui que le script n'a pas prouvé
+  survivre.
+- → Correctifs : boucle de réessai bornée autour du `dotnet publish`, correction du texte d'aide, et
+  sérialisation des configs partageant un arbre.
+
+### E. Défauts du harness relevés par l'audit (3 majeurs, 3 mineurs) — non corrigés
+
+Aucun n'invalide la baseline Blazor mesurée ici (`RowsApp.razor` appelle bien `NextLabel()` par ligne
+et par `#run`), **mais trois retirent une garantie que le harness proclame, et ce sur le chiffre même
+qui décidera de Filament** :
+
+1. **MAJEUR — la garde d'équité ne couvre pas le `#run` CHRONOMÉTRÉ de `create-warm`** (`bench.mjs`).
+   `verifyContract` charge une page fraîche et clique `#run` **une fois** ; `create-warm` chronomètre
+   le **second** `#run`, dont les labels viennent des tirages LCG 3001..6000. Le clic chronométré n'est
+   gardé que par `rowCount === 1000`. **Triche concrète qui passe toutes les gardes actuelles** : mettre
+   les labels en cache après le premier `#run` — le premier run passe la fixture à l'octet, le second
+   (le chiffre de tête) ne fait **aucune** des 3 000 opérations multiply/modulo ni des 1 000
+   concaténations. *(Note : `contractCheck` observe bien `secondRunFirstId`/`secondRunLastId` et un flux
+   distinct, ce qui ferme ce trou en pratique pour ce run ; l'audit signale que le **prédicat du clic
+   chronométré** lui-même reste `rowCount === 1000`.)*
+2. **MAJEUR — le « settle beat » n'est appliqué qu'aux deux nouveaux scénarios chauds**, pas à
+   `update`/`swap`/`clear`, alors que la prose du changement affirme leur équivalence. `create-warm`
+   bénéficie de 2 rAF + un macrotask ≥ 50 ms de protection ; `update`/`swap`/`clear` n'ont qu'~1 frame.
+   **Les quatre scénarios chauds sont donc mesurés sous des régimes de stabilisation différents** —
+   ce qui contredit directement l'affirmation « it is consistent with update/swap/clear ».
+3. **MAJEUR — `classifyAotEvidence` peut poser `verified: true` depuis un artefact JAMAIS SERVI.**
+   Le contrôle `servedInWeightRun` est une **préférence**, pas une exigence, et aucun avertissement
+   n'est émis quand la preuve retenue n'est pas passée sur le fil. *(Sans effet ici : les artefacts
+   servis sont bien ceux mesurés, re-vérifiés à la main sur disque ci-dessus.)*
+4. **MINEUR** — `create-warm` n'asserte jamais l'état préalable dont il dépend (`#tbody` vide) : la
+   garde anti-vacuité n'exige que `rowCount !== 1000`, ce que 500 ou 999 satisfont.
+5. **MINEUR** — le harness facture au framework mesuré le coût d'évaluation de son propre prédicat
+   (110 lookups DOM pour `update`), et **ce coût croît avec le nombre de callbacks** que le framework
+   produit : un framework qui découpe son rendu en N tâches paie N × 110 lookups **dans sa propre
+   fenêtre chronométrée**, uniquement pour être ordonnancé autrement. C'est un coût de harness rapporté
+   comme coût de framework — la même classe de défaut que `msToPaint`, mais **non divulguée**.
+6. **MINEUR** — `diagnostics.transferredBytesToInteractive` n'est pas mesuré « to interactive » : le
+   snapshot est pris **après** toute l'itération. Le nom asserte une frontière que le code n'implémente
+   pas.
+
+### F. Réserves de l'entrée n°1 : ce qui est levé, ce qui reste
+
+| Réserve n°1 | Statut |
+|---|---|
+| n°1 — `create` majoritairement du coût de première interaction | **LEVÉE par mesure directe** : `create-warm` mesure le rendu. |
+| n°2 — le gain AOT de 1,51× n'est pas une accélération de rendu | **RECTIFIÉE** : hors boot, l'AOT est bien **1,86×** plus rapide au rendu — le gain est **réel**, l'entrée n°1 le sous-estimait (elle l'estimait à 1,09×). |
+| n°3 — commande de publication nulle part sur le disque | **LEVÉE** : `bench/publish-baseline.sh` existe et est commité. |
+| n°4 — zéro commit git ; `bench/results/` ignoré | **PARTIELLE** : 1 commit existe ; **les 8 JSON de tête restent ignorés** (réserve C). |
+| n°7 — `--aot` auto-déclaré, jamais vérifié | **LEVÉE** : le harness vérifie depuis l'artefact servi (`aotObserved`), avec la nuance E-3. |
+| n°8 — les deux apps pas configurées identiquement | **LEVÉE** : les deux `.csproj` sont **identiques à l'octet** (`diff` vide), `PublishTrimmed` et `InvariantGlobalization` explicites des deux côtés. |
+| n°9 — les deux apps ne servent pas le même shell | **LEVÉE** : `favicon.png` supprimé ; shells identiques à `<title>` près ; 39 requêtes partout. |
+| n°12 — `rows-nojit/create` est le chiffre le plus mou | **LEVÉE** : IQR 5,55 ms → **0,675 ms** (2,0 % de la médiane). |
+| n°6 — trou d'équité sur le balisage des lignes | **NON LEVÉE.** Le contrat n'exige toujours que `cellsPerRow >= 2` ; Blazor émet 4 éléments/ligne, Filament pourrait n'en émettre que 3. **À épingler avant de comparer `create-warm`.** |
+| n°11 — baseline « Blazor par défaut », pas « Blazor minimal » | **NON LEVÉE** (`System.Text.Json` ~8 % du poids, jamais utilisé par un compteur). |
+| n°13 — `msToPaint` ne compare jamais des frameworks | **NON LEVÉE** (toujours vraie ; toutes les valeurs de tête ci-dessus sont des `msToMutation`). |
+| n°15 — `n = 10`, une machine, un Chrome, un OS | **NON LEVÉE.** Suffisant pour un POC ; insuffisant pour une revendication publiable. |
+| n°16 — `--warmup 1` structurellement inopérant | **PARTIELLEMENT ADRESSÉE** : les scénarios `-warm` réchauffent désormais **dans la page**. |
+
+### G. Réserve inhérente au chaud, à ne pas oublier quand Filament sera mesuré
+
+Le `#run` chronométré de `create-warm` suit un cycle `#run` + `#clear` : il bénéficie d'un tas GC déjà
+grandi/recyclé et d'un allocateur réchauffé **qu'un utilisateur en premier chargement n'a jamais**.
+`create-warm` est donc une **borne basse** du coût de construction de lignes, pas l'expérience réelle
+d'un premier visiteur — c'est le prix assumé pour mesurer du rendu plutôt que du boot, et c'est
+exactement ce que la décision n°1 demande. **Le harness impose la séquence identique à tout framework**
+(`assertSetupMatchesSpec`), donc la comparaison reste équitable — **mais Filament devra être poussé par
+le même chemin, sinon les cibles 13,70/7,35 ms ne veulent rien dire.**
+
+---
+
+*Fin de l'entrée n°2. Ne pas modifier — ajouter une entrée n°3 pour toute rectification.*

@@ -458,8 +458,20 @@ export async function startServer({ dir, port = 0, host = '127.0.0.1', quiet = f
 // ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
-function parseCliArgs(argv) {
-  const out = { dir: null, port: 8080, host: '127.0.0.1' };
+/**
+ * `maxEncoding` is accepted here as well as by startServer/bench.mjs, and that is
+ * the whole point of this parser existing.
+ *
+ * It previously did NOT accept it: `node server.mjs --dir X --max-encoding gzip`
+ * threw "unknown argument". So the standalone server — the thing a person reaches
+ * for to reproduce or debug a published measurement by hand — was structurally
+ * incapable of reproducing the capped serving mode that bench.mjs had used to
+ * PRODUCE that measurement. The bytes could be quoted but not re-derived, which is
+ * a reproducibility hole in a harness whose entire claim is that its numbers can be
+ * checked.
+ */
+export function parseCliArgs(argv) {
+  const out = { dir: null, port: 8080, host: '127.0.0.1', maxEncoding: 'br' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const eq = a.indexOf('=');
@@ -470,23 +482,50 @@ function parseCliArgs(argv) {
       case '--dir': out.dir = next(); break;
       case '--port': out.port = Number.parseInt(next(), 10); break;
       case '--host': out.host = next(); break;
+      case '--max-encoding': out.maxEncoding = next(); break;
+      case '--quiet': out.quiet = true; break;
       case '--help': case '-h': out.help = true; break;
       default:
         throw new Error(`server.mjs: unknown argument ${a}`);
     }
   }
+  // Validated here rather than left to startServer so a typo is a usage error with
+  // the valid values listed, not a stack trace.
+  if (!ENCODING_CEILINGS.includes(out.maxEncoding)) {
+    throw new Error(
+      `server.mjs: --max-encoding must be one of ${ENCODING_CEILINGS.join(' | ')}, got "${out.maxEncoding}"`,
+    );
+  }
   return out;
 }
 
+export const CLI_USAGE = `Usage: node server.mjs --dir <publishDir> [--port 8080] [--host 127.0.0.1]
+                       [--max-encoding br|gzip|identity] [--quiet]
+
+  --max-encoding  cap the negotiated Content-Encoding, default br (no cap,
+                  production-like). Pass the SAME value bench.mjs was run with
+                  (recorded in config.maxEncoding of the result JSON) to reproduce
+                  its serving mode exactly. Capping only increases transferred bytes.
+`;
+
 const isMain = process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (isMain) {
-  const args = parseCliArgs(process.argv.slice(2));
+  let args;
+  try {
+    args = parseCliArgs(process.argv.slice(2));
+  } catch (err) {
+    process.stderr.write(`${(err && err.message) || err}\n\n${CLI_USAGE}`);
+    process.exit(2);
+  }
   if (args.help || !args.dir) {
-    process.stdout.write('Usage: node server.mjs --dir <publishDir> [--port 8080] [--host 127.0.0.1]\n');
+    process.stdout.write(CLI_USAGE);
     process.exit(args.help ? 0 : 1);
   }
   const s = await startServer(args);
-  process.stdout.write(`[server] serving ${s.root}\n[server] listening on ${s.url}\n`);
+  process.stdout.write(
+    `[server] serving ${s.root}\n[server] listening on ${s.url}\n` +
+    `[server] max encoding: ${s.maxEncoding}${s.maxEncoding === 'br' ? ' (no cap, production-like)' : ' (CAPPED)'}\n`,
+  );
   const shutdown = async () => { await s.close(); process.exit(0); };
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);

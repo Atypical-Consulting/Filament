@@ -8,7 +8,7 @@ it, the raw evidence, and enough instruction to let a stranger reproduce all of 
 
 | File | What it is |
 |---|---|
-| `BENCH.md` | **Append-only** measurement register. Entry #1 is the Phase 0 baseline. Never edit an entry; rectify with a new one. |
+| `BENCH.md` | **Append-only** measurement register. **Entry #2 holds the numbers that count**; entry #1 is superseded but kept. Never edit an entry; rectify with a new one. |
 | `DECISIONS.md` | Why each number was produced the way it was. Read this before disputing a result. |
 | `bench/publish-baseline.sh` | Regenerates the four publish outputs. The only on-disk definition of the four configs. |
 | `bench/harness/bench.mjs` | Framework-agnostic Playwright/CDP measurement driver. |
@@ -139,7 +139,7 @@ Useful flags: `--runs`, `--weight-runs`, `--warmup`, `--headed` (debug), `--rout
 Harness selftest:
 
 ```bash
-cd bench/harness && npm run selftest    # 249 assertions
+cd bench/harness && npm run selftest    # 440 passed, 0 failed at entry #2
 ```
 
 ---
@@ -159,21 +159,83 @@ cd bench/harness && npm run selftest    # 249 assertions
 ## Interpreting the results
 
 **Read `BENCH.md` and `DECISIONS.md` before quoting any number.** Both carry reserves that change
-what the numbers mean. Two in particular:
+what the numbers mean. **`BENCH.md` entry #2 holds the numbers that count**; entry #1 is the archive of
+what was measured that morning, and its headline figures are superseded. Five things in particular:
 
-- **`create` is mostly first-interaction cost, not row building.** `create` is the first click on a
-  freshly loaded page, so ~61–72% of its 35.40 ms is Blazor runtime boot. Boot-adjusted, real row
-  building is ~9.85 ms interpreted / ~9.05 ms AOT. A framework that boots faster beats 35.40 ms
-  without rendering a single row faster (`BENCH.md`, reserve #1).
-- **The encoding basis moves the C2 target by up to 31%.** Rows non-AOT is 1,889,184 B gzip vs
-  1,554,591 B brotli — a 50x target of 37,784 B vs 31,092 B. **Filament must be measured under the
-  same `--max-encoding` as the baseline it is compared to.** A brotli Filament against a gzip Blazor
-  is not a 50x ratio, it is an encoding artifact (`DECISIONS.md` #3).
+- **The warm numbers are the headline; the cold ones are context.** `create-cold` is the first click on
+  a freshly loaded page, so it carries Blazor's boot. `create-warm` is a second timed `#run` in the same
+  page, and it is what actually measures row building. C4 is judged on `create-warm` — **7.35 ms AOT /
+  13.70 ms non-AOT** (`DECISIONS.md` #13). A framework that boots faster beats `create-cold` without
+  rendering a single row faster.
+- **Cold numbers do not reproduce across sessions. Never quote one as a stable reference.**
+  `counter-nojit/increment-cold` was **25.55 ms** in round 1 (samples 21.4–27.0) and **17.15 ms** in
+  round 2 (samples 13.1–18.0) — same machine, same Chrome, same SDK, same `n = 10`, and **zero sample
+  overlap**. A 33% swing is not noise. Never compare an entry #1 number against an entry #2 one
+  (`DECISIONS.md` #18).
+- **The encoding basis moves the C2 target by up to 31%.** Rows non-AOT is 1,888,029 B gzip vs
+  1,553,388 B brotli — a 50x target of 37,761 B vs **31,068 B**. **Brotli is the headline basis**
+  (`DECISIONS.md` #14): a real static host serves brotli, and it is the harder target. **Filament must
+  be measured under the same `--max-encoding` as the baseline it is compared to.** A brotli Filament
+  against a gzip Blazor is not a 50x ratio, it is an encoding artifact.
+- **C1 (< 10 KB gzip) is the binding weight gate, not C2.** C2's brotli target is 31,068 B — **~3x more
+  permissive than C1** — so C2 passes automatically once C1 does. "Filament beats Blazor 50x on weight"
+  is the *least* demanding weight result Filament will ever produce (`DECISIONS.md` #16). C1's value
+  rests on the owner's authority at the Phase 0 gate, not on a spec file: no spec is on disk.
+- **Weight is judged against non-AOT, speed against AOT — never the reverse.** AOT is 2.16x heavier in
+  brotli but 1.86x faster at row building, so the loophole is symmetric and doubly tempting. Claiming a
+  50x weight win against AOT (67,016 B — 2.16x softer) **while** comparing speed against non-AOT
+  (13.70 ms — 1.86x softer) is picking the easy half of each criterion, and each half is invisible on
+  its own (`DECISIONS.md` #15).
+
+### The estimate this README used to publish, and why it was wrong
+
+Earlier revisions of this file said, sourced to `BENCH.md` reserve #1:
+
+> Boot-adjusted, real row building is ~9.85 ms interpreted / ~9.05 ms AOT.
+
+**That estimate is refuted.** It was never measured. It was `create-cold` (Rows) minus `increment-cold`
+(Counter). Directly measuring `create-warm` gives **13.70 ms interpreted / 7.35 ms AOT**.
+
+The error was not noise — **it inverted a conclusion.** The estimate implied interpreted and AOT were
+nearly tied at row building (9.85 vs 9.05 = **1.09x**). Direct measurement shows AOT is **1.86x faster**
+(13.70 vs 7.35). Entry #1's reserve #2 held that the AOT win was not a rendering speed-up; it is one,
+and entry #1 understated it.
+
+Two flaws, and both are real:
+
+1. **Its input does not reproduce.** The subtraction is only as stable as the boot term it subtracts,
+   and that term moved 33% between sessions. The *same* subtraction yields **9.85 ms** on round 1's
+   `increment-cold` (35.40 − 25.55) and **17.0 ms** on round 2's (34.15 − 17.15) — against a directly
+   measured **13.70 ms**. Which answer you get depends only on which session supplied the boot term.
+   This is what produced the 9.85 ms estimate.
+2. **It subtracts a term measured on a different app.** `create-cold` is Rows, `increment-cold` is
+   Counter. The two boot costs are not the same quantity, so the subtraction is not an identity — and
+   fed clean, same-round inputs it is a *biased* estimator, overshooting in all four available pairings:
+
+   | pairing | derived | measured | error |
+   |---|---|---|---|
+   | `rows-nojit`, br | 17.00 | 13.70 | **+24.1%** |
+   | `rows-nojit`, gzip | 16.00 | 13.70 | +16.8% |
+   | `rows-aot`, br | 8.05 | 7.35 | +9.5% |
+   | `rows-aot`, gzip | 7.55 | 7.45 | +1.3% |
+
+   Quoting only the +1.3% pairing — as an earlier draft of this file and of `DECISIONS.md` #13 did —
+   flatters the method by picking the best of four.
+
+The systematic sign is the tell: the derived value is **never low**. That is not noise, it has the cause
+described below — `create-warm` inherits a warmed GC heap, so derived and warm do not measure the same
+quantity. The lesson is therefore not "distrust the instrument, not the algebra". It is **do not derive
+what you can measure**, which is what round 2 did.
+
+**And `cold − warm` is not "boot".** This file also called ~61–72% of cold `create` "Blazor runtime
+boot". That is a mislabel (`BENCH.md` entry #2, boot analysis). `cold − warm` is 20.45 ms for
+`rows-nojit` (59.9% of cold) and 16.55 ms for `rows-aot` (69.2%), but the independently measured boot
+proxy (`increment-cold − increment-warm`) is only 15.85 ms (**46.4%** of cold) and 14.85 ms (**62.1%**).
+The ~4.6 ms residual on non-AOT is the interpreter tiering up, not boot.
 
 `BENCH.md` entry #1 was written **before** the Phase 0 gate decisions on basis and on cold/warm
-`create`. Where the gate and entry #1 disagree, entry #1 is the *measurement* and the gate is the
-*interpretation*; entry #1 is append-only and is not rewritten. A later entry records the rectified
-headline.
+`create`. It is append-only and is not rewritten: it remains the true record of what was measured that
+morning. **Entry #2 is the rectified headline** and supersedes it — including on the estimate above.
 
 ---
 
@@ -191,4 +253,6 @@ future Filament comparison clean:
 So **a publish from today's source will not reproduce entry #1's Rows bytes exactly.** Expect Rows to
 make **39** requests rather than 40 and to weigh roughly 1.2 KB less. This is ~0.06% of total weight
 and changes no Phase 0 conclusion, but a reproducer should know it rather than discover it as a
-mismatch. Counter is unaffected. The re-measured numbers belong in a new `BENCH.md` entry.
+mismatch. Counter is unaffected. **`BENCH.md` entry #2 is that re-measurement**: it records 39 requests
+for both apps and Rows non-AOT at 1,888,029 B gzip / 1,553,388 B brotli, against entry #1's
+1,889,184 B gzip — a 1,155 B drop, consistent with the deleted favicon.

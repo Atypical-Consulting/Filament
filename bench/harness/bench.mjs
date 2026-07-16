@@ -46,9 +46,11 @@
  *     *-warm  fresh load, an UNTIMED setup interaction runs
  *             first, then an identical click is timed      => work
  *   update/swap/clear already had an untimed #run setup and were already warm; the
- *   warm variants simply make create/increment consistent with them. Both numbers
- *   are reported. Neither is deleted: cold is a real user-visible cost, it just is
- *   not a rendering measurement.
+ *   warm variants simply make create/increment consistent with them. Every warm
+ *   scenario — all four — is separated from its timed click by the same idle beat
+ *   (see settleBeat), so "consistent with them" is a property of the code and not
+ *   just of this comment. Both numbers are reported. Neither is deleted: cold is a
+ *   real user-visible cost, it just is not a rendering measurement.
  *
  * Usage:
  *   node bench.mjs --dir <publishDir> --port <port> --app <counter|rows> \
@@ -91,13 +93,64 @@ export const SCHEMA_VERSION = 3;
 // NOTHING — dead data. verifyContract read row 990's label only to check it did
 // not already end in " !!!". So the single most expensive failure mode the project
 // named was entirely unguarded. It is now loaded here and asserted in-page.
+//
+// BOTH RUNS ARE GATED. The LCG is seeded once per page load, so the second #run on a
+// page emits a different 1000-label stream from the first. create-cold times the
+// first; create-warm — C4's HEADLINE — times the second. A fixture describing only
+// the first run therefore gated only the non-headline number, and left the headline
+// click gated by one predicate: "#tbody has 1000 children". The cheat that walks
+// through that hole is small and entirely natural-looking:
+//
+//     let labels = null;
+//     function labelsFor() {
+//       if (!labels) labels = Array.from({ length: 1000 }, nextLabel);
+//       return labels;               // every #run after the first: zero LCG work
+//     }
+//
+// The first #run runs the real LCG, so a first-run-only gate passes byte-exactly and
+// exits 0 — while the timed run does none of the 3000 multiply/modulo ops and none of
+// the 1000 three-part concatenations, and posts a create-warm "win" on strictly less
+// work. So the fixture carries the second run's stream and its ids too, and
+// verifyContract drives #run ... #clear -> #run and asserts them.
 // ---------------------------------------------------------------------------
 const HARNESS_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const EXPECTED_LABELS_PATH = path.join(HARNESS_DIR, 'expected-labels.json');
 
+/** Validate one {first5, row1000} stream description. */
+function validateStream(obj, file, where) {
+  if (!obj || typeof obj !== 'object') {
+    throw new Error(`bench.mjs: ${file} must contain ${where} as an object`);
+  }
+  if (!Array.isArray(obj.first5) || obj.first5.length !== 5 || !obj.first5.every((s) => typeof s === 'string')) {
+    throw new Error(`bench.mjs: ${file} must contain ${where}.first5 as an array of exactly 5 strings`);
+  }
+  if (typeof obj.row1000 !== 'string') {
+    throw new Error(`bench.mjs: ${file} must contain ${where}.row1000 as a string`);
+  }
+  return { first5: obj.first5, row1000: obj.row1000 };
+}
+
+/** A row id in the fixture must be a decimal integer string — ids are monotonic counters. */
+function validateId(v, file, where) {
+  if (typeof v !== 'string' || !/^[0-9]+$/.test(v)) {
+    throw new Error(`bench.mjs: ${file} must contain ${where} as a decimal integer string (e.g. "1")`);
+  }
+  return v;
+}
+
 /**
  * Load and validate the golden fixture. Throws rather than degrading: a missing or
  * malformed fixture must stop the run, never silently disable the fairness gate.
+ *
+ * TWO streams are required, because two #run clicks on one page emit two different
+ * streams and BOTH are timed by a reported scenario (create-cold times the first,
+ * create-warm — the headline — times the second). A fixture that described only the
+ * first run would leave the headline click gated by nothing but "1000 rows exist".
+ *
+ * The two streams are cross-checked against each other here: if they were equal, the
+ * second-run assertion would be satisfied by an app that computed the stream once and
+ * reused it, which is precisely the cheat the fixture exists to refuse. Same for the
+ * ids — equal first ids would mean the id counter had been reset.
  */
 export async function loadExpectedLabels(file = EXPECTED_LABELS_PATH) {
   let raw;
@@ -110,17 +163,40 @@ export async function loadExpectedLabels(file = EXPECTED_LABELS_PATH) {
     );
   }
   const parsed = JSON.parse(raw);
-  if (!Array.isArray(parsed.first5) || parsed.first5.length !== 5 || !parsed.first5.every((s) => typeof s === 'string')) {
-    throw new Error(`bench.mjs: ${file} must contain "first5" as an array of exactly 5 strings`);
+  const firstRun = validateStream(parsed, file, '"first5"/"row1000"');
+  const secondRun = validateStream(parsed.secondRun, file, '"secondRun"');
+  const firstRunFirstId = validateId(parsed.firstRunFirstId, file, '"firstRunFirstId"');
+  const secondRunFirstId = validateId(parsed.secondRunFirstId, file, '"secondRunFirstId"');
+
+  const sameStream =
+    firstRun.row1000 === secondRun.row1000 &&
+    firstRun.first5.every((s, i) => s === secondRun.first5[i]);
+  if (sameStream) {
+    throw new Error(
+      `bench.mjs: ${file} describes the SAME label stream for the first and second #run. The LCG is ` +
+      'seeded once per page load and never reset, so the second run must emit draws 3001..6000 — a ' +
+      'different stream. As written this fixture would rubber-stamp an app that generates the stream ' +
+      'once and reuses the interned strings on every later #run, which is exactly the workload ' +
+      'inequality the fixture exists to refuse.',
+    );
   }
-  if (typeof parsed.row1000 !== 'string') {
-    throw new Error(`bench.mjs: ${file} must contain "row1000" as a string`);
+  if (firstRunFirstId === secondRunFirstId) {
+    throw new Error(
+      `bench.mjs: ${file} gives the first and second #run the same starting id (${firstRunFirstId}). ` +
+      'Row ids are monotonic and never reset, so the second run must start where the first ended + 1.',
+    );
   }
+
   return {
-    first5: parsed.first5,
-    row1000: parsed.row1000,
+    first5: firstRun.first5,
+    row1000: firstRun.row1000,
+    firstRunFirstId,
+    secondRun,
+    secondRunFirstId,
     // Recorded in the result JSON so a later fixture edit is visible in the output
-    // rather than silently redefining what "correct" means.
+    // rather than silently redefining what "correct" means. Widening the gate to the
+    // second run necessarily changes this hash, which is the point: a result carrying
+    // the old hash was produced by the narrower gate.
     sha256: crypto.createHash('sha256').update(raw).digest('hex'),
     path: file,
   };
@@ -152,6 +228,23 @@ const APPS = {
       predicate: { kind: 'textEquals', args: { selector: '#counter-value', expected: '1' } },
     },
   },
+};
+
+/**
+ * The untimed setup steps, named once.
+ *
+ * SCENARIO_SPECS declares a scenario's setup from these, runScenarioIteration records
+ * what it actually ran from these, and assertSetupMatchesSpec compares the two before
+ * every timed click. Sharing the strings is what makes that comparison meaningful:
+ * re-typed prose would drift into agreement-by-coincidence or disagreement-by-typo.
+ */
+const SETUP_STEP = {
+  run: '#run (untimed, to 1000 rows)',
+  clear: '#clear (untimed, to 0 rows)',
+  increment: '#increment (untimed, 0 -> 1)',
+  // Two chained rAFs + a >= idleBeatMs macrotask. Every warm scenario gets one
+  // immediately before its timed click; see settleBeat().
+  beat: 'idle beat',
 };
 
 /**
@@ -187,12 +280,13 @@ const SCENARIO_SPECS = {
     runtime: 'warm',
     headline: true,
     button: '#run',
-    setup: ['#run (untimed, to 1000 rows)', '#clear (untimed, to 0 rows)', 'idle beat'],
+    setup: [SETUP_STEP.run, SETUP_STEP.beat, SETUP_STEP.clear, SETUP_STEP.beat],
     measures:
       'Fresh page load; #run then #clear run UNTIMED so the runtime is booted and the row path is ' +
       'exercised; then an identical #run is TIMED. This is the row-building cost with the boot term ' +
       'removed, and it is consistent with update/swap/clear, which have always had an untimed #run ' +
-      'setup. Per the DOM contract row ids are monotonic and never reset and the label LCG is seeded ' +
+      'setup and which are separated from their timed click by the same idle beat. Per the DOM ' +
+      'contract row ids are monotonic and never reset and the label LCG is seeded ' +
       'only at page load, so the timed #run legitimately produces ids 1001..2000 with the LCG ' +
       'continuing from where the setup left it. That is intended: the WORK is identical (1000 rows, ' +
       '3000 LCG draws, 1000 three-part concatenations) and the harness must not reset the seed or the ' +
@@ -203,22 +297,28 @@ const SCENARIO_SPECS = {
     runtime: 'warm',
     headline: true,
     button: '#update',
-    setup: ['#run (untimed, to 1000 rows)'],
-    measures: 'Appending " !!!" to every 10th row label, on an already-booted runtime.',
+    setup: [SETUP_STEP.run, SETUP_STEP.beat],
+    measures:
+      'Appending " !!!" to every 10th row label, on an already-booted runtime whose untimed #run has ' +
+      'been through style, layout and paint and had its post-render bookkeeping drained.',
   },
   swap: {
     runtime: 'warm',
     headline: true,
     button: '#swaprows',
-    setup: ['#run (untimed, to 1000 rows)'],
-    measures: 'Reciprocally swapping rows 1 and 998, on an already-booted runtime.',
+    setup: [SETUP_STEP.run, SETUP_STEP.beat],
+    measures:
+      'Reciprocally swapping rows 1 and 998, on an already-booted runtime whose untimed #run has been ' +
+      'through style, layout and paint and had its post-render bookkeeping drained.',
   },
   clear: {
     runtime: 'warm',
     headline: true,
     button: '#clear',
-    setup: ['#run (untimed, to 1000 rows)'],
-    measures: 'Removing all 1000 rows, on an already-booted runtime.',
+    setup: [SETUP_STEP.run, SETUP_STEP.beat],
+    measures:
+      'Removing all 1000 rows, on an already-booted runtime whose untimed #run has been through style, ' +
+      'layout and paint and had its post-render bookkeeping drained.',
   },
   'increment-cold': {
     runtime: 'cold',
@@ -233,7 +333,7 @@ const SCENARIO_SPECS = {
     runtime: 'warm',
     headline: true,
     button: '#increment',
-    setup: ['#increment (untimed, 0 -> 1)', 'idle beat'],
+    setup: [SETUP_STEP.increment, SETUP_STEP.beat],
     measures:
       'Fresh page load; one UNTIMED #increment (0 -> 1) boots the runtime, then a second, identical ' +
       '#increment (1 -> 2) is TIMED. This is the increment cost with the boot term removed.',
@@ -1019,6 +1119,16 @@ async function idleBeat(page, opts) {
 // than cell 2) surfaces only as a predicate timeout — which reads as "this
 // framework is slow" rather than "the harness is pointed at the wrong element".
 // Numbers from an unmet contract are worse than no numbers, so this fails fast.
+//
+// ORDER: #run -> #update -> #swaprows -> #clear -> #run. The trailing
+// #clear -> #run is the sequence create-warm TIMES, and the second #run is asserted
+// against the second-run stream and ids 1001..2000 — so the headline scenario's click
+// is gated on the same terms as everything else. #update/#swaprows sit in the middle
+// rather than after, because they neither draw from the LCG nor touch the id counter:
+// the state the second #run starts from is byte-identical either way, and running
+// them first keeps the gate's coverage of state-dependent breakage (a #clear that
+// only works once #swaprows has run is refused here rather than surviving to the
+// stopwatch).
 // ---------------------------------------------------------------------------
 async function verifyContract(browser, url, app, opts, expectedLabels) {
   return withFreshPage(browser, opts, async (ctx) => {
@@ -1087,34 +1197,61 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
 
       // ---- deterministic label stream (CRITICAL for fairness) ---------------
       // Read BEFORE #update, which rewrites every 10th label.
-      const first5 = [0, 1, 2, 3, 4].map((i) => B.rowLabel(i));
-      const row1000 = B.rowLabel(999);
-      out.observed.first5 = first5;
-      out.observed.row1000 = row1000;
-      for (let i = 0; i < 5; i++) {
-        if (first5[i] !== expected.first5[i]) {
+      const checkStream = (which, stream, firstId) => {
+        const first5 = [0, 1, 2, 3, 4].map((i) => B.rowLabel(i));
+        const row1000 = B.rowLabel(999);
+        for (let i = 0; i < 5; i++) {
+          if (first5[i] !== stream.first5[i]) {
+            out.problems.push(
+              `on the ${which} #run, row ${i} label is ${JSON.stringify(first5[i])} but the deterministic ` +
+              `sequence requires ${JSON.stringify(stream.first5[i])}. Every framework MUST run the ` +
+              'Park-Miller LCG (seed 42.0, three draws per row: adjective/colour/noun) and emit the ' +
+              'byte-identical stream. A different stream means a different amount of work, so the timings ' +
+              'are not comparable.',
+            );
+          }
+        }
+        if (row1000 !== stream.row1000) {
           out.problems.push(
-            `row ${i} label is ${JSON.stringify(first5[i])} but the deterministic sequence requires ` +
-            `${JSON.stringify(expected.first5[i])}. Every framework MUST run the Park-Miller LCG ` +
-            '(seed 42.0, three draws per row: adjective/colour/noun) and emit the byte-identical stream. ' +
-            'A different stream means a different amount of work, so the timings are not comparable.',
+            `on the ${which} #run, row 999 (the 1000th) label is ${JSON.stringify(row1000)} but the ` +
+            `deterministic sequence requires ${JSON.stringify(stream.row1000)}. The LCG must advance exactly ` +
+            '3 draws per row across all 1000 rows.',
           );
         }
-      }
-      if (row1000 !== expected.row1000) {
-        out.problems.push(
-          `row 999 (the 1000th) label is ${JSON.stringify(row1000)} but the deterministic sequence requires ` +
-          `${JSON.stringify(expected.row1000)}. The LCG must advance exactly 3 draws per row across all 1000 rows.`,
-        );
-      }
-      // A single constant label satisfies "first5[0] matches" only by luck, but it
-      // would fail the rest. Catch it explicitly for a clearer diagnostic.
-      if (new Set(first5).size === 1 && first5[0] !== null) {
-        out.problems.push(
-          `the first 5 rows all share the label ${JSON.stringify(first5[0])}; the label generator is constant, ` +
-          'not the required pseudo-random stream',
-        );
-      }
+        // A single constant label satisfies "first5[0] matches" only by luck, but it
+        // would fail the rest. Catch it explicitly for a clearer diagnostic.
+        if (new Set(first5).size === 1 && first5[0] !== null) {
+          out.problems.push(
+            `on the ${which} #run, the first 5 rows all share the label ${JSON.stringify(first5[0])}; the ` +
+            'label generator is constant, not the required pseudo-random stream',
+          );
+        }
+        // Ids are a monotonic counter that is never reset, so the whole run is
+        // checkable from its first id. Checked in full: an app that emits the right
+        // id at index 0 and 999 but garbage between them has not built the rows the
+        // contract describes.
+        const base = Number(firstId);
+        let idProblem = null;
+        for (let i = 0; i < 1000 && !idProblem; i++) {
+          const want = String(base + i);
+          const got = B.rowId(i);
+          if (got !== want) idProblem = { index: i, want, got };
+        }
+        if (idProblem) {
+          out.problems.push(
+            `on the ${which} #run, row ${idProblem.index} has id ${JSON.stringify(idProblem.got)} but the ` +
+            `contract requires ${JSON.stringify(idProblem.want)}: ids are a monotonic counter starting at ` +
+            `${firstId} for this run and are NEVER reset.`,
+          );
+        }
+        return { first5, row1000, firstId: B.rowId(0), lastId: B.rowId(999) };
+      };
+
+      const run1 = checkStream('first', expected.firstRun, expected.firstRunFirstId);
+      out.observed.first5 = run1.first5;
+      out.observed.row1000 = run1.row1000;
+      out.observed.firstRunFirstId = run1.firstId;
+      out.observed.firstRunLastId = run1.lastId;
       if (out.problems.length) return out;
 
       // ---- #update ---------------------------------------------------------
@@ -1201,8 +1338,38 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
           (clearErr ? ` (${clearErr})` : ''),
         );
       }
+      if (out.problems.length) return out;
+
+      // ---- SECOND #run: the click create-warm actually times -----------------
+      // Everything above gates the FIRST #run, which only create-cold times — and
+      // create-cold is explicitly not the headline. This gates the headline: the
+      // tbody is empty, the runtime is warm, and the next #run is the one whose
+      // median decides C4. Its stream is draws 3001..6000 and its ids are
+      // 1001..2000, both of which an app that caches or hoists its labels cannot
+      // produce — while a first-run-only gate would have waved it straight through.
+      try {
+        await B.measure('#run', { kind: 'rowCount', args: { count: 1000 } }, o, t);
+      } catch (e) {
+        out.problems.push(
+          `the second #run (the click create-warm times) did not produce exactly 1000 rows within ${t}ms: ${e.message}`,
+        );
+        out.observed.secondRunRowCount = B.rowCount();
+        return out;
+      }
+      out.observed.secondRunRowCount = B.rowCount();
+      const run2 = checkStream('second', expected.secondRun, expected.secondRunFirstId);
+      out.observed.secondRunFirst5 = run2.first5;
+      out.observed.secondRunRow1000 = run2.row1000;
+      out.observed.secondRunFirstId = run2.firstId;
+      out.observed.secondRunLastId = run2.lastId;
       return out;
-    }, [obs, T, { first5: expectedLabels.first5, row1000: expectedLabels.row1000 },
+    }, [obs, T,
+        {
+          firstRun: { first5: expectedLabels.first5, row1000: expectedLabels.row1000 },
+          firstRunFirstId: expectedLabels.firstRunFirstId,
+          secondRun: expectedLabels.secondRun,
+          secondRunFirstId: expectedLabels.secondRunFirstId,
+        },
         UPDATE_PREDICATE, ' !!!', UPDATE_INDICES, UPDATE_NOT_INDICES]);
   });
 }
@@ -1234,6 +1401,31 @@ const swapPredicate = (ids) => ({
 });
 
 /**
+ * Refuse to start the clock unless the setup that actually ran is the setup the JSON
+ * says ran.
+ *
+ * `untimedSetup` is not documentation — it is the harness's public claim about what
+ * the number means, and the reader's only way to know a "warm" number was measured on
+ * a warm runtime that had settled. A spec table and a hand-written switch statement
+ * drift silently: the beat was once applied to two warm scenarios and declared for
+ * two, while the other three warm scenarios were neither beaten nor claimed to be,
+ * and nothing anywhere could notice. Comparing the two on every single iteration
+ * makes that class of drift a loud failure instead of a quietly wrong median.
+ */
+function assertSetupMatchesSpec(scenario, declared, executed) {
+  const same = declared.length === executed.length && declared.every((s, i) => s === executed[i]);
+  if (!same) {
+    throw new Error(
+      `harness bug: scenario "${scenario}" executed the untimed setup ` +
+      `[${executed.join(' -> ') || '(none)'}] but SCENARIO_SPECS declares ` +
+      `[${declared.join(' -> ') || '(none)'}], which is what this run publishes as ` +
+      'scenarios.' + scenario + '.untimedSetup. Refusing to time a click whose setup the result ' +
+      'JSON would describe incorrectly.',
+    );
+  }
+}
+
+/**
  * One timed iteration. Every iteration starts from a fresh page load.
  * Returns milliseconds, or throws (which the caller records as a FAILURE).
  */
@@ -1241,20 +1433,51 @@ async function runScenarioIteration(ctx, app, scenario, url, opts) {
   const { page } = ctx;
   const obs = APPS[app].observeSelector;
   const T = opts.actionTimeoutMs;
+  const spec = SCENARIO_SPECS[scenario];
+  if (!spec) throw new Error(`unknown scenario: ${scenario}`);
 
   await loadAndSettleStrict(ctx, url, app, opts);
 
-  const measureIn = (button, predicate) =>
-    page.evaluate(
+  // What the untimed setup ACTUALLY did, accumulated as it happens and checked
+  // against SCENARIO_SPECS before the clock starts. See assertSetupMatchesSpec.
+  const executed = [];
+
+  /** Start the clock. Only reachable once the executed setup matches the declared one. */
+  const timed = (button, predicate) => {
+    assertSetupMatchesSpec(scenario, spec.setup, executed);
+    return page.evaluate(
       ([btn, pred, o, t]) => window.__FILAMENT_BENCH__.measure(btn, pred, o, t),
       [button, predicate, obs, T],
     );
+  };
+
+  /** The settle beat, recorded. Every warm scenario gets one before its timed click. */
+  const beat = async () => {
+    await idleBeat(page, opts);
+    executed.push(SETUP_STEP.beat);
+  };
 
   // Untimed setup: create the 1000 rows and let any interaction-triggered lazy
   // loading finish, so update/swap/clear measure DOM work rather than network.
+  //
+  // The idle beat is part of the SETUP, not part of any one scenario. Every warm
+  // scenario funnels through here, so all four are separated from their timed click
+  // by the same barrier. It used to be applied only to the two new warm variants,
+  // which meant create-warm got 2 rAFs + a >=50 ms macrotask of protection while
+  // update/swap/clear went from the setup's #run straight into the timed click with
+  // nothing but measure()'s own single rAF + setTimeout(0) between them — so the
+  // 1000-row build's tail (post-render bookkeeping, disposal queues, GC of the
+  // batch) landed inside their measured windows. Two settling regimes across four
+  // scenarios the JSON calls equivalent is not a comparison.
+  //
+  // settleStrict is NOT a substitute: waitForNetworkQuiet returns on its first
+  // iteration when inFlight===0 and the quiet window has already elapsed, and an
+  // untimed #run generates no network traffic, so it returns in ~0 ms here.
   const setupRows = async () => {
     await actUntimed(page, '#run', RUN_PREDICATE, obs, T);
+    executed.push(SETUP_STEP.run);
     await settleStrict(ctx, opts, 'the untimed #run setup');
+    await beat();
   };
 
   switch (scenario) {
@@ -1263,7 +1486,7 @@ async function runScenarioIteration(ctx, app, scenario, url, opts) {
       // interaction — so a runtime that initialises lazily boots inside this
       // window. Deliberately kept: it is a real cost. It is simply not the answer
       // to "how fast does this framework build 1000 rows", which is create-warm.
-      return await measureIn('#run', RUN_PREDICATE);
+      return await timed('#run', RUN_PREDICATE);
 
     case 'create-warm': {
       // Untimed setup: build the rows once (this is what pays the runtime boot and
@@ -1271,16 +1494,17 @@ async function runScenarioIteration(ctx, app, scenario, url, opts) {
       // timed #run starts from the same empty-tbody state as create-cold does.
       await setupRows();
       await actUntimed(page, '#clear', CLEAR_PREDICATE, obs, T);
+      executed.push(SETUP_STEP.clear);
       // Cheap: no network activity since the #run settle, so the quiet window has
       // already elapsed. Present because #clear is an interaction like any other
       // and a framework is entitled to lazy-load on it.
       await settleStrict(ctx, opts, 'the untimed #clear setup');
-      await idleBeat(page, opts);
+      await beat();
       // measure() re-asserts non-vacuity: #tbody is empty here, so rowCount === 1000
       // is false at click time exactly as it is for create-cold. The two scenarios
       // time the identical button against the identical predicate from the identical
       // DOM state; the ONLY difference is whether the runtime is already booted.
-      return await measureIn('#run', RUN_PREDICATE);
+      return await timed('#run', RUN_PREDICATE);
     }
 
     case 'update':
@@ -1288,7 +1512,7 @@ async function runScenarioIteration(ctx, app, scenario, url, opts) {
       // TOTAL predicate: every 10th row must carry the suffix and no other row may.
       // Gating on index 990 alone stopped the clock once 1 of ~100 mutations had
       // landed, so an app touching only the last row posted a ~100x "win".
-      return await measureIn('#update', UPDATE_PREDICATE);
+      return await timed('#update', UPDATE_PREDICATE);
 
     case 'swap': {
       await setupRows();
@@ -1306,27 +1530,28 @@ async function runScenarioIteration(ctx, app, scenario, url, opts) {
       }
       // TOTAL predicate: BOTH directions. Checking only that row 1 received id998
       // is satisfied by `rows[1] = rows[998]` — a duplicate, not a swap.
-      return await measureIn('#swaprows', swapPredicate(ids));
+      return await timed('#swaprows', swapPredicate(ids));
     }
 
     case 'clear':
       await setupRows();
-      return await measureIn('#clear', CLEAR_PREDICATE);
+      return await timed('#clear', CLEAR_PREDICATE);
 
     case 'increment-cold':
       // First interaction on a cold runtime: boot + increment.
-      return await measureIn('#increment', counterPredicate('1'));
+      return await timed('#increment', counterPredicate('1'));
 
     case 'increment-warm':
       // One untimed increment boots the runtime and warms the increment path...
       await actUntimed(page, '#increment', counterPredicate('1'), obs, T);
+      executed.push(SETUP_STEP.increment);
       await settleStrict(ctx, opts, 'the untimed #increment setup');
-      await idleBeat(page, opts);
+      await beat();
       // ...then an identical click is timed. The predicate is "2" rather than "1"
       // purely because the counter is monotonic, exactly as the contract requires;
       // the WORK is the same single increment. It is non-vacuous at click time
       // (#counter-value reads "1"), which measure() re-asserts.
-      return await measureIn('#increment', counterPredicate('2'));
+      return await timed('#increment', counterPredicate('2'));
 
     default:
       throw new Error(`unknown scenario: ${scenario}`);
@@ -1554,6 +1779,232 @@ async function measureWeight(browser, url, app, opts, server) {
 }
 
 // ---------------------------------------------------------------------------
+// AOT verification.
+//
+// `--aot` is a SELF-DECLARATION typed by whoever launched the run. Recorded
+// verbatim — which is all this harness used to do — it is worth nothing: the JSON
+// would cheerfully state aot:true for a build where AOT silently failed to engage,
+// and every downstream comparison would be against a mislabelled artifact. Nobody
+// would ever catch it, because the flag agreed with the intent and the intent is
+// what people re-read.
+//
+// So the harness now looks for INDEPENDENT evidence in the artifacts it actually
+// serves, and records what it OBSERVED next to what was DECLARED. They are separate
+// fields. A disagreement is a loud warning; the harness never silently "corrects"
+// the flag, because the operator may be right and the signature table may be stale,
+// and a harness that quietly rewrites its inputs is its own fabrication risk.
+//
+// ON FRAMEWORK-AGNOSTICISM. This is metadata verification, not measurement: it
+// touches no predicate, no clock, no byte total, and no scenario's pass/fail, and
+// it runs identically for every framework. It is a DATA table of signatures, not a
+// branch on framework identity — and a framework with no matching signature yields
+// observed:null ("no evidence available"), never a false confirmation and never a
+// different measurement path. Filament will be driven by this exact code: it has no
+// AOT signature here, so a --aot claim about it is reported UNVERIFIED rather than
+// rubber-stamped. That is the correct, conservative outcome, and it is strictly
+// more honest than today's behaviour of believing every claim from every framework.
+// ---------------------------------------------------------------------------
+
+/**
+ * Signatures that can corroborate or refute an --aot claim from the served bytes.
+ *
+ * Thresholds are calibrated against this project's own publish output, measured on
+ * the RAW (on-disk, pre-compression) artifact — compressed size is a much weaker
+ * discriminator because AOT output is highly compressible:
+ *
+ *   blazor-rows-aot      dotnet.native.ogsd35n1u1.wasm   11,380,806 B
+ *   blazor-counter-aot   dotnet.native.lz2nl4qo4f.wasm   11,362,554 B
+ *   blazor-rows-nojit    dotnet.native.kllr7zg72l.wasm    1,494,734 B
+ *   blazor-counter-nojit dotnet.native.kllr7zg72l.wasm    1,494,734 B
+ *
+ * A 7.6x separation. The thresholds below sit ~2x clear of each observed cluster,
+ * leaving a wide indeterminate band in between: a build has to look like neither an
+ * AOT nor an interpreted runtime to land there, and if it does the harness says
+ * "indeterminate" rather than guessing.
+ */
+export const AOT_EVIDENCE_SIGNATURES = [
+  {
+    id: 'dotnet-wasm-native-runtime-size',
+    // dotnet.native.wasm, with or without the publish fingerprint segment that
+    // .NET 8+ injects (dotnet.native.<hash>.wasm). Compressed siblings are
+    // excluded by the walker, which only ever stats the raw artifact.
+    match: /^dotnet\.native(\.[0-9a-z]+)?\.wasm$/i,
+    aotAtLeastBytes: 6_000_000,
+    interpretedAtMostBytes: 3_000_000,
+    rationale:
+      'With RunAOTCompilation=true the .NET WASM toolchain compiles the application and framework ' +
+      'assemblies to native WebAssembly and links them into dotnet.native.wasm; without it that file is ' +
+      'just the interpreter runtime and the assemblies ship separately as .wasm/.dll payloads. Measured ' +
+      'on this project: ~11.37 MB AOT vs ~1.49 MB interpreted (7.6x).',
+  },
+];
+
+const AOT_WALK_MAX_ENTRIES = 20000;
+
+/** Recursively collect files under `dir` (bounded), returning {relPath, name, size}. */
+async function walkFiles(dir, limit = AOT_WALK_MAX_ENTRIES) {
+  const out = [];
+  const stack = [dir];
+  while (stack.length && out.length < limit) {
+    const cur = stack.pop();
+    let entries;
+    // eslint-disable-next-line no-await-in-loop
+    try { entries = await fsp.readdir(cur, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      const full = path.join(cur, e.name);
+      if (e.isDirectory()) { stack.push(full); continue; }
+      if (!e.isFile()) continue;
+      // eslint-disable-next-line no-await-in-loop
+      const st = await fsp.stat(full).catch(() => null);
+      if (!st) continue;
+      out.push({ relPath: path.relative(dir, full), name: e.name, size: st.size });
+      if (out.length >= limit) break;
+    }
+  }
+  return out;
+}
+
+/**
+ * Scan the served directory for artifacts matching a known AOT signature and read
+ * their RAW sizes. Pure filesystem observation — no claim is interpreted here.
+ */
+export async function collectAotEvidence(dir, signatures = AOT_EVIDENCE_SIGNATURES) {
+  const files = await walkFiles(dir);
+  const evidence = [];
+  for (const f of files) {
+    for (const sig of signatures) {
+      if (!sig.match.test(f.name)) continue;
+      let verdict = 'indeterminate';
+      if (f.size >= sig.aotAtLeastBytes) verdict = 'aot';
+      else if (f.size <= sig.interpretedAtMostBytes) verdict = 'interpreted';
+      evidence.push({
+        signatureId: sig.id,
+        path: f.relPath.split(path.sep).join('/'),
+        rawBytes: f.size,
+        verdict,
+        thresholds: { aotAtLeastBytes: sig.aotAtLeastBytes, interpretedAtMostBytes: sig.interpretedAtMostBytes },
+        rationale: sig.rationale,
+      });
+    }
+  }
+  // Largest first: if a publish output somehow contains several matches, the
+  // runtime the app actually boots is the substantive one.
+  evidence.sort((a, b) => b.rawBytes - a.rawBytes);
+  return evidence;
+}
+
+/**
+ * Combine the declared flag with the observed evidence. Never mutates either; the
+ * result carries both plus an explicit agreement verdict and any warnings.
+ *
+ * `servedPaths` are the paths the server actually wrote during the weight run.
+ * SERVEDNESS IS A REQUIREMENT, NOT A PREFERENCE. A file sitting in a publish
+ * directory is not evidence about the build that was measured: --dir can hold a
+ * leftover dotnet.native.old.wasm from a previous AOT build while the runtime the app
+ * actually boots is something else entirely. Confirming an --aot claim from bytes the
+ * browser never requested is the same class of error as trusting the flag itself,
+ * which is the thing this code exists to stop — so `verified` requires the primary
+ * evidence to carry servedInWeightRun === true, and omitting `servedPaths` means
+ * servedness is UNKNOWN and therefore unverified rather than assumed.
+ */
+export function classifyAotEvidence(declared, evidence, servedPaths = null) {
+  const served = servedPaths ? new Set(servedPaths.map((p) => p.replace(/^\/+/, ''))) : null;
+  const annotated = evidence.map((e) => ({
+    ...e,
+    servedInWeightRun: served ? served.has(e.path) : null,
+  }));
+
+  // Servedness FIRST, verdict SECOND. Filtering on verdict first would let an
+  // unserved artifact outrank a served one whenever the served one lands in the
+  // indeterminate band: the served 4.5 MB runtime would be dropped as inconclusive,
+  // the stale 11 MB leftover would become `primary`, and the AOT INDETERMINATE
+  // warning about the runtime that was actually measured would be suppressed —
+  // reporting aotObserved:true, verified:true from a file that never went over the
+  // wire. If anything was served, only served evidence may speak.
+  const servedEvidence = annotated.filter((e) => e.servedInWeightRun === true);
+  const pool = servedEvidence.length ? servedEvidence : annotated;
+  const conclusive = pool.filter((e) => e.verdict !== 'indeterminate');
+  const primary = conclusive[0] ?? pool[0] ?? null;
+
+  let observed = null;
+  if (primary && primary.verdict === 'aot') observed = true;
+  else if (primary && primary.verdict === 'interpreted') observed = false;
+
+  const warnings = [];
+  let basis;
+  if (!annotated.length) {
+    basis = 'no-signature-matched';
+  } else if (observed === null) {
+    basis = 'indeterminate';
+  } else {
+    basis = primary.signatureId;
+  }
+
+  const primaryServed = !!primary && primary.servedInWeightRun === true;
+
+  if (declared !== null && observed !== null && declared !== observed) {
+    warnings.push(
+      `AOT MISMATCH: the run DECLARED --aot=${declared}, but the artifact ${primary.path} is ` +
+      `${primary.rawBytes} B raw, which is ${primary.verdict === 'aot' ? 'far too large to be' : 'far too small to be'} ` +
+      `anything but a${primary.verdict === 'aot' ? 'n AOT' : 'n interpreted'} build ` +
+      `(thresholds: aot >= ${primary.thresholds.aotAtLeastBytes} B, interpreted <= ${primary.thresholds.interpretedAtMostBytes} B). ` +
+      'Either the flag is wrong or the build is not what was intended. Every AOT-vs-interpreted ' +
+      'comparison drawn from this file is suspect until that is resolved.',
+    );
+  }
+  if (declared === true && observed === null) {
+    warnings.push(
+      'AOT UNVERIFIED: the run declared --aot=true but no served artifact could corroborate it ' +
+      `(${basis}). The flag is recorded as declared-only; do not cite it as an observed property of ` +
+      'the build.',
+    );
+  }
+  // The evidence exists and is conclusive, but it is not evidence about THIS run.
+  if (primary && observed !== null && !primaryServed) {
+    warnings.push(
+      primary.servedInWeightRun === false
+        ? `AOT evidence NOT SERVED: ${primary.path} (${primary.rawBytes} B raw) is the artifact this ` +
+          'verdict was derived from, but it was NEVER requested during the weight run — it may be a ' +
+          'stale artifact left in the publish directory by an earlier build, in which case it says ' +
+          'nothing about the runtime that was actually measured. aotObserved is reported for ' +
+          'information only and the claim is NOT verified.'
+        : `AOT SERVEDNESS UNKNOWN: no served-path list was supplied, so ${primary.path} cannot be ` +
+          'confirmed to have gone over the wire. The claim is NOT verified.',
+    );
+  }
+  if (primary && primary.verdict === 'indeterminate') {
+    warnings.push(
+      `AOT INDETERMINATE: ${primary.path} is ${primary.rawBytes} B raw, which falls between the ` +
+      'interpreted and AOT thresholds. The signature table may need recalibrating for this toolchain.' +
+      (annotated.length > pool.length
+        ? ` (${annotated.length - pool.length} other matching artifact(s) in the publish directory were ` +
+          'NOT served and are therefore not evidence about this build.)'
+        : ''),
+    );
+  }
+
+  return {
+    declared,
+    observed,
+    agrees: declared === null || observed === null ? null : declared === observed,
+    // Corroborated AND corroborated by something the browser actually loaded.
+    verified: observed !== null && declared === observed && primaryServed,
+    basis,
+    evidence: annotated,
+    warnings,
+    note:
+      'declared = the --aot CLI flag, self-reported by the operator and never trusted on its own. ' +
+      'observed = an independent verdict derived from the RAW size of an artifact matching a known AOT ' +
+      'signature (see evidence[].rationale). verified = observed agrees with declared AND the artifact ' +
+      'it was derived from was SERVED during the weight run (evidence[].servedInWeightRun) — a file ' +
+      'that was never requested may be a leftover from an earlier build and cannot confirm anything ' +
+      'about the build that was measured. observed:null means no evidence was available for this ' +
+      'framework, NOT that AOT is absent — the harness declines to guess rather than confirming a ' +
+      'claim it cannot check.',
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Environment capture
 // ---------------------------------------------------------------------------
 function safeExec(cmd, args) {
@@ -1597,7 +2048,14 @@ async function captureEnvironment(browser, opts) {
     dotnetSdk: safeExec('dotnet', ['--version']),
     node: process.version,
     playwright: playwrightVersion(),
+    // SELF-DECLARED. Kept under its original name for continuity, but it is the
+    // operator's claim, not an observation — see aotObserved / aotVerification,
+    // which are filled in from the served artifacts once the weight run has told us
+    // what was actually on the wire.
     aot: opts.aot,
+    aotDeclared: opts.aot,
+    aotObserved: null,
+    aotVerification: null,
     harnessVersion: HARNESS_VERSION,
   };
 }
@@ -1613,6 +2071,10 @@ function parseArgs(argv) {
     app: null,
     label: null,
     route: '/',
+    // null = every scenario the app defines. A subset is only ever a narrowing;
+    // the chosen names are recorded in config.scenarios so a partial run can never
+    // be mistaken for a full one.
+    scenarios: null,
     runs: 10,
     warmup: 0,
     weightRuns: 3,
@@ -1635,6 +2097,10 @@ function parseArgs(argv) {
     navTimeoutMs: 60000,
     quietMs: 2000,
     maxSettleMs: 30000,
+    // Beat between a warm scenario's untimed setup and its timed click: two rAFs
+    // (so the setup has been through layout+paint) then a macrotask of at least
+    // this long, so post-render bookkeeping cannot land inside the measured window.
+    idleBeatMs: 50,
   };
   const asInt = (v, name) => {
     const n = Number.parseInt(v, 10);
@@ -1654,6 +2120,9 @@ function parseArgs(argv) {
       case '--app': o.app = next(); break;
       case '--label': o.label = next(); break;
       case '--route': o.route = next(); break;
+      case '--scenarios':
+        o.scenarios = next().split(',').map((s) => s.trim()).filter(Boolean);
+        break;
       case '--runs': o.runs = asInt(next(), '--runs'); break;
       case '--warmup': o.warmup = asInt(next(), '--warmup'); break;
       case '--weight-runs': o.weightRuns = asInt(next(), '--weight-runs'); break;
@@ -1667,6 +2136,7 @@ function parseArgs(argv) {
       case '--timeout': o.actionTimeoutMs = asInt(next(), '--timeout'); break;
       case '--quiet-ms': o.quietMs = asInt(next(), '--quiet-ms'); break;
       case '--max-settle-ms': o.maxSettleMs = asInt(next(), '--max-settle-ms'); break;
+      case '--idle-beat-ms': o.idleBeatMs = asInt(next(), '--idle-beat-ms'); break;
       case '--help': case '-h': o.help = true; break;
       default: throw new Error(`bench.mjs: unknown argument ${a}`);
     }
@@ -1682,16 +2152,35 @@ Required:
   --app <name>        counter | rows
   --label <string>    identifies this app+config; also the output filename
 
+Scenarios:
+  rows      create-cold create-warm update swap clear
+  counter   increment-cold increment-warm
+
+  *-cold times the FIRST click after a fresh load, so a lazily-initialised runtime
+  boots inside the measured window: the number is boot + work. *-warm runs an
+  identical interaction untimed first, so it measures the work alone — that is the
+  one to compare frameworks on. update/swap/clear were always warm (untimed #run
+  setup); the warm variants make create/increment consistent with them.
+
 Optional:
   --port <n>          default 0 (ephemeral)
   --route <path>      app route, default /
+  --scenarios <a,b>   comma-separated subset to run, default all for the app.
+                      Recorded in config.scenarios; a partial run is always visible
+                      as such in the output.
   --runs <n>          timed iterations per scenario, default 10
   --warmup <n>        discarded iterations before the timed ones, default 0
   --weight-runs <n>   cold-load byte measurements, default 3
-  --aot[=true|false]  record whether AOT was enabled for this build
+  --aot[=true|false]  DECLARE whether AOT was enabled for this build. This is your
+                      claim, not a measurement: the harness independently inspects
+                      the served artifacts and records what it observed in
+                      environment.aotObserved / environment.aotVerification, warning
+                      loudly if the two disagree or if the claim cannot be checked.
   --headed            run Chrome headed (default: headless)
   --out <file>        output path, default bench/results/<label>.json
   --timeout <ms>      predicate timeout, default 10000
+  --idle-beat-ms <ms> beat between a warm scenario's untimed setup and its timed
+                      click, default 50
   --max-encoding <br|gzip|identity>
                       cap the negotiated Content-Encoding, default br (no cap,
                       production-like). Use gzip to hold a run to a "gzip on"
@@ -1724,6 +2213,17 @@ export async function main(argv) {
     return 2;
   }
 
+  const allScenarios = APPS[opts.app].scenarios;
+  const selectedScenarios = opts.scenarios ?? allScenarios;
+  const unknownScenarios = selectedScenarios.filter((s) => !allScenarios.includes(s));
+  if (unknownScenarios.length) {
+    process.stderr.write(
+      `bench.mjs: unknown scenario(s) for --app ${opts.app}: ${unknownScenarios.join(', ')}\n` +
+      `bench.mjs: available: ${allScenarios.join(', ')}\n`,
+    );
+    return 2;
+  }
+
   const dir = path.resolve(opts.dir);
   const dirStat = await fsp.stat(dir).catch(() => null);
   if (!dirStat || !dirStat.isDirectory()) {
@@ -1734,6 +2234,11 @@ export async function main(argv) {
   // Loaded before anything is launched: a missing/malformed fixture must stop the
   // run outright rather than let it proceed with the fairness gate disabled.
   const expectedLabels = opts.app === 'rows' ? await loadExpectedLabels() : null;
+
+  // Independent evidence for/against the --aot claim, read from the artifacts that
+  // are about to be served. Collected here, interpreted after the weight run has
+  // established which of them actually went over the wire.
+  const aotEvidence = await collectAotEvidence(dir);
 
   if (!ENCODING_CEILINGS.includes(opts.maxEncoding)) {
     process.stderr.write(
@@ -1792,13 +2297,51 @@ export async function main(argv) {
 
     const weight = await measureWeight(browser, url, opts.app, opts, server);
 
+    // The --aot flag is a claim; this is the independent check of it, run against
+    // the artifacts the server actually wrote during the weight run above.
+    const aotVerification = classifyAotEvidence(opts.aot, aotEvidence, weight.servedPaths);
+    environment.aotObserved = aotVerification.observed;
+    environment.aotVerification = aotVerification;
+    for (const w of aotVerification.warnings) {
+      process.stderr.write(
+        `\n[bench] ${'='.repeat(76)}\n[bench] WARNING: ${w}\n[bench] ${'='.repeat(76)}\n\n`,
+      );
+    }
+    if (aotVerification.verified) {
+      process.stderr.write(
+        `[bench] AOT verified: declared=${aotVerification.declared} and the served artifacts agree ` +
+        `(${aotVerification.basis})\n`,
+      );
+    }
+
     const scenarios = {};
-    for (const scenario of APPS[opts.app].scenarios) {
+    for (const scenario of selectedScenarios) {
       // eslint-disable-next-line no-await-in-loop
       scenarios[scenario] = await runScenario(browser, url, opts.app, scenario, opts);
     }
 
     const anyFailed = Object.values(scenarios).some((s) => s.status !== 'ok');
+
+    // COMPUTED, never hand-counted. An upstream report claimed "40/40 timed
+    // iterations across 10 scenarios" when the true figure was 100 (10 runs x 10
+    // scenarios). That error was harmless in direction — it understated the work —
+    // but it appeared in a document titled "ZERO fabricated numbers", and a number
+    // nobody can recompute from the artifact is exactly how such things happen. So
+    // the count now comes out of the same loop that produced the samples.
+    const scenarioList = Object.values(scenarios);
+    const totals = {
+      scenarioCount: scenarioList.length,
+      scenarioNames: Object.keys(scenarios),
+      runsPerScenario: opts.runs,
+      timedIterationsPlanned: scenarioList.length * opts.runs,
+      timedIterationsRecorded: scenarioList.reduce((a, s) => a + s.n, 0),
+      timedIterationFailures: scenarioList.reduce((a, s) => a + s.failureCount, 0),
+      warmupIterationsDiscarded: scenarioList.length * opts.warmup,
+      note:
+        'timedIterationsRecorded is summed from the per-scenario sample counts actually retained, so it ' +
+        'is derived from the same data the medians are, and cannot drift from it. planned - recorded == ' +
+        'the iterations that failed and were refused a number.',
+    };
 
     result = {
       schemaVersion: SCHEMA_VERSION,
@@ -1817,11 +2360,16 @@ export async function main(argv) {
         ? { path: path.relative(HARNESS_DIR, expectedLabels.path), sha256: expectedLabels.sha256 }
         : null,
       environment,
+      totals,
       config: {
         runs: opts.runs,
         warmup: opts.warmup,
         weightRuns: opts.weightRuns,
+        scenarios: selectedScenarios,
+        allScenariosForApp: allScenarios,
+        scenariosComplete: selectedScenarios.length === allScenarios.length,
         actionTimeoutMs: opts.actionTimeoutMs,
+        idleBeatMs: opts.idleBeatMs,
         networkQuietMs: opts.quietMs,
         maxSettleMs: opts.maxSettleMs,
         serviceWorkers: opts.allowServiceWorkers ? 'allow' : 'block',
@@ -1865,13 +2413,61 @@ export async function main(argv) {
           "other's original id. A partial implementation times out as a failure rather than stopping the " +
           'clock early and reporting the shortfall as speed.',
         workloadEquality:
-          'verifyContract asserts the deterministic Park-Miller label stream (expected-labels.json, hash ' +
-          'recorded above) against rows 0-4 and 999, and exercises #update, #swaprows and #clear untimed, ' +
-          'asserting their full post-conditions. An app that emits constant labels, updates fewer rows, or ' +
-          'duplicates instead of swapping is refused with exit code 3 rather than reported as fast.',
+          'verifyContract drives #run -> #update -> #swaprows -> #clear -> #run untimed and asserts the ' +
+          'full post-condition of each. BOTH #run clicks are gated against the deterministic Park-Miller ' +
+          'label stream (expected-labels.json, hash recorded above): rows 0-4 and 999 of the FIRST run ' +
+          '(LCG draws 1..3000, the stream create-cold times) and of the SECOND run on the same page (draws ' +
+          '3001..6000, the stream create-warm — the headline — times), plus every row id in both runs ' +
+          '(1..1000 then 1001..2000, the monotonic counter). Gating only the first run would leave the ' +
+          'headline click asserted by nothing but "1000 rows exist", which an app that generates the ' +
+          'stream once and reuses the interned strings satisfies while doing none of the LCG or ' +
+          'concatenation work on the run that is timed. An app that emits constant labels, caches its ' +
+          'labels after the first run, resets the id counter, updates fewer rows, or duplicates instead ' +
+          'of swapping is refused with exit code 3 rather than reported as fast.',
+        coldVsWarm:
+          'Every scenario carries `runtime` ("cold" | "warm") and `headline` (whether it answers the ' +
+          'question its name asks). A COLD scenario times the first click after a fresh page load, so a ' +
+          'framework that initialises its runtime lazily boots INSIDE the measured window and the number ' +
+          'is boot + work. For a Blazor build the boot term is the majority of cold `create`, which means ' +
+          'a framework with no runtime to boot wins that scenario without rendering anything faster — the ' +
+          'metric would be reporting startup and calling it rendering. A WARM scenario runs an identical ' +
+          'interaction UNTIMED first (see scenarios[].untimedSetup), so the runtime is booted and the ' +
+          'measured window is the work alone. update/swap/clear were always warm — they have always had an ' +
+          'untimed #run setup — so create-warm/increment-warm make create/increment consistent with them ' +
+          'rather than introducing a new kind of measurement. Every warm scenario is separated from its ' +
+          'timed click by the SAME idle beat (two chained requestAnimationFrames, so the setup has been ' +
+          'through style/layout/paint, plus a >= config.idleBeatMs macrotask to drain post-render ' +
+          'bookkeeping), so the four are measured under one settling regime rather than the setup tail of ' +
+          'some of them being billed to their timed click. Both variants are reported; cold is a real ' +
+          'user-visible cost and is not deleted, it is simply not a rendering number. Compare frameworks ' +
+          'on the warm variants, and only ever against the same variant.',
+        monotonicState:
+          'Per the DOM contract, row ids are monotonic and never reset, and the label LCG is seeded only ' +
+          'at page load. A warm scenario\'s timed #run therefore emits ids 1001..2000 with the LCG ' +
+          'continuing, and increment-warm\'s timed click goes 1 -> 2 rather than 0 -> 1. This is intended ' +
+          'and the harness deliberately does NOT reset the seed or the id counter to make the timed run ' +
+          'look identical to the setup run: the WORK is identical either way (1000 rows, 3000 LCG draws, ' +
+          '1000 three-part concatenations; one increment), and resetting hidden state would be the harness ' +
+          'manufacturing a condition no user is ever in.',
         statistics:
           'MEDIAN and IQR (p75 - p25) over `runs` iterations, using linear-interpolation quantiles ' +
-          '(type 7, the numpy/R default). The mean is never reported.',
+          '(type 7, the numpy/R default). The mean is never reported. Per-run BREAKDOWNS in `weight` are ' +
+          'quoted from weight.representativeRun — the run nearest the median, which for an even run count ' +
+          'is not the median itself and no longer claims to be.',
+        aot:
+          'environment.aot / environment.aotDeclared is the operator\'s --aot claim and is never trusted ' +
+          'on its own. environment.aotObserved is an INDEPENDENT verdict derived from the raw size of an ' +
+          'artifact matching a known AOT signature, and environment.aotVerification carries the evidence, ' +
+          'the thresholds and the reasoning. aotVerification.verified is true ONLY when the verdict ' +
+          'agrees with the claim AND the artifact it came from was SERVED during the weight run ' +
+          '(evidence[].servedInWeightRun): a file present in the publish directory but never requested ' +
+          'may be a leftover from an earlier build, so it can corroborate nothing about the build that ' +
+          'was measured, and evidence selection prefers served artifacts before it prefers conclusive ' +
+          'ones. A disagreement is a loud warning and sets aotVerification.agrees=false; an unverifiable ' +
+          'claim sets aotObserved=null and is reported as UNVERIFIED rather than confirmed. The harness ' +
+          'never rewrites the declared flag to match the evidence. This is metadata verification only: it ' +
+          'touches no timing, no byte total and no predicate, and a framework with no signature is ' +
+          'measured identically, just not corroborated.',
         agnosticism:
           'This harness contains no framework-specific code path. Only --dir/--route change between ' +
           'frameworks; every app is driven exclusively through the shared DOM contract.',
@@ -1897,11 +2493,16 @@ export async function main(argv) {
     process.stderr.write(`[bench] transferred to interactive (median): ${weight.toInteractive.median} bytes\n`);
     for (const [name, s] of Object.entries(scenarios)) {
       process.stderr.write(
-        `[bench] ${name.padEnd(10)} ${s.status === 'ok' ? '' : '[' + s.status.toUpperCase() + '] '}` +
+        `[bench] ${name.padEnd(15)} ${s.status === 'ok' ? '' : '[' + s.status.toUpperCase() + '] '}` +
         `median=${s.median} ms  iqr=${s.iqr} ms  (n=${s.n}, failures=${s.failureCount})` +
+        `  [${s.runtime}${s.headline ? '' : ', NOT the headline — includes runtime boot'}]` +
         `   [toPaint median=${s.toPaint.median} ms iqr=${s.toPaint.iqr} ms — includes the harness's vsync wait]\n`,
       );
     }
+    process.stderr.write(
+      `[bench] ${totals.timedIterationsRecorded}/${totals.timedIterationsPlanned} timed iterations recorded ` +
+      `across ${totals.scenarioCount} scenario(s), ${totals.timedIterationFailures} failure(s)\n`,
+    );
     for (const w of weight.warnings) process.stderr.write(`[bench] WARNING: ${w}\n`);
 
     if (anyFailed) exitCode = 1;
@@ -1923,4 +2524,12 @@ if (isMain) {
   }
 }
 
-export { APPS, attachNetworkTracker, inPageHarness, waitForNetworkQuiet, UPDATE_INDICES, UPDATE_NOT_INDICES };
+export {
+  APPS,
+  SCENARIO_SPECS,
+  attachNetworkTracker,
+  inPageHarness,
+  waitForNetworkQuiet,
+  UPDATE_INDICES,
+  UPDATE_NOT_INDICES,
+};
