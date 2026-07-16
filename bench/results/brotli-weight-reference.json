@@ -1,0 +1,60 @@
+{
+  "note": "SECONDARY reference, not the protocol result. Section 7 specifies gzip, so the protocol numbers in the sibling <label>.json files are gzip (config.maxEncoding=gzip) and are the ones that set C2. These brotli figures are measured identically (same harness, cold cache, CDP encodedDataLength, weight-runs=3) but with --max-encoding br, i.e. what Chrome actually negotiates against a real static host, since dotnet publish emits .br siblings and Chrome always sends br. Recorded so the C2 50x target is chosen against a known basis rather than an assumed one. Timings in the source files were run at --runs 1 and are NOT protocol-valid; only the weight was taken from them.",
+  "measuredAt": "2026-07-16T10:57:59.307Z",
+  "configs": {
+    "blazor-counter-nojit": {
+      "gzipBytes": 1885505,
+      "brotliBytes": 1551590,
+      "brotliSmallerBytes": 333915,
+      "brotliSmallerPct": 17.71,
+      "gzipTarget50x": 37710,
+      "brotliTarget50x": 31032,
+      "encodings": [
+        "br"
+      ],
+      "warnings": 0,
+      "untracked": 0
+    },
+    "blazor-counter-aot": {
+      "gzipBytes": 4849865,
+      "brotliBytes": 3351531,
+      "brotliSmallerBytes": 1498334,
+      "brotliSmallerPct": 30.89,
+      "gzipTarget50x": 96997,
+      "brotliTarget50x": 67031,
+      "encodings": [
+        "br"
+      ],
+      "warnings": 0,
+      "untracked": 0
+    },
+    "blazor-rows-nojit": {
+      "gzipBytes": 1889184,
+      "brotliBytes": 1554591,
+      "brotliSmallerBytes": 334593,
+      "brotliSmallerPct": 17.71,
+      "gzipTarget50x": 37784,
+      "brotliTarget50x": 31092,
+      "encodings": [
+        "br",
+        "identity"
+      ],
+      "warnings": 0,
+      "untracked": 0
+    },
+    "blazor-rows-aot": {
+      "gzipBytes": 4858810,
+      "brotliBytes": 3351937,
+      "brotliSmallerBytes": 1506873,
+      "brotliSmallerPct": 31.01,
+      "gzipTarget50x": 97176,
+      "brotliTarget50x": 67039,
+      "encodings": [
+        "br",
+        "identity"
+      ],
+      "warnings": 0,
+      "untracked": 0
+    }
+  }
+}

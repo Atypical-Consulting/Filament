@@ -1,0 +1,23 @@
+@* Root component. Rendered directly into #app by Program.cs.
+
+   There is no <Router> on purpose: this app has exactly one screen, so routing
+   would be dead weight the trimmer keeps only because we asked for it. A single
+   root component is the natural minimal Blazor app here, and it keeps the
+   comparison against Filament honest (neither side ships a router).
+
+   The markup below is the SHARED DOM CONTRACT and must not be altered. *@
+
+<h1 id="title">Counter</h1>
+
+<p>Current count: <span id="counter-value">@currentCount</span></p>
+
+<button id="increment" @onclick="Increment">Click me</button>
+
+@code {
+    private int currentCount = 0;
+
+    private void Increment()
+    {
+        currentCount++;
+    }
+}

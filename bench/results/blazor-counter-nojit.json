@@ -1,0 +1,352 @@
+{
+  "schemaVersion": 2,
+  "label": "blazor-counter-nojit",
+  "app": "counter",
+  "url": "http://127.0.0.1:61559/",
+  "servedDir": "/Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-counter-nojit/wwwroot",
+  "startedAt": "2026-07-16T10:49:14.619Z",
+  "finishedAt": "2026-07-16T10:49:47.502Z",
+  "ok": true,
+  "contractCheck": {
+    "problems": [],
+    "observed": {
+      "initialValue": "0"
+    }
+  },
+  "expectedLabels": null,
+  "environment": {
+    "machine": {
+      "hostname": "Mac",
+      "model": "Mac17,6",
+      "cpu": "Apple M5 Max",
+      "cpuCount": 18,
+      "arch": "arm64",
+      "totalMemBytes": 68719476736
+    },
+    "os": {
+      "platform": "darwin",
+      "release": "25.5.0",
+      "version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
+      "productVersion": "26.5.1"
+    },
+    "chrome": {
+      "channel": "chrome",
+      "version": "150.0.7871.124",
+      "headless": true
+    },
+    "dotnetSdk": "10.0.301",
+    "node": "v26.5.0",
+    "playwright": "1.61.1",
+    "aot": false,
+    "harnessVersion": "1.1.0"
+  },
+  "config": {
+    "runs": 10,
+    "warmup": 1,
+    "weightRuns": 3,
+    "actionTimeoutMs": 10000,
+    "networkQuietMs": 2000,
+    "maxSettleMs": 30000,
+    "serviceWorkers": "block",
+    "maxEncoding": "gzip",
+    "encodingNote": "Negotiation CAPPED at \"gzip\" via --max-encoding, so the transferred bytes are gzip bytes and are labelled as such. Chrome accepts brotli, and an uncapped run would transfer measurably fewer bytes; this cap therefore makes the weight a CONSERVATIVE (upper-bound) figure. Any framework compared against it must be measured under the same cap.",
+    "compression": "Content negotiated per request, smallest encoding the client accepts: brotli before gzip. Precompressed sibling (.br/.gz) when present, else on-the-fly at publish-equivalent quality (brotli q11 / gzip level 9). Eligibility is a denylist of already-compressed formats, so an unanticipated extension is compressed rather than silently shipped raw."
+  },
+  "protocol": {
+    "weight": "Transferred bytes = sum of CDP Network.loadingFinished.encodedDataLength (falling back to Network.responseReceived header bytes + summed Network.dataReceived.encodedDataLength when loadingFinished reports 0) over every request, from navigation until the app-ready contract hook is clickable AND the network has been idle for networkQuietMs. This is wire bytes, not disk size and not decompressed size. Cold cache is enforced three ways: a fresh BrowserContext per iteration, CDP Network.setCacheDisabled, and Cache-Control: no-store from the server.",
+    "timing": "All timestamps are taken in-page. A click is followed by a MutationObserver-driven wait for a DOM predicate; the clock stops INSIDE the observer callback at the instant the predicate is observed true (msToMutation, the headline metric). Frame boundaries are never used as a proxy for completion, so an asynchronously dispatched handler (e.g. Blazor @onclick) cannot produce a fabricated sub-millisecond time. msToPaint additionally waits one requestAnimationFrame + setTimeout(0); because the predicate resolves at an arbitrary phase of the vsync cycle, msToPaint carries a 0-16.7ms offset contributed by the display and the harness rather than the framework, and is reported separately so it can never be mistaken for framework cost. A predicate already true before the click is rejected as vacuous. A predicate that does not become true within actionTimeoutMs throws and is recorded as a failure, never as a number. An iteration whose network has not gone idle is a failure too, not a silently inflated sample.",
+    "predicates": "Scenario predicates are TOTAL: #update requires all 100 targeted rows to carry the suffix and sampled non-targeted rows to lack it; #swaprows requires BOTH index 1 and index 998 to hold the other's original id. A partial implementation times out as a failure rather than stopping the clock early and reporting the shortfall as speed.",
+    "workloadEquality": "verifyContract asserts the deterministic Park-Miller label stream (expected-labels.json, hash recorded above) against rows 0-4 and 999, and exercises #update, #swaprows and #clear untimed, asserting their full post-conditions. An app that emits constant labels, updates fewer rows, or duplicates instead of swapping is refused with exit code 3 rather than reported as fast.",
+    "statistics": "MEDIAN and IQR (p75 - p25) over `runs` iterations, using linear-interpolation quantiles (type 7, the numpy/R default). The mean is never reported.",
+    "agnosticism": "This harness contains no framework-specific code path. Only --dir/--route change between frameworks; every app is driven exclusively through the shared DOM contract."
+  },
+  "weight": {
+    "unit": "bytes",
+    "method": "CDP Network.loadingFinished.encodedDataLength summed across all requests from navigation until app-interactive AND network idle",
+    "toInteractive": {
+      "n": 3,
+      "samples": [
+        1885505,
+        1885505,
+        1885505
+      ],
+      "median": 1885505,
+      "p25": 1885505,
+      "p75": 1885505,
+      "iqr": 0,
+      "min": 1885505,
+      "max": 1885505
+    },
+    "afterFirstInteraction": {
+      "n": 3,
+      "samples": [
+        1885505,
+        1885505,
+        1885505
+      ],
+      "median": 1885505,
+      "p25": 1885505,
+      "p75": 1885505,
+      "iqr": 0,
+      "min": 1885505,
+      "max": 1885505
+    },
+    "lazyLoadedOnInteractionBytes": 0,
+    "decodedBytesMedianRun": 4830845,
+    "requestCount": 39,
+    "bytesByOrigin": {
+      "http://127.0.0.1:61559": 1885505
+    },
+    "topRequests": [
+      {
+        "url": "http://127.0.0.1:61559/_framework/dotnet.native.kllr7zg72l.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 583040,
+        "decodedBytes": 1494734,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/System.Private.CoreLib.ucrwomvqn3.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 573124,
+        "decodedBytes": 1483541,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/System.Text.Json.w0tmafab2t.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 150203,
+        "decodedBytes": 371477,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/Microsoft.AspNetCore.Components.dctgwdnaq3.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 73955,
+        "decodedBytes": 173333,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/dotnet.runtime.a6jcqbs390.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 57575,
+        "decodedBytes": 198479,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/dotnet.native.wzggwzarq4.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 51473,
+        "decodedBytes": 215277,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/Microsoft.AspNetCore.Components.WebAssembly.s6iwm2sohi.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 48773,
+        "decodedBytes": 118037,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/System.Private.Uri.psv6khwmxi.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 28813,
+        "decodedBytes": 62229,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/Microsoft.AspNetCore.Components.Web.mawyhb1u6m.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 23263,
+        "decodedBytes": 55573,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/Microsoft.Extensions.DependencyInjection.pdq83eroqe.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 22962,
+        "decodedBytes": 46869,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/System.Collections.Immutable.nw1is97ns6.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 22771,
+        "decodedBytes": 50965,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/Microsoft.JSInterop.n4v9gvxr8f.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 21400,
+        "decodedBytes": 45845,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/System.Runtime.InteropServices.JavaScript.8iglodhrwt.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19939,
+        "decodedBytes": 43285,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/System.Diagnostics.DiagnosticSource.vxwxhhpftd.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19410,
+        "decodedBytes": 39701,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61559/_framework/blazor.webassembly.958z1vx7fr.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19171,
+        "decodedBytes": 60576,
+        "redirectCount": 0
+      }
+    ],
+    "crossCheck": {
+      "cdpTransferredBytes": 1885505,
+      "serverBodyBytes": 1874921,
+      "serverRequestCount": 39,
+      "deltaBytes": 10584,
+      "note": "CDP counts wire bytes (compressed body + response headers); the server counts body bytes only. delta ~= response header overhead. A negative delta or a delta far larger than ~300 B/request indicates a measurement problem."
+    },
+    "serverEncodings": {
+      "gzip": {
+        "responses": 39,
+        "bytes": 1874921
+      }
+    },
+    "untrackedRequests": [],
+    "warnings": []
+  },
+  "scenarios": {
+    "increment": {
+      "scenario": "increment",
+      "status": "ok",
+      "ok": true,
+      "metric": "msToMutation",
+      "n": 10,
+      "samples": [
+        27,
+        25.4,
+        24.5,
+        25.7,
+        27,
+        21.4,
+        26.1,
+        24.2,
+        26,
+        24.7
+      ],
+      "median": 25.55,
+      "p25": 24.55,
+      "p75": 26.075,
+      "iqr": 1.525,
+      "min": 21.4,
+      "max": 27,
+      "unit": "ms",
+      "toPaint": {
+        "n": 10,
+        "samples": [
+          33,
+          31.4,
+          30.7,
+          31.9,
+          33.3,
+          27.7,
+          32.4,
+          30.6,
+          32.2,
+          30.8
+        ],
+        "median": 31.65,
+        "p25": 30.725,
+        "p75": 32.35,
+        "iqr": 1.625,
+        "min": 27.7,
+        "max": 33.3,
+        "unit": "ms",
+        "note": "msToMutation plus one requestAnimationFrame + setTimeout(0). The predicate resolves in a MutationObserver microtask at an arbitrary phase of the vsync cycle, so this carries a 0-16.7ms additive offset contributed by the display refresh and this harness, NOT by the framework. Its IQR is largely vsync phase jitter. Never compare frameworks on this number; it is reported so the ~16ms quantum is visibly the harness's."
+      },
+      "failureCount": 0,
+      "failures": [],
+      "diagnostics": {
+        "transferredBytesToInteractive": [
+          1885505,
+          1885505,
+          1885505,
+          1885505,
+          1885505,
+          1885505,
+          1885505,
+          1885505,
+          1885505,
+          1885505
+        ],
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    }
+  }
+}

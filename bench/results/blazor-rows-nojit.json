@@ -1,0 +1,584 @@
+{
+  "schemaVersion": 2,
+  "label": "blazor-rows-nojit",
+  "app": "rows",
+  "url": "http://127.0.0.1:61865/",
+  "servedDir": "/Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-rows-nojit/wwwroot",
+  "startedAt": "2026-07-16T10:51:12.853Z",
+  "finishedAt": "2026-07-16T10:52:59.373Z",
+  "ok": true,
+  "contractCheck": {
+    "problems": [],
+    "observed": {
+      "rowCount": 1000,
+      "cellsPerRow": 2,
+      "row1Id": "2",
+      "row998Id": "999",
+      "row990Label": "clean orange cookie",
+      "first5": [
+        "adorable pink desk",
+        "unsightly purple sandwich",
+        "large brown sandwich",
+        "important brown house",
+        "mushy red desk"
+      ],
+      "row1000": "important white pizza",
+      "updateMissedCount": 0,
+      "swap": {
+        "before": {
+          "id1": "2",
+          "id998": "999"
+        },
+        "after": {
+          "id1": "999",
+          "id998": "2"
+        }
+      },
+      "rowCountAfterClear": 0
+    }
+  },
+  "expectedLabels": {
+    "path": "expected-labels.json",
+    "sha256": "72733c72c80a1a6d5c984d0468ce421bd294babcbfe218a100f3290d38006168"
+  },
+  "environment": {
+    "machine": {
+      "hostname": "Mac",
+      "model": "Mac17,6",
+      "cpu": "Apple M5 Max",
+      "cpuCount": 18,
+      "arch": "arm64",
+      "totalMemBytes": 68719476736
+    },
+    "os": {
+      "platform": "darwin",
+      "release": "25.5.0",
+      "version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
+      "productVersion": "26.5.1"
+    },
+    "chrome": {
+      "channel": "chrome",
+      "version": "150.0.7871.124",
+      "headless": true
+    },
+    "dotnetSdk": "10.0.301",
+    "node": "v26.5.0",
+    "playwright": "1.61.1",
+    "aot": false,
+    "harnessVersion": "1.1.0"
+  },
+  "config": {
+    "runs": 10,
+    "warmup": 1,
+    "weightRuns": 3,
+    "actionTimeoutMs": 10000,
+    "networkQuietMs": 2000,
+    "maxSettleMs": 30000,
+    "serviceWorkers": "block",
+    "maxEncoding": "gzip",
+    "encodingNote": "Negotiation CAPPED at \"gzip\" via --max-encoding, so the transferred bytes are gzip bytes and are labelled as such. Chrome accepts brotli, and an uncapped run would transfer measurably fewer bytes; this cap therefore makes the weight a CONSERVATIVE (upper-bound) figure. Any framework compared against it must be measured under the same cap.",
+    "compression": "Content negotiated per request, smallest encoding the client accepts: brotli before gzip. Precompressed sibling (.br/.gz) when present, else on-the-fly at publish-equivalent quality (brotli q11 / gzip level 9). Eligibility is a denylist of already-compressed formats, so an unanticipated extension is compressed rather than silently shipped raw."
+  },
+  "protocol": {
+    "weight": "Transferred bytes = sum of CDP Network.loadingFinished.encodedDataLength (falling back to Network.responseReceived header bytes + summed Network.dataReceived.encodedDataLength when loadingFinished reports 0) over every request, from navigation until the app-ready contract hook is clickable AND the network has been idle for networkQuietMs. This is wire bytes, not disk size and not decompressed size. Cold cache is enforced three ways: a fresh BrowserContext per iteration, CDP Network.setCacheDisabled, and Cache-Control: no-store from the server.",
+    "timing": "All timestamps are taken in-page. A click is followed by a MutationObserver-driven wait for a DOM predicate; the clock stops INSIDE the observer callback at the instant the predicate is observed true (msToMutation, the headline metric). Frame boundaries are never used as a proxy for completion, so an asynchronously dispatched handler (e.g. Blazor @onclick) cannot produce a fabricated sub-millisecond time. msToPaint additionally waits one requestAnimationFrame + setTimeout(0); because the predicate resolves at an arbitrary phase of the vsync cycle, msToPaint carries a 0-16.7ms offset contributed by the display and the harness rather than the framework, and is reported separately so it can never be mistaken for framework cost. A predicate already true before the click is rejected as vacuous. A predicate that does not become true within actionTimeoutMs throws and is recorded as a failure, never as a number. An iteration whose network has not gone idle is a failure too, not a silently inflated sample.",
+    "predicates": "Scenario predicates are TOTAL: #update requires all 100 targeted rows to carry the suffix and sampled non-targeted rows to lack it; #swaprows requires BOTH index 1 and index 998 to hold the other's original id. A partial implementation times out as a failure rather than stopping the clock early and reporting the shortfall as speed.",
+    "workloadEquality": "verifyContract asserts the deterministic Park-Miller label stream (expected-labels.json, hash recorded above) against rows 0-4 and 999, and exercises #update, #swaprows and #clear untimed, asserting their full post-conditions. An app that emits constant labels, updates fewer rows, or duplicates instead of swapping is refused with exit code 3 rather than reported as fast.",
+    "statistics": "MEDIAN and IQR (p75 - p25) over `runs` iterations, using linear-interpolation quantiles (type 7, the numpy/R default). The mean is never reported.",
+    "agnosticism": "This harness contains no framework-specific code path. Only --dir/--route change between frameworks; every app is driven exclusively through the shared DOM contract."
+  },
+  "weight": {
+    "unit": "bytes",
+    "method": "CDP Network.loadingFinished.encodedDataLength summed across all requests from navigation until app-interactive AND network idle",
+    "toInteractive": {
+      "n": 3,
+      "samples": [
+        1889184,
+        1889184,
+        1889184
+      ],
+      "median": 1889184,
+      "p25": 1889184,
+      "p75": 1889184,
+      "iqr": 0,
+      "min": 1889184,
+      "max": 1889184
+    },
+    "afterFirstInteraction": {
+      "n": 3,
+      "samples": [
+        1889184,
+        1889184,
+        1889184
+      ],
+      "median": 1889184,
+      "p25": 1889184,
+      "p75": 1889184,
+      "iqr": 0,
+      "min": 1889184,
+      "max": 1889184
+    },
+    "lazyLoadedOnInteractionBytes": 0,
+    "decodedBytesMedianRun": 4837084,
+    "requestCount": 40,
+    "bytesByOrigin": {
+      "http://127.0.0.1:61865": 1889184
+    },
+    "topRequests": [
+      {
+        "url": "http://127.0.0.1:61865/_framework/dotnet.native.kllr7zg72l.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 583040,
+        "decodedBytes": 1494734,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/System.Private.CoreLib.jw831hd0hr.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 573109,
+        "decodedBytes": 1483541,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/System.Text.Json.w0tmafab2t.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 150203,
+        "decodedBytes": 371477,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/Microsoft.AspNetCore.Components.dctgwdnaq3.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 73955,
+        "decodedBytes": 173333,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/dotnet.runtime.a6jcqbs390.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 57575,
+        "decodedBytes": 198479,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/dotnet.native.wzggwzarq4.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 51473,
+        "decodedBytes": 215277,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/Microsoft.AspNetCore.Components.WebAssembly.s6iwm2sohi.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 48773,
+        "decodedBytes": 118037,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/System.Private.Uri.psv6khwmxi.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 28813,
+        "decodedBytes": 62229,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/Microsoft.AspNetCore.Components.Web.mawyhb1u6m.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 23263,
+        "decodedBytes": 55573,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/Microsoft.Extensions.DependencyInjection.pdq83eroqe.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 22962,
+        "decodedBytes": 46869,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/System.Collections.Immutable.nw1is97ns6.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 22771,
+        "decodedBytes": 50965,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/Microsoft.JSInterop.n4v9gvxr8f.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 21400,
+        "decodedBytes": 45845,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/System.Runtime.InteropServices.JavaScript.8iglodhrwt.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19939,
+        "decodedBytes": 43285,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/System.Diagnostics.DiagnosticSource.vxwxhhpftd.wasm",
+        "type": "Fetch",
+        "status": 200,
+        "mimeType": "application/wasm",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19410,
+        "decodedBytes": 39701,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:61865/_framework/blazor.webassembly.958z1vx7fr.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "gzip",
+        "transferredBytes": 19171,
+        "decodedBytes": 60576,
+        "redirectCount": 0
+      }
+    ],
+    "crossCheck": {
+      "cdpTransferredBytes": 1889184,
+      "serverBodyBytes": 1878372,
+      "serverRequestCount": 40,
+      "deltaBytes": 10812,
+      "note": "CDP counts wire bytes (compressed body + response headers); the server counts body bytes only. delta ~= response header overhead. A negative delta or a delta far larger than ~300 B/request indicates a measurement problem."
+    },
+    "serverEncodings": {
+      "gzip": {
+        "responses": 39,
+        "bytes": 1877224
+      },
+      "identity": {
+        "responses": 1,
+        "bytes": 1148
+      }
+    },
+    "untrackedRequests": [],
+    "warnings": []
+  },
+  "scenarios": {
+    "create": {
+      "scenario": "create",
+      "status": "ok",
+      "ok": true,
+      "metric": "msToMutation",
+      "n": 10,
+      "samples": [
+        37.4,
+        35.5,
+        35.3,
+        36.4,
+        30.4,
+        37.1,
+        30.6,
+        29.6,
+        37,
+        33.4
+      ],
+      "median": 35.4,
+      "p25": 31.3,
+      "p75": 36.85,
+      "iqr": 5.55,
+      "min": 29.6,
+      "max": 37.4,
+      "unit": "ms",
+      "toPaint": {
+        "n": 10,
+        "samples": [
+          50.6,
+          48.4,
+          48,
+          50.1,
+          43.1,
+          51.7,
+          43.1,
+          42.9,
+          50.7,
+          46.7
+        ],
+        "median": 48.2,
+        "p25": 44,
+        "p75": 50.475,
+        "iqr": 6.475,
+        "min": 42.9,
+        "max": 51.7,
+        "unit": "ms",
+        "note": "msToMutation plus one requestAnimationFrame + setTimeout(0). The predicate resolves in a MutationObserver microtask at an arbitrary phase of the vsync cycle, so this carries a 0-16.7ms additive offset contributed by the display refresh and this harness, NOT by the framework. Its IQR is largely vsync phase jitter. Never compare frameworks on this number; it is reported so the ~16ms quantum is visibly the harness's."
+      },
+      "failureCount": 0,
+      "failures": [],
+      "diagnostics": {
+        "transferredBytesToInteractive": [
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184
+        ],
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    },
+    "update": {
+      "scenario": "update",
+      "status": "ok",
+      "ok": true,
+      "metric": "msToMutation",
+      "n": 10,
+      "samples": [
+        13,
+        13.1,
+        13,
+        12.6,
+        12.4,
+        12.4,
+        13.1,
+        13,
+        12.9,
+        12.3
+      ],
+      "median": 12.95,
+      "p25": 12.45,
+      "p75": 13,
+      "iqr": 0.55,
+      "min": 12.3,
+      "max": 13.1,
+      "unit": "ms",
+      "toPaint": {
+        "n": 10,
+        "samples": [
+          29.4,
+          23.7,
+          24.9,
+          22.1,
+          28.6,
+          29.1,
+          22.6,
+          25.5,
+          22.7,
+          24.2
+        ],
+        "median": 24.55,
+        "p25": 22.95,
+        "p75": 27.825,
+        "iqr": 4.875,
+        "min": 22.1,
+        "max": 29.4,
+        "unit": "ms",
+        "note": "msToMutation plus one requestAnimationFrame + setTimeout(0). The predicate resolves in a MutationObserver microtask at an arbitrary phase of the vsync cycle, so this carries a 0-16.7ms additive offset contributed by the display refresh and this harness, NOT by the framework. Its IQR is largely vsync phase jitter. Never compare frameworks on this number; it is reported so the ~16ms quantum is visibly the harness's."
+      },
+      "failureCount": 0,
+      "failures": [],
+      "diagnostics": {
+        "transferredBytesToInteractive": [
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184
+        ],
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    },
+    "swap": {
+      "scenario": "swap",
+      "status": "ok",
+      "ok": true,
+      "metric": "msToMutation",
+      "n": 10,
+      "samples": [
+        12.2,
+        12.5,
+        12.4,
+        12.4,
+        12,
+        14.5,
+        13.2,
+        14,
+        13.7,
+        13.3
+      ],
+      "median": 12.85,
+      "p25": 12.4,
+      "p75": 13.6,
+      "iqr": 1.2,
+      "min": 12,
+      "max": 14.5,
+      "unit": "ms",
+      "toPaint": {
+        "n": 10,
+        "samples": [
+          31,
+          29.2,
+          30.6,
+          24.7,
+          23.7,
+          25.9,
+          30.9,
+          26.6,
+          25.1,
+          28.4
+        ],
+        "median": 27.5,
+        "p25": 25.3,
+        "p75": 30.25,
+        "iqr": 4.95,
+        "min": 23.7,
+        "max": 31,
+        "unit": "ms",
+        "note": "msToMutation plus one requestAnimationFrame + setTimeout(0). The predicate resolves in a MutationObserver microtask at an arbitrary phase of the vsync cycle, so this carries a 0-16.7ms additive offset contributed by the display refresh and this harness, NOT by the framework. Its IQR is largely vsync phase jitter. Never compare frameworks on this number; it is reported so the ~16ms quantum is visibly the harness's."
+      },
+      "failureCount": 0,
+      "failures": [],
+      "diagnostics": {
+        "transferredBytesToInteractive": [
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184
+        ],
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    },
+    "clear": {
+      "scenario": "clear",
+      "status": "ok",
+      "ok": true,
+      "metric": "msToMutation",
+      "n": 10,
+      "samples": [
+        4,
+        4,
+        3.9,
+        4.2,
+        3.9,
+        4.3,
+        4.4,
+        4.2,
+        4.1,
+        4.1
+      ],
+      "median": 4.1,
+      "p25": 4,
+      "p75": 4.2,
+      "iqr": 0.2,
+      "min": 3.9,
+      "max": 4.4,
+      "unit": "ms",
+      "toPaint": {
+        "n": 10,
+        "samples": [
+          13.3,
+          13.1,
+          12.5,
+          12.7,
+          13.1,
+          13.5,
+          13.6,
+          12.9,
+          13,
+          14.4
+        ],
+        "median": 13.1,
+        "p25": 12.925,
+        "p75": 13.45,
+        "iqr": 0.525,
+        "min": 12.5,
+        "max": 14.4,
+        "unit": "ms",
+        "note": "msToMutation plus one requestAnimationFrame + setTimeout(0). The predicate resolves in a MutationObserver microtask at an arbitrary phase of the vsync cycle, so this carries a 0-16.7ms additive offset contributed by the display refresh and this harness, NOT by the framework. Its IQR is largely vsync phase jitter. Never compare frameworks on this number; it is reported so the ~16ms quantum is visibly the harness's."
+      },
+      "failureCount": 0,
+      "failures": [],
+      "diagnostics": {
+        "transferredBytesToInteractive": [
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184,
+          1889184
+        ],
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    }
+  }
+}

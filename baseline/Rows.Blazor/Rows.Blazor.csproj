@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+
+    <!-- Size-sensitive app: drop ICU globalization data and trim the framework.
+         PublishTrimmed is already the SDK default for a Release publish of a
+         Blazor WASM app; it is stated explicitly so the baseline's configuration
+         is self-documenting rather than implicit. Everything else (TrimMode,
+         compression, no AOT) is left at SDK defaults on purpose.
+
+         This PropertyGroup is identical in both baseline apps by design: if one
+         app declared a size-affecting flag and the other inherited it from an SDK
+         default, the C2 weight baseline would rest on an implicit default that a
+         future SDK could change under one app only.
+
+         RunAOTCompilation is deliberately ABSENT. It is passed on the command line
+         by bench/publish-baseline.sh so that one source tree produces both the AOT
+         and the non-AOT config. Baking it in here would make the two configs
+         incomparable. See DECISIONS.md #9. -->
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PublishTrimmed>true</PublishTrimmed>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.9" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.9" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

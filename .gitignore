@@ -1,0 +1,20 @@
+bin/
+obj/
+node_modules/
+dist/
+.DS_Store
+*.user
+test-results/
+playwright-report/
+
+# Publish output: regenerable from source via bench/publish-baseline.sh.
+# Multi-megabyte wasm; never committed.
+bench/publish/
+
+# bench/results/ is DELIBERATELY NOT ignored. Those JSON files are the measured
+# evidence behind BENCH.md -- the whole point of the baseline. Ignoring them was
+# the reproducibility gap flagged as BENCH.md open reserve #4.
+# Everything under bench/results/ except the .json evidence stays out:
+bench/results/*
+!bench/results/
+!bench/results/*.json

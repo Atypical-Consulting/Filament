@@ -1,0 +1,125 @@
+<div id="main">
+    <button id="run" @onclick="Run">Create 1000 rows</button>
+    <button id="update" @onclick="Update">Update every 10th row</button>
+    <button id="swaprows" @onclick="SwapRows">Swap Rows</button>
+    <button id="clear" @onclick="Clear">Clear</button>
+    <table>
+        <tbody id="tbody">
+            @* The row markup is deliberately kept on a single line. Razor only strips
+               whitespace adjacent to code blocks, NOT between sibling elements, so any
+               newline/indent between the two <td>s would be emitted as a real text node
+               (plus a Blazor <!--!--> marker) and break the shared DOM contract. *@
+            @foreach (Row row in _rows)
+            {
+                <tr @key="row.Id"><td class="col-md-1">@row.Id</td><td class="col-md-4"><a class="lbl">@row.Label</a></td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    // Row type: mutable Label so #update can rewrite it in place.
+    record Row
+    {
+        public int Id { get; set; }
+        public string Label { get; set; } = "";
+    }
+
+    List<string> _adjectives = new List<string>
+    {
+        "pretty", "large", "big", "small", "tall", "short", "long", "handsome",
+        "plain", "quaint", "clean", "elegant", "easy", "angry", "crazy", "helpful",
+        "mushy", "odd", "unsightly", "adorable", "important", "inexpensive",
+        "cheap", "expensive", "fancy"
+    };
+
+    List<string> _colours = new List<string>
+    {
+        "red", "yellow", "blue", "green", "pink", "brown", "purple", "brown",
+        "white", "black", "orange"
+    };
+
+    List<string> _nouns = new List<string>
+    {
+        "table", "chair", "house", "bbq", "desk", "car", "pony", "cookie",
+        "sandwich", "burger", "pizza", "mouse", "keyboard"
+    };
+
+    List<Row> _rows = new List<Row>();
+
+    // Monotonically increasing row id. Starts at 1, NEVER reset.
+    int _nextId = 1;
+
+    // Park-Miller LCG in double arithmetic so C# and JS produce a byte-identical
+    // label stream. 16807 * 2^31 ~= 3.6e13 < 2^53, so every intermediate product
+    // is exactly representable as a double in BOTH languages. Do not "optimise"
+    // this to int/long: it would overflow differently and break cross-language
+    // parity, which is the whole point.
+    //
+    // Seeded here at field-initialiser time, i.e. once per page load. It is
+    // deliberately NOT reset per #run click.
+    double _seed = 42.0;
+
+    double Next()
+    {
+        _seed = (_seed * 16807.0) % 2147483647.0;
+        return _seed;
+    }
+
+    // Draws exactly three times, in this order: adjective, colour, noun.
+    string NextLabel()
+    {
+        int a = (int)(Next() % 25.0);
+        int c = (int)(Next() % 11.0);
+        int n = (int)(Next() % 13.0);
+        return _adjectives[a] + " " + _colours[c] + " " + _nouns[n];
+    }
+
+    void AddRow()
+    {
+        Row row = new Row();
+        row.Id = _nextId;
+        row.Label = NextLabel();
+        _nextId += 1;
+        _rows.Add(row);
+    }
+
+    // #run -> replace tbody contents with exactly 1000 fresh rows.
+    void Run()
+    {
+        Clear();
+        for (int i = 0; i < 1000; i++)
+        {
+            AddRow();
+        }
+    }
+
+    // #update -> append " !!!" to every 10th row's label (cumulative).
+    void Update()
+    {
+        for (int i = 0; i < _rows.Count; i += 10)
+        {
+            _rows[i].Label += " !!!";
+        }
+    }
+
+    // #swaprows -> swap the row objects at index 1 and index 998.
+    void SwapRows()
+    {
+        if (_rows.Count > 998)
+        {
+            Row tmp = _rows[1];
+            _rows[1] = _rows[998];
+            _rows[998] = tmp;
+        }
+    }
+
+    // #clear -> remove all rows.
+    void Clear()
+    {
+        for (int i = _rows.Count - 1; i >= 0; i--)
+        {
+            _rows.RemoveAt(i);
+        }
+    }
+}
