@@ -69,7 +69,78 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.2.0';
+export const HARNESS_VERSION = '1.3.0';
+
+// ---------------------------------------------------------------------------
+// Harness identity.
+//
+// WHY THIS EXISTS. HARNESS_VERSION was hand-maintained and stayed '1.2.0' across a
+// 701-line change to this file that added the C3 instruments and the strict row-markup
+// check. Two results therefore both claimed "1.2.0" while having been produced by
+// materially different harnesses, and the version string in the JSON asserted they were
+// comparable when they were not. Nothing detected it, because nothing could: a human has
+// to remember to bump a constant, and the one time it mattered, nobody did.
+//
+// A hash cannot be forgotten. It is computed from the bytes that actually ran, every run,
+// so two results are comparable if and only if their hashes match — a property a reader
+// can CHECK rather than trust. HARNESS_VERSION stays for human legibility, but it is the
+// claim; the hash is the evidence.
+//
+// SCOPE. The files whose bytes decide what a number MEANS:
+//   bench.mjs          - the driver, the timing primitive, and inPageHarness() (the
+//                        in-page harness is a function in this file, so its bytes are
+//                        covered here; there is no separate in-page asset to miss).
+//   server.mjs         - negotiation, compression levels, cache headers. Changing brotli
+//                        quality changes every weight number without touching bench.mjs.
+//   expected-labels.json - the golden fixture defines the workload every framework is
+//                        held to. Widening the gate changes what "the same work" means.
+//
+// Deliberately EXCLUDED: selftest.mjs (never on the measurement path) and package*.json
+// (the Playwright/Chrome versions that matter are already observed into `environment`).
+// ---------------------------------------------------------------------------
+export const HARNESS_SOURCE_FILES = ['bench.mjs', 'server.mjs', 'expected-labels.json'];
+
+/**
+ * Content hash of the harness sources.
+ *
+ * Per-file digests are reported alongside the aggregate so a mismatch is diagnosable
+ * ("server.mjs moved, bench.mjs didn't") instead of merely detectable. The aggregate is
+ * taken over `name:sha256` lines sorted by name, so it depends on the files' content and
+ * nothing else — not on absolute paths, not on read order, not on the machine.
+ *
+ * Throws rather than degrading. A run that cannot establish its own identity must stop:
+ * a result carrying a null hash is exactly the unfalsifiable claim this replaces.
+ */
+export async function computeHarnessIdentity(dir = HARNESS_DIR) {
+  const files = {};
+  for (const name of [...HARNESS_SOURCE_FILES].sort()) {
+    let bytes;
+    try {
+      bytes = await fsp.readFile(path.join(dir, name));
+    } catch (e) {
+      throw new Error(
+        `bench.mjs: cannot read harness source ${name} at ${path.join(dir, name)} (${e.code || e.message}). ` +
+        'The harness content hash gates cross-result comparability and must never be skipped.',
+      );
+    }
+    files[name] = crypto.createHash('sha256').update(bytes).digest('hex');
+  }
+  const canonical = Object.keys(files)
+    .sort()
+    .map((n) => `${n}:${files[n]}`)
+    .join('\n');
+  return {
+    version: HARNESS_VERSION,
+    sha256: crypto.createHash('sha256').update(canonical).digest('hex'),
+    files,
+    note:
+      'sha256 is taken over the sorted "name:sha256" lines of the files in `files`. Two results are ' +
+      'like-for-like comparable IFF this value matches. HARNESS_VERSION is hand-maintained and has ' +
+      'already been observed to go stale across a breaking harness change; it is a label, not evidence. ' +
+      'Compare the hash.',
+  };
+}
+
 /**
  * 3: `create` -> `create-cold` + `create-warm`, `increment` -> `increment-cold` +
  *    `increment-warm`; `weight.decodedBytesMedianRun` -> `decodedBytesRepresentativeRun`
@@ -347,8 +418,14 @@ const SCENARIO_SPECS = {
 function inPageHarness() {
   if (window.__FILAMENT_BENCH__) return;
 
-  // Row cell accessors. Kept as textContent lookups so a framework is free to wrap
-  // the label in an <a>/<span> without changing the contract.
+  // Row cell accessors, used by the TIMING predicates. Deliberately loose
+  // textContent lookups: a predicate's job is to stop the clock the instant the
+  // post-condition holds, and it must not also be a markup validator.
+  //
+  // The markup IS validated, exactly once per run and strictly, by
+  // checkRowMarkup() below. Keeping the two separate is the point — see the
+  // comment there for why "loose predicate + strict one-shot gate" is the right
+  // split rather than an inconsistency.
   const ROW_ID_CELL = 'td:nth-child(1)';
   const ROW_LABEL_CELL = 'td:nth-child(2)';
 
@@ -556,6 +633,261 @@ function inPageHarness() {
     });
   }
 
+  // -------------------------------------------------------------------------
+  // STRICT row-markup contract check.
+  //
+  // The gate this replaces asked only for `cellsPerRow >= 2` and then read
+  // `td:nth-child(n).textContent`. An auditor found the hole: that admits ANY
+  // row with two-or-more cells whose text happens to match. Filament could emit
+  //
+  //     <tr><td>1</td><td>adorable pink desk</td></tr>
+  //
+  // — no classes, no nested <a> — pass every gate, and post a create-warm win
+  // against Blazor's markup. Blazor builds 1000 <a class="lbl"> elements and
+  // 2000 class attributes that Filament would simply not have built. That is
+  // ~3000 fewer DOM nodes/attributes per #run: a large, invisible discount on
+  // the exact number C4 is decided by.
+  //
+  // So the markup is asserted EXACTLY, against the shared contract:
+  //
+  //   <tr><td class="col-md-1">{id}</td><td class="col-md-4"><a class="lbl">{label}</a></td></tr>
+  //
+  // Verified against the published Blazor apps before being written: their rows
+  // are byte-identical to the line above — exactly two <td> element children,
+  // no stray text nodes, no Razor comment markers. (RowsApp.razor keeps the row
+  // on ONE line precisely to avoid emitting whitespace text nodes; this check is
+  // what makes that discipline load-bearing instead of decorative.) If this ever
+  // fails on Blazor, the check is wrong, not Blazor.
+  //
+  // Note the asymmetry this closes runs one way only: extra nodes are MORE work,
+  // never less. This check refuses them anyway, because "exactly" is what the
+  // contract says and a row with extra cells is not the row both frameworks
+  // agreed to render.
+  // -------------------------------------------------------------------------
+  const ROW_MARKUP_CONTRACT =
+    '<tr><td class="col-md-1">{id}</td><td class="col-md-4"><a class="lbl">{label}</a></td></tr>';
+
+  function describeNode(n) {
+    if (n.nodeType === 1) {
+      return '<' + n.tagName.toLowerCase() + (n.className ? ' class="' + n.className + '"' : '') + '>';
+    }
+    if (n.nodeType === 3) return '#text ' + JSON.stringify(n.nodeValue);
+    if (n.nodeType === 8) return '#comment ' + JSON.stringify(n.nodeValue);
+    return '#node(' + n.nodeType + ')';
+  }
+
+  /**
+   * Returns an array of problem strings — empty means the markup conforms.
+   * Checks a SAMPLE of row indices rather than row 0 alone: an app that builds
+   * the contract's markup for the first row and something cheaper for the other
+   * 999 is precisely the cheat worth catching, and it costs nothing to look.
+   */
+  function checkRowMarkup(indices) {
+    const problems = [];
+    const t = tbody();
+    if (!t) return ['#tbody not found'];
+
+    for (const i of indices) {
+      const row = t.children[i];
+      if (!row) { problems.push(`row ${i}: does not exist`); continue; }
+      const at = (msg) => `row ${i}: ${msg}`;
+
+      if (row.tagName !== 'TR') {
+        problems.push(at(`is <${row.tagName.toLowerCase()}>; the contract requires <tr>`));
+        continue;
+      }
+      // childNodes, not just children: a text node or a framework comment marker
+      // between the two <td>s is a real node the other framework did not emit.
+      if (row.children.length !== 2 || row.childNodes.length !== 2) {
+        problems.push(at(
+          `has ${row.children.length} element child(ren) / ${row.childNodes.length} child node(s) ` +
+          `[${Array.prototype.map.call(row.childNodes, describeNode).join(', ')}]; the contract is ` +
+          'EXACTLY two <td> elements and nothing else',
+        ));
+        continue;
+      }
+
+      const td1 = row.children[0];
+      const td2 = row.children[1];
+
+      if (td1.tagName !== 'TD') {
+        problems.push(at(`cell 1 is <${td1.tagName.toLowerCase()}>; the contract requires <td>`));
+      } else {
+        if (td1.className !== 'col-md-1') {
+          problems.push(at(`cell 1 has class ${JSON.stringify(td1.className)}; the contract requires "col-md-1"`));
+        }
+        if (td1.children.length !== 0) {
+          problems.push(at(
+            `cell 1 contains ${td1.children.length} element(s) ` +
+            `[${Array.prototype.map.call(td1.children, describeNode).join(', ')}]; the contract puts the ` +
+            'id in a bare text node',
+          ));
+        }
+      }
+
+      if (td2.tagName !== 'TD') {
+        problems.push(at(`cell 2 is <${td2.tagName.toLowerCase()}>; the contract requires <td>`));
+        continue;
+      }
+      if (td2.className !== 'col-md-4') {
+        problems.push(at(`cell 2 has class ${JSON.stringify(td2.className)}; the contract requires "col-md-4"`));
+      }
+      if (td2.children.length !== 1 || td2.childNodes.length !== 1) {
+        problems.push(at(
+          `cell 2 has ${td2.children.length} element child(ren) / ${td2.childNodes.length} child node(s) ` +
+          `[${Array.prototype.map.call(td2.childNodes, describeNode).join(', ')}]; the contract requires ` +
+          'EXACTLY one <a class="lbl"> holding the label, and nothing else. A label written straight into ' +
+          'the <td> skips 1000 <a> elements per #run that the other framework builds.',
+        ));
+        continue;
+      }
+      const a = td2.children[0];
+      if (a.tagName !== 'A') {
+        problems.push(at(`cell 2 wraps the label in <${a.tagName.toLowerCase()}>; the contract requires <a>`));
+      } else if (a.className !== 'lbl') {
+        problems.push(at(`cell 2's <a> has class ${JSON.stringify(a.className)}; the contract requires "lbl"`));
+      }
+      if (a.children && a.children.length !== 0) {
+        problems.push(at(`cell 2's <a> contains ${a.children.length} element(s); the contract requires text only`));
+      }
+    }
+    return problems;
+  }
+
+  // -------------------------------------------------------------------------
+  // C3 INSTRUMENT (a): framework-agnostic DOM-write counter.
+  //
+  // C3 asks for "exactly 1 DOM write per counter increment, 0 render-tree
+  // allocation, VERIFIED BY INSTRUMENTATION". A runtime-reported counter
+  // (`__filament.stats`) cannot verify that: it is the defendant's own account
+  // of its own conduct, it cannot be wrong in any way the runtime does not
+  // already know about, and — decisively — it does not exist on Blazor, so it
+  // cannot say whether 1 write is good, ordinary, or worse than the baseline.
+  //
+  // A MutationObserver is the independent instrument. It is the browser's own
+  // record of what happened to the DOM, it runs byte-identically on Blazor and
+  // on Filament, and it turns C3 from a self-report into a COMPARISON.
+  //
+  // ROOT: document.body, subtree:true. Deliberately the widest root available
+  // rather than #app or #counter-value. A narrow root is a way to not-see
+  // writes, and the framework under test must not get to pick where we look. A
+  // wider root can only ever count MORE, never less.
+  //
+  // "WRITE" is defined and reported two ways, because MutationRecord count and
+  // DOM-write count are not the same number and conflating them would be its own
+  // fabrication: one childList record can carry 50 addedNodes. So:
+  //   records — MutationRecord objects delivered.
+  //   writes  — childList: addedNodes + removedNodes; characterData: 1;
+  //             attributes: 1. This is the C3 number.
+  //
+  // SETTLE: after the predicate holds we wait a rAF + a macrotask before taking
+  // the final records. A framework that writes the value and then tidies up
+  // afterwards has done those writes too, and stopping at the predicate would
+  // hide exactly the writes C3 is about.
+  // -------------------------------------------------------------------------
+  function readFilamentStats() {
+    const f = window.__filament;
+    if (!f || typeof f !== 'object' || !f.stats || typeof f.stats !== 'object') return null;
+    const s = f.stats;
+    const out = { present: true, domWrites: null, raw: {} };
+    for (const k of Object.keys(s)) {
+      if (typeof s[k] === 'number') out.raw[k] = s[k];
+    }
+    if (typeof s.domWrites === 'number') out.domWrites = s.domWrites;
+    return out;
+  }
+
+  async function countDomWrites(btnSelector, predSpec, rootSelector, timeoutMs, settleMs) {
+    const predicate = makePredicate(predSpec);
+    const btn = document.querySelector(btnSelector);
+    if (!btn) throw new Error('button not found: ' + btnSelector);
+    const root = document.querySelector(rootSelector);
+    if (!root) throw new Error('DOM-write observe root not found: ' + rootSelector);
+    if (predicate()) {
+      throw new Error(
+        'predicate already satisfied before click (' + predSpec.kind + '); refusing to report a vacuous 0 writes',
+      );
+    }
+
+    const records = [];
+    const mo = new MutationObserver((rs) => { for (const r of rs) records.push(r); });
+    mo.observe(root, { childList: true, subtree: true, characterData: true, attributes: true });
+
+    const statsBefore = readFilamentStats();
+    let timedOut = false;
+    try {
+      btn.click();
+      await waitForCondition(predicate, rootSelector, timeoutMs);
+    } catch (e) {
+      timedOut = true;
+    }
+    // Catch trailing writes the framework makes after the post-condition holds.
+    await new Promise((r) => requestAnimationFrame(() => setTimeout(r, settleMs)));
+    for (const r of mo.takeRecords()) records.push(r);
+    mo.disconnect();
+    const statsAfter = readFilamentStats();
+
+    let writes = 0;
+    const byType = { childList: 0, characterData: 0, attributes: 0 };
+    const detail = [];
+    for (const r of records) {
+      byType[r.type] = (byType[r.type] || 0) + 1;
+      const w = r.type === 'childList' ? (r.addedNodes.length + r.removedNodes.length) : 1;
+      writes += w;
+      if (detail.length < 25) {
+        const t = r.target;
+        detail.push({
+          type: r.type,
+          target: t.nodeType === 1
+            ? t.tagName.toLowerCase() + (t.id ? '#' + t.id : '')
+            : '#text in <' + (t.parentNode && t.parentNode.tagName
+              ? t.parentNode.tagName.toLowerCase() + (t.parentNode.id ? '#' + t.parentNode.id : '')
+              : '?') + '>',
+          attributeName: r.attributeName || null,
+          added: r.addedNodes.length,
+          removed: r.removedNodes.length,
+        });
+      }
+    }
+
+    return { records: records.length, writes, byType, detail, timedOut, statsBefore, statsAfter };
+  }
+
+  /**
+   * Drives N increments back-to-back, awaiting each one's DOM effect. Used by the
+   * allocation probe, where the per-increment signal is only separable from noise
+   * across many iterations.
+   *
+   * Deliberately allocation-frugal: no per-iteration closures beyond the one
+   * Promise the await needs, no array building, no string templates. Whatever this
+   * loop allocates is charged to the framework's number, so it is kept small and —
+   * more importantly — kept IDENTICAL for every framework, which is what makes the
+   * comparison survive the offset.
+   */
+  async function driveIncrements(n, timeoutMs) {
+    const el = document.querySelector('#counter-value');
+    const btn = document.querySelector('#increment');
+    if (!el || !btn) throw new Error('counter app not found (#counter-value / #increment)');
+    for (let i = 0; i < n; i++) {
+      const want = String(Number(el.textContent.trim()) + 1);
+      btn.click();
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve, reject) => {
+        const t0 = performance.now();
+        const tick = () => {
+          if (el.textContent.trim() === want) { resolve(); return; }
+          if (performance.now() - t0 > timeoutMs) {
+            reject(new Error('driveIncrements: increment ' + i + ' did not land within ' + timeoutMs + 'ms'));
+            return;
+          }
+          setTimeout(tick, 0);
+        };
+        tick();
+      });
+    }
+    return el.textContent.trim();
+  }
+
   window.__FILAMENT_BENCH__ = {
     measure,
     settleBeat,
@@ -565,7 +897,11 @@ function inPageHarness() {
     rowId: (i) => rowText(i, ROW_ID_CELL),
     rowLabel: (i) => rowText(i, ROW_LABEL_CELL),
     rowCount: () => { const t = tbody(); return t ? t.children.length : -1; },
-    contract: { ROW_ID_CELL, ROW_LABEL_CELL },
+    checkRowMarkup,
+    countDomWrites,
+    readFilamentStats,
+    driveIncrements,
+    contract: { ROW_ID_CELL, ROW_LABEL_CELL, ROW_MARKUP_CONTRACT },
   };
 }
 
@@ -1172,10 +1508,27 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
       const tb = document.querySelector('#tbody');
       out.observed.rowCount = tb.children.length;
       out.observed.cellsPerRow = tb.children[0] ? tb.children[0].children.length : 0;
-      if (out.observed.cellsPerRow < 2) {
+
+      // ---- STRICT row markup (fairness gate) --------------------------------
+      // Sampled across the run, not just row 0: "correct first row, cheaper other
+      // 999" is a cheat worth the five extra lookups. 998/999 are included because
+      // #swaprows and the label oracle both read the tail.
+      const MARKUP_INDICES = [0, 1, 2, 500, 998, 999];
+      const markupProblems = B.checkRowMarkup(MARKUP_INDICES);
+      out.observed.rowMarkup = {
+        contract: B.contract.ROW_MARKUP_CONTRACT,
+        checkedIndices: MARKUP_INDICES,
+        row0outerHTML: tb.children[0] ? tb.children[0].outerHTML : null,
+        conforms: markupProblems.length === 0,
+      };
+      if (markupProblems.length) {
         out.problems.push(
-          `rows expose ${out.observed.cellsPerRow} cell(s); the contract needs >= 2 ` +
-          '(cell 1 = id, cell 2 = label)',
+          `the row markup does not match the shared DOM contract. Required, EXACTLY:\n    ` +
+          `${B.contract.ROW_MARKUP_CONTRACT}\n  Observed at row 0:\n    ` +
+          `${out.observed.rowMarkup.row0outerHTML}\n  Violations:\n    ` +
+          `${markupProblems.join('\n    ')}\n  Both frameworks must render byte-equivalent DOM or the ` +
+          'comparison is void: every element and attribute one framework skips is work it is not doing ' +
+          'and the other one is.',
         );
         return out;
       }
@@ -1779,6 +2132,315 @@ async function measureWeight(browser, url, app, opts, server) {
 }
 
 // ---------------------------------------------------------------------------
+// C3: "exactly 1 DOM write per counter increment, 0 render-tree allocation,
+//      verified by instrumentation"
+//
+// Two independent instruments, plus a cross-check against the runtime's own
+// self-report. Both instruments run byte-identically on Blazor and on Filament,
+// which is the entire design goal: a criterion verified only by the runtime that
+// claims to meet it has not been verified, and — because Blazor exposes no such
+// counter — a self-report also cannot say whether the claimed number is any good.
+// C3 is only meaningful as a comparison, so the instruments must be able to
+// measure the framework that never heard of them.
+// ---------------------------------------------------------------------------
+
+/** Sampling interval for HeapProfiler. See ALLOCATION_SCOPE_CAVEAT for why 1024. */
+export const ALLOC_SAMPLING_INTERVAL_BYTES = 1024;
+
+/**
+ * The honest limits of the allocation probe, emitted verbatim into every result.
+ *
+ * This is the caveat the brief asked for rather than a soft number, and it is not
+ * a hedge — it is the finding. The probe is a ONE-SIDED test: rigorous for
+ * Filament, structurally blind for Blazor. Anyone quoting a Filament-vs-Blazor
+ * allocation ratio from this field is quoting an artifact of where the two
+ * frameworks keep their heaps.
+ */
+export const ALLOCATION_SCOPE_CAVEAT = [
+  'SCOPE: JavaScript heap only. This probe is V8\'s sampling allocation profiler, so it sees',
+  'allocations made by JavaScript and nothing else.',
+  '',
+  'FOR FILAMENT this is complete and the claim is falsifiable. Filament\'s runtime IS JavaScript,',
+  'so every allocation its increment path makes is a JS-heap allocation and appears here. At',
+  'N=1000 increments and a 1024 B sampling interval, even 32 B/increment would surface as ~32 KB',
+  '— far above the observed noise floor. A "0 tree allocation" claim that is false will show up.',
+  '',
+  'FOR BLAZOR IT IS NOT A MEASUREMENT OF THE RENDER TREE, AND MUST NEVER BE QUOTED AS ONE.',
+  'Blazor\'s render tree — RenderTreeFrame buffers, the diff, the .NET object graph — is allocated',
+  'inside the WebAssembly linear memory backing the .NET GC heap. To V8 that entire heap is ONE',
+  'ArrayBuffer: the JS sampling profiler cannot see individual .NET allocations within it and',
+  'reports none of them. What this probe measures on Blazor is only the JS-side interop glue',
+  '(dotnet.runtime.js marshalling, UTF8ArrayToString, js-to-wasm thunks) — see topSites, which is',
+  'reported precisely so this claim can be checked rather than believed.',
+  '',
+  'CONSEQUENCE: bytesPerIncrement UNDER-REPORTS Blazor by an unknown amount. "Filament 0 B vs',
+  'Blazor N B" is therefore NOT a C3 result — it is a comparison between Filament\'s total',
+  'allocation and Blazor\'s interop-glue-only subset. The correct reading: this probe can prove or',
+  'refute FILAMENT\'s half of C3, and is silent on Blazor\'s. Quantifying Blazor\'s render-tree',
+  'allocation needs a .NET-side instrument (GC.GetTotalAllocatedBytes via a [JSExport] probe, or',
+  'dotnet-counters), which is not built here.',
+  '',
+  'The number also includes a constant per-iteration cost from the harness\'s own drive loop, which',
+  'the two-point slope below cancels only insofar as that cost is constant in N. It is IDENTICAL',
+  'for every framework, so it biases both the same way and cannot manufacture a difference.',
+].join('\n');
+
+/**
+ * Sum selfSize across a HeapProfiler sampling profile, and attribute the bytes to
+ * their allocation sites.
+ *
+ * topSites is not decoration: it is the evidence for ALLOCATION_SCOPE_CAVEAT. On
+ * Blazor every heavy site is dotnet.runtime.js / UTF8ArrayToString / js-to-wasm —
+ * i.e. interop glue, not a render tree. That is what "the profiler cannot see the
+ * .NET heap" looks like from the outside, and it is checkable here rather than
+ * taken on trust.
+ */
+export function summarizeSamplingProfile(profile) {
+  let total = 0;
+  const byFn = new Map();
+  const walk = (node) => {
+    const self = node.selfSize || 0;
+    total += self;
+    if (self > 0) {
+      const cf = node.callFrame || {};
+      const file = String(cf.url || '').split('/').pop() || '(unknown)';
+      const key = `${cf.functionName || '(anonymous)'} @ ${file}:${cf.lineNumber ?? '?'}`;
+      byFn.set(key, (byFn.get(key) || 0) + self);
+    }
+    for (const c of node.children || []) walk(c);
+  };
+  walk(profile.head);
+  const topSites = [...byFn.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([site, bytes]) => ({ site, bytes }));
+  return { totalBytes: total, topSites };
+}
+
+/**
+ * Bytes allocated per increment, by TWO-POINT SLOPE.
+ *
+ * A single N-increment measurement folds in every fixed cost of the sample —
+ * enabling the profiler, the evaluate() round trip, the first-call tiering of the
+ * drive loop. Measuring at two values of N and taking the slope
+ *
+ *     (bytes(nHigh) - bytes(nLow)) / (nHigh - nLow)
+ *
+ * cancels everything constant in N, which is the only reason the residual is small
+ * enough to interpret. Repeated, and reported as a MEDIAN of slopes — never a mean
+ * — for the same reason this file never means anything else: one GC-timing outlier
+ * would otherwise carry the number.
+ *
+ * Measured spread on Blazor at N=1000 was 90.4 vs 111.8 B/increment across two
+ * identical samples (~24%). That is the noise this instrument actually has, and it
+ * is why a small non-zero reading here is not evidence of anything. A ~0 reading
+ * against that floor, on the other hand, is a real result.
+ */
+async function measureAllocationPerIncrement(ctx, opts) {
+  const { page, cdp } = ctx;
+  const nLow = opts.c3AllocNLow;
+  const nHigh = opts.c3AllocNHigh;
+  const repeats = opts.c3AllocRepeats;
+
+  await cdp.send('HeapProfiler.enable');
+  const sampleAt = async (n) => {
+    // Force a collection so the sample starts from a settled heap and cannot
+    // inherit garbage from the previous one.
+    await cdp.send('HeapProfiler.collectGarbage');
+    await cdp.send('HeapProfiler.startSampling', {
+      samplingInterval: ALLOC_SAMPLING_INTERVAL_BYTES,
+      // LOAD-BEARING, AND NOT THE DEFAULT. Per the CDP contract: "By default, the
+      // sampling heap profiler reports only objects which are still alive when the
+      // profile is returned." Render-tree garbage is by definition NOT still alive
+      // — it is allocated, used for one diff, and dropped. With these flags off,
+      // this probe reports only what SURVIVED, which is the same retained-heap
+      // quantity a snapshot delta gives, and it reports ~0 for a framework that
+      // allocates hard and collects hard.
+      //
+      // That is not a hypothetical. Before these two flags were added, the probe
+      // reported 88.0 B/increment for a fixture allocating ~2 KB/increment and
+      // 81.7 B/increment for one allocating nothing — a 7% "difference" between
+      // 2 KB and 0 B. It would have passed C3's "0 tree allocation" for ANY
+      // framework, including one allocating megabytes, and it would have looked
+      // completely reasonable doing it. The ground-truth fixtures are the only
+      // reason it was caught.
+      includeObjectsCollectedByMajorGC: true,
+      includeObjectsCollectedByMinorGC: true,
+    });
+    await page.evaluate(
+      ([k, t]) => window.__FILAMENT_BENCH__.driveIncrements(k, t),
+      [n, opts.actionTimeoutMs],
+    );
+    const { profile } = await cdp.send('HeapProfiler.stopSampling');
+    return summarizeSamplingProfile(profile);
+  };
+
+  // Discarded warm-up. The first sample carries the drive loop's own tiering and
+  // reads ~5x the steady-state figure (549 B/incr vs ~100 B/incr, measured) — a
+  // number that describes V8 warming up, not the framework.
+  await sampleAt(nLow);
+
+  const slopes = [];
+  const samples = [];
+  let lastTopSites = [];
+  for (let i = 0; i < repeats; i++) {
+    // eslint-disable-next-line no-await-in-loop
+    const lo = await sampleAt(nLow);
+    // eslint-disable-next-line no-await-in-loop
+    const hi = await sampleAt(nHigh);
+    lastTopSites = hi.topSites;
+    const slope = (hi.totalBytes - lo.totalBytes) / (nHigh - nLow);
+    slopes.push(slope);
+    samples.push({ nLow, lowBytes: lo.totalBytes, nHigh, highBytes: hi.totalBytes, bytesPerIncrement: slope });
+  }
+  await cdp.send('HeapProfiler.disable').catch(() => {});
+
+  const s = summarize(slopes.slice().sort((a, b) => a - b));
+  return {
+    method:
+      'CDP HeapProfiler.startSampling (V8 sampling allocation profiler: allocation THROUGHPUT, ' +
+      'including garbage later collected — not retained-heap growth). Two-point slope over N to ' +
+      'cancel fixed per-sample cost; median of repeated slopes. HeapProfiler.collectGarbage between samples.',
+    whyNotHeapSnapshotDelta:
+      'A snapshot delta measures RETAINED growth. A framework that allocates a render tree per ' +
+      'increment and drops it shows ~0 retained growth while allocating heavily — so a snapshot ' +
+      'delta would report "0 allocation" for exactly the behaviour C3 exists to detect, and would ' +
+      'report it as a PASS. Allocation throughput is the quantity C3 names.',
+    samplingIntervalBytes: ALLOC_SAMPLING_INTERVAL_BYTES,
+    nLow,
+    nHigh,
+    repeats,
+    bytesPerIncrement: { median: s.median, min: s.min, max: s.max, samples: slopes },
+    rawSamples: samples,
+    topSites: lastTopSites,
+    scope: 'javascript-heap-only',
+    caveat: ALLOCATION_SCOPE_CAVEAT,
+  };
+}
+
+/**
+ * The C3 run. Counter app only — C3 is defined per counter increment.
+ *
+ * Sequence: fresh page, one UNTIMED warm-up increment (so a lazily-booted runtime
+ * does its one-time DOM setup outside the counted window — Blazor's boot would
+ * otherwise be charged as hundreds of "DOM writes" and the criterion would read as
+ * a catastrophic fail for reasons that have nothing to do with per-increment
+ * behaviour), an idle beat, then each counted increment.
+ */
+async function measureC3(browser, url, app, opts) {
+  if (app !== 'counter') return null;
+
+  return withFreshPage(browser, opts, async (ctx) => {
+    await loadAndSettleStrict(ctx, url, app, opts);
+
+    // Untimed warm-up: boot the runtime. Same rationale as every *-warm scenario.
+    await actUntimed(
+      ctx.page,
+      '#increment',
+      { kind: 'textEquals', args: { selector: '#counter-value', expected: '1' } },
+      APPS.counter.observeSelector,
+      opts.actionTimeoutMs,
+    );
+    await idleBeat(ctx.page, opts);
+
+    // ---- instrument (a): MutationObserver, N consecutive increments ---------
+    // N>1 because "1 write on the first increment, 3 on every one after" is a
+    // real shape (first click populates, later clicks patch) and a single-sample
+    // instrument would report the flattering one.
+    const perIncrement = [];
+    for (let i = 0; i < opts.c3Increments; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      const expected = String(2 + i);
+      // eslint-disable-next-line no-await-in-loop
+      const r = await ctx.page.evaluate(
+        ([root, want, t, settle]) => window.__FILAMENT_BENCH__.countDomWrites(
+          '#increment',
+          { kind: 'textEquals', args: { selector: '#counter-value', expected: want } },
+          root,
+          t,
+          settle,
+        ),
+        [opts.c3ObserveRoot, expected, opts.actionTimeoutMs, opts.c3SettleMs],
+      );
+      perIncrement.push(r);
+      // eslint-disable-next-line no-await-in-loop
+      await idleBeat(ctx.page, opts);
+    }
+
+    const writes = perIncrement.map((r) => r.writes);
+    const records = perIncrement.map((r) => r.records);
+    const anyTimedOut = perIncrement.some((r) => r.timedOut);
+
+    // ---- (b): cross-check against the runtime's self-report -----------------
+    // Disagreement is a FINDING, reported loudly and never reconciled: if the two
+    // instruments disagree, at least one of them is wrong, and silently preferring
+    // either would destroy the only evidence that something is off.
+    const statsSeen = perIncrement.some((r) => r.statsAfter && r.statsAfter.present);
+    let statsCrossCheck = null;
+    if (statsSeen) {
+      const deltas = perIncrement.map((r) => {
+        const a = r.statsBefore && typeof r.statsBefore.domWrites === 'number' ? r.statsBefore.domWrites : null;
+        const b = r.statsAfter && typeof r.statsAfter.domWrites === 'number' ? r.statsAfter.domWrites : null;
+        return a === null || b === null ? null : b - a;
+      });
+      const comparable = deltas.every((d) => d !== null);
+      const agrees = comparable && deltas.every((d, i) => d === writes[i]);
+      statsCrossCheck = {
+        present: true,
+        selfReportedDomWritesPerIncrement: deltas,
+        observedDomWritesPerIncrement: writes,
+        agrees,
+        finding: comparable
+          ? (agrees
+            ? 'The runtime\'s self-reported __filament.stats.domWrites matches the independent '
+              + 'MutationObserver count on every increment.'
+            : 'DISAGREEMENT: __filament.stats.domWrites does NOT match the MutationObserver count. '
+              + 'One of the two is wrong and this result does not say which. Either the runtime is '
+              + 'under-counting its own writes (the self-report is not measuring what it claims), or '
+              + 'it is writing the DOM by a path its counter does not instrument. NOT reconciled here '
+              + 'on purpose: a harness that quietly picks a winner deletes the finding.')
+          : 'INCONCLUSIVE: __filament is present but exposes no numeric stats.domWrites, so the '
+            + 'self-report could not be compared. The MutationObserver count stands alone.',
+      };
+    }
+
+    const first = perIncrement[0] || null;
+    return {
+      criterion: 'C3: exactly 1 DOM write per counter increment, 0 render-tree allocation',
+      domWrites: {
+        method:
+          'MutationObserver on ' + opts.c3ObserveRoot + ' with {childList, subtree, characterData, ' +
+          'attributes}, counted across ONE #increment click and a trailing rAF + ' + opts.c3SettleMs +
+          'ms settle. Framework-agnostic: identical code runs on Blazor and on Filament.',
+        observeRoot: opts.c3ObserveRoot,
+        whyThisRoot:
+          'The widest root available, deliberately. A narrow root (#app, #counter-value) is a way to ' +
+          'not-see writes, and the framework under test must not choose where the instrument looks. ' +
+          'A wider root can only over-count, never under-count.',
+        writeDefinition:
+          'childList: addedNodes + removedNodes; characterData: 1; attributes: 1. Reported ' +
+          'separately from `records` because one MutationRecord can carry many added nodes — ' +
+          'conflating the two would be its own fabrication.',
+        increments: opts.c3Increments,
+        writesPerIncrement: writes,
+        recordsPerIncrement: records,
+        medianWrites: summarize(writes.slice().sort((a, b) => a - b)).median,
+        byType: first ? first.byType : null,
+        firstIncrementDetail: first ? first.detail : null,
+        timedOut: anyTimedOut,
+        verdict: anyTimedOut
+          ? 'INVALID: at least one increment did not land within the timeout; the counts below are not trustworthy.'
+          : (writes.every((w) => w === 1)
+            ? 'Exactly 1 DOM write on every counted increment.'
+            : `NOT exactly 1 DOM write per increment: observed ${JSON.stringify(writes)}.`),
+      },
+      statsCrossCheck,
+      allocation: opts.c3Alloc ? await measureAllocationPerIncrement(ctx, opts) : null,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // AOT verification.
 //
 // `--aot` is a SELF-DECLARATION typed by whoever launched the run. Recorded
@@ -2056,7 +2718,12 @@ async function captureEnvironment(browser, opts) {
     aotDeclared: opts.aot,
     aotObserved: null,
     aotVerification: null,
+    // Hand-maintained; kept for continuity and legibility. Known to have gone stale
+    // across a breaking change. Not evidence — see `harness` for the checkable identity.
     harnessVersion: HARNESS_VERSION,
+    // Computed from the bytes that actually ran. This is what makes "same harness"
+    // a checkable claim rather than an assertion.
+    harness: await computeHarnessIdentity(),
   };
 }
 
@@ -2101,6 +2768,24 @@ function parseArgs(argv) {
     // (so the setup has been through layout+paint) then a macrotask of at least
     // this long, so post-render bookkeeping cannot land inside the measured window.
     idleBeatMs: 50,
+    // ---- C3 -----------------------------------------------------------------
+    // Off by default: C3 is a separate question from C1/C4 and the allocation
+    // probe is slow. Never folded into a normal run, so a C4 timing can never be
+    // taken on a page the profiler has been sampling.
+    c3: false,
+    // The allocation probe is the slowest part by far (~2 * repeats * nHigh
+    // increments). Separately switchable so the cheap DOM-write instrument can be
+    // run on its own.
+    c3Alloc: false,
+    c3Increments: 5,
+    // document.body: the widest root available. See measureC3's whyThisRoot.
+    c3ObserveRoot: 'body',
+    // Trailing settle after the predicate holds, to catch writes a framework makes
+    // AFTER the value lands. 60 ms > one 16.7 ms frame with room to spare.
+    c3SettleMs: 60,
+    c3AllocNLow: 200,
+    c3AllocNHigh: 1000,
+    c3AllocRepeats: 3,
   };
   const asInt = (v, name) => {
     const n = Number.parseInt(v, 10);
@@ -2137,6 +2822,13 @@ function parseArgs(argv) {
       case '--quiet-ms': o.quietMs = asInt(next(), '--quiet-ms'); break;
       case '--max-settle-ms': o.maxSettleMs = asInt(next(), '--max-settle-ms'); break;
       case '--idle-beat-ms': o.idleBeatMs = asInt(next(), '--idle-beat-ms'); break;
+      case '--c3': o.c3 = true; break;
+      case '--c3-alloc': o.c3 = true; o.c3Alloc = true; break;
+      case '--c3-increments': o.c3Increments = asInt(next(), '--c3-increments'); break;
+      case '--c3-observe-root': o.c3ObserveRoot = next(); break;
+      case '--c3-alloc-n-low': o.c3AllocNLow = asInt(next(), '--c3-alloc-n-low'); break;
+      case '--c3-alloc-n-high': o.c3AllocNHigh = asInt(next(), '--c3-alloc-n-high'); break;
+      case '--c3-alloc-repeats': o.c3AllocRepeats = asInt(next(), '--c3-alloc-repeats'); break;
       case '--help': case '-h': o.help = true; break;
       default: throw new Error(`bench.mjs: unknown argument ${a}`);
     }
@@ -2193,6 +2885,31 @@ Optional:
                       session, so this under-reports weight and lets the network read
                       as idle mid-download. Only use it if you intend to measure the
                       service worker itself, and read weight.untrackedRequests.
+
+C3 (--app counter only; ignored otherwise):
+  --c3                run the framework-agnostic DOM-write instrument: a
+                      MutationObserver over --c3-observe-root counts the DOM writes
+                      caused by ONE #increment. Identical code runs on Blazor and on
+                      Filament, so C3 is reported as a COMPARISON rather than as a
+                      framework's self-report. When the page exposes
+                      __filament.stats.domWrites, the self-report is cross-checked
+                      against the observed count and any disagreement is reported as
+                      a finding, never silently reconciled.
+  --c3-alloc          --c3 plus the allocation probe (V8 sampling allocation
+                      profiler, two-point slope over N increments). SLOW.
+                      READ c3.allocation.caveat BEFORE QUOTING ITS NUMBER: it
+                      measures the JS heap only, so it is complete for Filament and
+                      STRUCTURALLY BLIND to Blazor's .NET render tree, which lives in
+                      WASM linear memory. It can refute Filament's "0 tree
+                      allocation" claim; it cannot quantify Blazor's allocation, and
+                      a ratio between the two is not a C3 result.
+  --c3-increments <n> increments to count, default 5 (>1 because "1 write on the
+                      first, 3 on every one after" is a real shape)
+  --c3-observe-root <sel>
+                      MutationObserver root, default body — deliberately the widest
+                      root available. A narrow root is a way to not-see writes.
+  --c3-alloc-n-low <n> / --c3-alloc-n-high <n> / --c3-alloc-repeats <n>
+                      slope endpoints and repeat count, default 200 / 1000 / 3
 `;
 
 export async function main(argv) {
@@ -2210,6 +2927,23 @@ export async function main(argv) {
   }
   if (opts.runs < 1) {
     process.stderr.write('bench.mjs: --runs must be >= 1\n');
+    return 2;
+  }
+  if (opts.c3 && opts.c3Increments < 1) {
+    process.stderr.write('bench.mjs: --c3-increments must be >= 1\n');
+    return 2;
+  }
+  // A non-positive span would divide by zero (or negative) in the slope and emit a
+  // confident Infinity/NaN as "bytes per increment".
+  if (opts.c3Alloc && opts.c3AllocNHigh <= opts.c3AllocNLow) {
+    process.stderr.write(
+      `bench.mjs: --c3-alloc-n-high (${opts.c3AllocNHigh}) must be > --c3-alloc-n-low (${opts.c3AllocNLow}); ` +
+      'the allocation probe is a two-point slope over that span.\n',
+    );
+    return 2;
+  }
+  if (opts.c3Alloc && opts.c3AllocRepeats < 1) {
+    process.stderr.write('bench.mjs: --c3-alloc-repeats must be >= 1\n');
     return 2;
   }
 
@@ -2314,6 +3048,41 @@ export async function main(argv) {
       );
     }
 
+    // C3 runs on its OWN page, before the timed scenarios and never during one:
+    // the allocation probe leaves V8's sampling profiler enabled and forces GCs,
+    // and a C4 median taken under either would be measuring the instrument.
+    let c3 = null;
+    if (opts.c3) {
+      if (opts.app !== 'counter') {
+        process.stderr.write(
+          `[bench] --c3 ignored: C3 is defined per COUNTER increment and --app is "${opts.app}".\n`,
+        );
+      } else {
+        c3 = await measureC3(browser, url, opts.app, opts);
+        process.stderr.write(
+          `\n[bench] C3 DOM writes/increment (MutationObserver on ${c3.domWrites.observeRoot}, ` +
+          `framework-agnostic): ${JSON.stringify(c3.domWrites.writesPerIncrement)}\n` +
+          `[bench]   ${c3.domWrites.verdict}\n`,
+        );
+        if (c3.statsCrossCheck && !c3.statsCrossCheck.agrees) {
+          process.stderr.write(
+            `[bench] ${'='.repeat(76)}\n` +
+            '[bench] C3 CROSS-CHECK DISAGREEMENT: the runtime\'s self-reported\n' +
+            `[bench]   __filament.stats.domWrites = ${JSON.stringify(c3.statsCrossCheck.selfReportedDomWritesPerIncrement)}\n` +
+            `[bench]   MutationObserver observed   = ${JSON.stringify(c3.statsCrossCheck.observedDomWritesPerIncrement)}\n` +
+            '[bench] One of the two is wrong. NOT reconciled — see c3.statsCrossCheck.finding.\n' +
+            `[bench] ${'='.repeat(76)}\n`,
+          );
+        }
+        if (c3.allocation) {
+          process.stderr.write(
+            `[bench] C3 allocation: ${c3.allocation.bytesPerIncrement.median} B/increment ` +
+            `(JS heap ONLY — see c3.allocation.caveat; this does NOT see Blazor's .NET render tree)\n`,
+          );
+        }
+      }
+    }
+
     const scenarios = {};
     for (const scenario of selectedScenarios) {
       // eslint-disable-next-line no-await-in-loop
@@ -2353,6 +3122,8 @@ export async function main(argv) {
       finishedAt: new Date().toISOString(),
       ok: !anyFailed,
       contractCheck: contract,
+      // null unless --c3 was passed. Its absence is not evidence about C3.
+      c3,
       // The fixture that defines "the same workload". Recorded so a later edit to
       // expected-labels.json is visible in the output rather than silently
       // redefining what every framework is being held to.

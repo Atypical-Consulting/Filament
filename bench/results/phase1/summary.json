@@ -1,0 +1,188 @@
+{
+  "entry": "Phase 1 gate — Filament vs committed Blazor baseline (BENCH.md entry #2)",
+  "measuredAt": "2026-07-16T16:16:55Z/16:26:10Z",
+  "harnessVersion": "1.2.0",
+  "harnessNote": "Same harness version (1.2.0) as BENCH.md entry #2, so Filament and the baseline it is compared to were produced by the same timed path. bench.mjs/server.mjs were NOT modified for Filament: no framework branch was added.",
+  "environment": {
+    "machine": "Apple M5 Max (Mac17,6), 18 cores, 64 GiB, arm64",
+    "os": "macOS 26.5.1 (build 25F80), Darwin 25.5.0",
+    "chrome": "150.0.7871.124, headless, via Playwright 1.61.1",
+    "node": "v26.5.0",
+    "dotnetSdk": "10.0.301",
+    "identicalToBaseline": true
+  },
+  "quiescence": {
+    "loadAverage1m": 1.69,
+    "loadAverage5m": 2.05,
+    "loadAverage15m": 2.11,
+    "power": "AC, battery charged, pmset -g therm reports no thermal or power warning",
+    "topConsumers": [
+      "logioptionsplus_agent ~34.7% CPU",
+      "OrbStack Helper ~29.1% CPU"
+    ],
+    "honestAssessment": "NOT fully quiesced, but materially QUIETER than BENCH.md entry #2 (load 1.69 vs 3.8-7.2). The runaway koine-mcp processes (~2 full cores, ~27 GB RSS) that contaminated entry #2 are GONE. Occupied capacity ~0.64 of 18 cores (~3.5%), comparable to entry #1's ~2.3% and far below entry #2's ~14%. Nothing was killed; all processes belong to the user. Runs were STRICTLY SEQUENTIAL, never parallel (timestamps 16:16:55 -> 16:26:10, non-overlapping)."
+  },
+  "protocol": {
+    "coldCache": "New BrowserContext per iteration + CDP Network.setCacheDisabled + server Cache-Control: no-store. Proven, not asserted: weight IQR = 0 across all 3 weight runs in all 4 configs (a warm cache would have collapsed it).",
+    "weight": "Sum of CDP Network.loadingFinished encodedDataLength across all requests, navigation until contract hook interactive AND network idle. Wire bytes, NOT disk size, NOT decompressed.",
+    "timing": "In-page msToMutation: clock stops inside the MutationObserver callback at the instant the DOM predicate becomes true. Never msToPaint (carries a 0-16.7 ms vsync offset that is the harness's, not the framework's).",
+    "statistics": "MEDIAN + IQR (p75-p25), n=10. Never the mean.",
+    "encodingParity": "Filament measured under BOTH --max-encoding gzip and --max-encoding br, the same two bases as the baseline. Encoding verified honored on the wire: 3/3 responses gzip in gzip runs, 3/3 br in br runs. No Filament-brotli vs Blazor-gzip comparison is made anywhere.",
+    "serviceWorkers": "blocked (default); untrackedRequests empty in every run",
+    "freshBuild": "All 4 Filament labels rebuilt from scratch (publish dirs deleted first) via bench/build-filament.sh before measuring."
+  },
+  "productionBundleStatsAbsence": {
+    "claim": "The stats/instrumentation code is absent from the production bundle measured for C1.",
+    "verifiedFromArtifact": true,
+    "evidence": {
+      "filament-counter/app.js": { "filament:stats": 0, "__filament": 0, "bytes": 2770 },
+      "filament-rows/app.js": { "filament:stats": 0, "__filament": 0, "bytes": 5806 },
+      "filament-counter-stats/app.js": { "filament:stats": 1, "__filament": 2, "bytes": 61301 },
+      "filament-rows-stats/app.js": { "filament:stats": 1, "__filament": 2, "bytes": 95576 }
+    },
+    "note": "Verified independently by grepping the built artifact, not by trusting the --define flag. The marker is present in the instrumented bundles (proving the C3 run measures real instrumentation, not a no-op) and absent from the production bundles (proving dead-code elimination fired). Precompressed .gz/.br siblings decompress byte-identically to their raw sources (sha256 match, 6/6 files), so serving a sibling is not serving different content."
+  },
+  "C1": {
+    "criterion": "Filament demo app must transfer < 10 ko gzip",
+    "basis": "gzip, CDP wire bytes, cold cache, median of 3 weight runs (IQR = 0)",
+    "results": {
+      "filament-counter": { "gzipBytes": 2864, "brotliBytes": 2494, "requests": 3, "iqr": 0 },
+      "filament-rows": { "gzipBytes": 4243, "brotliBytes": 3794, "requests": 3, "iqr": 0 }
+    },
+    "verdictVs10000": { "filament-counter": "PASS (7136 B headroom, 3.49x under)", "filament-rows": "PASS (5757 B headroom, 2.36x under)" },
+    "verdictVs10240": { "filament-counter": "PASS (7376 B headroom)", "filament-rows": "PASS (5997 B headroom)" },
+    "specAmbiguityResolved": "PASS under BOTH readings of '10 ko'. The 10,000 B vs 10,240 B ambiguity is immaterial here: the larger app clears the STRICTER (10,000 B) reading with 2.36x of headroom, so no interpretation of the threshold changes the verdict.",
+    "passes": true
+  },
+  "C2": {
+    "criterion": "50x lighter than the Blazor baseline; brotli headline basis",
+    "target": "31,068 B brotli (Blazor rows-nojit 1,553,388 B / 50)",
+    "results": {
+      "filament-rows": { "brotliBytes": 3794, "targetBytes": 31068, "passes": true, "actualRatioVsBlazorRowsNojit": "409.4x", "marginUnderTarget": "8.19x" },
+      "filament-counter": { "brotliBytes": 2494, "targetBytes": 31032, "passes": true, "actualRatioVsBlazorCounterNojit": "622.2x" }
+    },
+    "gzipBasis": { "rowsRatio": "445.0x", "counterRatio": "658.4x" },
+    "note": "Passes automatically because C1 passed, exactly as BENCH.md entry #2 predicted. The measured ratio (409x rows / 622x counter, brotli) exceeds the 50x requirement by ~8-12x. Judged against the HARD target (nojit, the smallest Blazor bundle), never the permissive AOT target.",
+    "passes": true
+  },
+  "C3": {
+    "criterion": "exactly 1 DOM write per counter increment, 0 render-tree allocation",
+    "instrument": "Framework-agnostic MutationObserver on body {childList, subtree, characterData, attributes}. Identical code runs on Blazor and Filament. Widest root available — a narrow root is a way to not-see writes.",
+    "domWrites": {
+      "filament": { "writesPerIncrement": [1,1,1,1,1], "median": 1, "byType": { "characterData": 1, "childList": 0, "attributes": 0 }, "detail": "characterData on #text in <span#counter-value>" },
+      "blazor": { "writesPerIncrement": [1,1,1,1,1], "median": 1 },
+      "finding": "HONEST FINDING: Blazor ALSO performs exactly 1 DOM write per increment. Filament MEETS C3's DOM-write requirement, but this half of C3 is NOT a differentiator against Blazor on the counter scenario — Blazor's diff produces a minimal characterData write too. Filament's advantage on the counter is in HOW it reaches that write (see allocation), not in the write count."
+    },
+    "statsCrossCheck": {
+      "present": true,
+      "selfReported": [1,1,1,1,1],
+      "observed": [1,1,1,1,1],
+      "agrees": true,
+      "note": "__filament.stats.domWrites matches the independent MutationObserver count on every increment. The self-report is corroborated, not trusted."
+    },
+    "allocation": {
+      "method": "CDP HeapProfiler.startSampling (V8 sampling allocation profiler: allocation THROUGHPUT including garbage later collected). Two-point slope over N=200->1000 to cancel fixed cost; median of 3 repeats.",
+      "filamentProductionBytesPerIncrement": 335.2,
+      "filamentInstrumentedBytesPerIncrement": 312.97,
+      "blazorBytesPerIncrement": 2769.005,
+      "decisiveEvidence": "ATTRIBUTION, not magnitude. Filament's top allocation sites are 100% the HARNESS's own drive loop: driveIncrements @ (unknown):450, Promise, (anonymous):458, tick @ (unknown):460, evaluate:296, V8 API, BYTECODE_COMPILER. NOT ONE FRAME from app.js appears. Blazor's top sites are 100% ITS OWN JS: mo @ dotnet.runtime.js (546 KB), invokeDotNetMethodAsync @ blazor.webassembly.js (406 KB), dispatchGlobalEventToAllElements (270 KB), subarray (179 KB), applyEdits @ blazor.webassembly.js (175 KB).",
+      "controlForHarnessFloor": "The production build (335.2 B, no instrumentation, minified) and the instrumented build (312.97 B, unminified + inline sourcemap) agree within their own spread (236-363 B). If Filament's increment path allocated a render tree, the two builds would differ and app.js frames would appear in the profile. Neither happens. The ~335 B/increment IS the harness's per-increment drive cost, identical for every framework, and Blazor's 2769 B sits ON TOP of that same floor.",
+      "filamentTreeAllocation": "~0 — SUPPORTED. The caveat states the probe is COMPLETE for Filament (its runtime IS JavaScript; at N=1000 and a 1024 B sampling interval even 32 B/increment would surface as ~32 KB). A false '0 tree allocation' claim would show up. It does not.",
+      "blazorCaveat": "The probe is STRUCTURALLY BLIND to Blazor's .NET render tree, which lives in WASM linear memory (one ArrayBuffer to V8). Blazor's 2769 B/increment is its JS interop glue ALONE and UNDER-REPORTS by an unknown amount. 'Filament ~0 B vs Blazor 2769 B' is NOT a C3 result and must never be quoted as one. Quantifying Blazor's render-tree allocation needs a .NET-side instrument that is not built here."
+    },
+    "passes": true,
+    "verdict": "PASS. Exactly 1 DOM write per increment, verified by instrumentation and cross-checked against the self-report. ~0 tree allocation supported by attribution: no Filament frame appears in the allocation profile at all."
+  },
+  "C4": {
+    "criterion": "must not be SLOWER than Blazor AOT (the hard target). Warm headline, msToMutation median, n=10.",
+    "basis": "brotli (the baseline's headline basis); gzip runs also recorded",
+    "measurementQuantum": "0.1 ms (Chrome performance.now clamp, visible directly in the raw samples)",
+    "scenarios": [
+      { "scenario": "create-warm", "filamentMedianMs": 4.00, "filamentIqr": 0.8, "filamentGzipMedianMs": 3.7, "blazorAotMedianMs": 7.35, "blazorNoJitMedianMs": 13.70, "notSlowerThanAot": true, "speedupVsAot": "1.8x", "floorLimited": false, "quanta": 40 },
+      { "scenario": "update", "filamentMedianMs": 0.30, "filamentIqr": 0.075, "filamentGzipMedianMs": 0.3, "blazorAotMedianMs": 3.60, "blazorNoJitMedianMs": 12.60, "notSlowerThanAot": true, "speedupVsAot": "12.0x", "floorLimited": false, "quanta": 3, "note": "Only 3 quanta above the timer floor: the RATIO is coarse, the verdict is not." },
+      { "scenario": "swap", "filamentMedianMs": 0.40, "filamentIqr": 0.1, "filamentGzipMedianMs": 0.4, "blazorAotMedianMs": 3.45, "blazorNoJitMedianMs": 12.65, "notSlowerThanAot": true, "speedupVsAot": "8.6x", "floorLimited": false, "quanta": 4, "note": "Only 4 quanta above the timer floor: the RATIO is coarse, the verdict is not." },
+      { "scenario": "clear", "filamentMedianMs": 1.30, "filamentIqr": 0.075, "filamentGzipMedianMs": 1.35, "blazorAotMedianMs": 2.90, "blazorNoJitMedianMs": 4.20, "notSlowerThanAot": true, "speedupVsAot": "2.2x", "floorLimited": false, "quanta": 13 },
+      { "scenario": "increment-warm", "filamentMedianMs": 0.00, "filamentIqr": 0.0, "filamentGzipMedianMs": 0.1, "blazorAotMedianMs": 1.00, "blazorNoJitMedianMs": 1.30, "notSlowerThanAot": true, "speedupVsAot": ">10x (LOWER BOUND ONLY)", "floorLimited": true, "quanta": 0, "rawSamplesBr": [0,0.1,0,0.1,0,0,0,0,0,0], "rawSamplesGzip": [0,0.1,0,0.1,0.1,0,0.1,0.1,0,0.1], "note": "FLOOR-LIMITED but NOT A TIE. See floorAnalysis." }
+    ],
+    "floorAnalysis": {
+      "warningPremise": "The task warned that the harness's paint-wait apparatus may bottom out near ~1 ms, which would report ~1 ms for BOTH frameworks and show a tie that is not a tie.",
+      "premiseRefutedByData": true,
+      "howRefuted": "The harness resolves FAR below 1 ms. Filament reads 0.00 ms (brotli) / 0.10 ms (gzip) on increment-warm, and 0.30/0.40 ms on update/swap. The instrument is therefore NOT floor-limited at ~1 ms, and Blazor's committed 1.00 ms is a REAL reading, not an artifact. No false tie occurred: Filament is genuinely and measurably below Blazor on every scenario.",
+      "whatISfloorLimited": "Filament's OWN increment-warm value. Its median is 0.00 ms with IQR 0.00 against a 0.1 ms timer quantum — i.e. AT/BELOW the instrument's resolution. Filament's true increment cost is unresolvable: all that can be said is that it is < ~0.1 ms.",
+      "honestConsequence": "The floor limits the ability to QUANTIFY Filament's advantage on increment-warm, NOT to establish it. C4 asks 'not slower' and the answer is unambiguously yes. But '>10x faster than Blazor AOT' is a LOWER BOUND derived from the timer quantum, not a measured ratio, and must never be quoted as a measured speedup.",
+      "notReportedAsParity": "This is explicitly NOT reported as evidence that Filament is no faster than Blazor — the opposite. It is reported as evidence that Filament is faster by an amount the instrument cannot measure."
+    },
+    "encodingIndependenceControl": {
+      "purpose": "Timings are taken after load and settle: they must not depend on transfer encoding.",
+      "pairs": 5,
+      "agreeWithin0_10ms": 4,
+      "outlier": "rows/create-warm: 4.00 br vs 3.70 gzip = 0.30 ms (7.5%). Same shape and magnitude as the baseline's own single outlier (rows-nojit/update, 0.30 ms), and create-warm is the noisiest warm scenario in both frameworks (IQR 0.8-0.975 ms). The 0.30 ms delta is well inside that IQR.",
+      "reading": "4/5 agree within <= 0.10 ms; the 5th is inside its own IQR. The harness measures rendering, not downloading. Stated as 4/5, not rounded up to 5/5."
+    },
+    "passes": true
+  },
+  "C5": {
+    "criterion": "no .NET runtime in the browser",
+    "passes": true,
+    "evidence": {
+      "filamentTotalRequests": 3,
+      "filamentServedPaths": ["/", "/css/app.css", "/app.js"],
+      "dotNetArtifacts": 0,
+      "wasmArtifacts": 0,
+      "frameworkDirectory": "absent (no /_framework/ request of any kind)",
+      "lazyLoadedOnInteractionBytes": 0,
+      "untrackedRequests": [],
+      "blazorContrast": "39 requests including /_framework/dotnet.native.xc7yj6pp2h.wasm, /_framework/dotnet.runtime.a6jcqbs390.js, /_framework/blazor.webassembly.958z1vx7fr.js and 32 managed .wasm assemblies.",
+      "corroboration": "The harness's own AOT detector reports aotObserved: null with basis 'no-signature-matched' — it found no .NET artifact to inspect at all. lazyLoadedOnInteractionBytes = 0 proves no runtime is fetched later on interaction either. Service workers were blocked, so no bytes could arrive invisibly."
+    }
+  },
+  "rowMarkupContractCheck": {
+    "status": "PASS — and BENCH.md entry #1 reserve #6 is now CLOSED",
+    "contract": "<tr><td class=\"col-md-1\">{id}</td><td class=\"col-md-4\"><a class=\"lbl\">{label}</a></td></tr>",
+    "conforms": true,
+    "checkedIndices": [0,1,2,500,998,999],
+    "row0outerHTML": "<tr><td class=\"col-md-1\">1</td><td class=\"col-md-4\"><a class=\"lbl\">adorable pink desk</a></td></tr>",
+    "finding": "Reserve #6 warned Filament could satisfy the old contract with 3 elements/row against Blazor's 4, a ~25% DOM-node handicap baked into the baseline. It did NOT take that shortcut. The harness now pins the EXACT markup and Filament emits the full 4 elements/row including the decorative <a class=\"lbl\">, building the same 1000 <a> elements and 2000 class attributes Blazor does. create-warm is therefore a fair comparison."
+  },
+  "workloadEqualityGuard": {
+    "status": "PASS",
+    "contractProblems": [],
+    "firstRunFirst5": ["adorable pink desk", "unsightly purple sandwich", "large brown sandwich", "important brown house", "mushy red desk"],
+    "secondRunFirst5": ["mushy blue mouse", "expensive yellow keyboard", "large blue car", "large white pony", "unsightly black house"],
+    "secondRunFirstId": "1001",
+    "secondRunLastId": "2000",
+    "antiFabrication": "The timed #run of create-warm produces a label stream DISTINCT from the first run (ids 1001-2000), and it matches the stream BENCH.md entry #2 quotes for Blazor ('mushy blue mouse'...). Filament runs the identical Park-Miller LCG workload: 3000 multiply/modulo draws + 1000 concatenations per #run. A label cache would be refused.",
+    "otherChecks": { "rowCount": 1000, "cellsPerRow": 2, "updateMissedCount": 0, "swap": "2<->999 verified", "rowCountAfterClear": 0 }
+  },
+  "baselineReproductionCrossCheck": {
+    "note": "Unplanned but valuable corroboration that the committed baseline is real and the environment is unchanged.",
+    "blazorCounterAotBrotliMeasuredToday": 3353458,
+    "blazorCounterAotBrotliCommittedEntry2": 3353458,
+    "match": "EXACT, to the byte",
+    "blazorIncrementWarmToday": "1.0-1.4 ms (n=3, NOT protocol-valid for timing)",
+    "blazorIncrementWarmCommitted": "1.00 ms (n=10)",
+    "reading": "The baseline reproduces byte-exactly on weight and consistently on timing. Filament is being compared against a live, reproducible target, not a stale number."
+  },
+  "integritySweep": {
+    "totalTimedIterations": 152,
+    "failures": 0,
+    "timeouts": 0,
+    "fabricatedNumbers": 0,
+    "contractProblems": 0,
+    "weightWarnings": 0,
+    "untrackedRequests": 0,
+    "coldCacheViolations": 0,
+    "detail": "140 protocol-valid timed iterations (4 configs x 10 runs x scenarios) + 12 C3-run iterations (n=3, used only for C3, never quoted as timing). ok=true in all 7 result files."
+  },
+  "gateVerdict": "PASS",
+  "openReserves": [
+    "increment-warm is FLOOR-LIMITED on Filament's side: median 0.00 ms against a 0.1 ms timer quantum. The verdict (not slower) is safe; the magnitude ('>10x') is a lower bound from the quantum, not a measured ratio.",
+    "update (0.30 ms) and swap (0.40 ms) sit only 3-4 quanta above the timer floor. Their verdicts are safe but their speedup RATIOS (12.0x, 8.6x) carry ~33% and ~25% quantization uncertainty and should not be quoted to 3 significant figures.",
+    "C3's allocation probe is structurally blind to Blazor's .NET render tree in WASM linear memory. Filament's half of C3 is proven; Blazor's allocation is NOT quantified and no ratio between the two is a C3 result.",
+    "C3's DOM-write half is met by Blazor too (1 write/increment). It is a correctness bar Filament clears, not a win over Blazor.",
+    "Machine not fully quiesced (load 1.69; Logitech + OrbStack ~0.64 cores). Materially better than entry #2, but a truly idle machine remains preferable. IQRs (0-0.8 ms) indicate contention did not bite.",
+    "n=10, one machine, one Chrome, one OS. No confidence intervals, no cross-machine replication. Sufficient for a POC gate; insufficient for a publishable performance claim (inherited reserve #15).",
+    "C1's threshold (< 10 ko gzip) still rests on the owner's authority, not a spec on disk (inherited from entry #2). The measured margin (2.36x under the stricter reading) makes the 10,000/10,240 ambiguity immaterial, but the provenance of the threshold itself is unchanged.",
+    "The C3 comparison used blazor-counter-aot. DOM writes per increment are a rendering-architecture property independent of AOT, so the nojit config is expected to behave identically, but it was not separately measured."
+  ]
+}

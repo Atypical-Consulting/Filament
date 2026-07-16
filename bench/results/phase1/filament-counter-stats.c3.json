@@ -1,0 +1,439 @@
+{
+  "schemaVersion": 3,
+  "label": "filament-counter-stats",
+  "app": "counter",
+  "url": "http://127.0.0.1:60157/",
+  "servedDir": "/Users/phmatray/Repositories/dotnet/Filament/bench/publish/filament-counter-stats",
+  "startedAt": "2026-07-16T16:23:12.178Z",
+  "finishedAt": "2026-07-16T16:23:32.104Z",
+  "ok": true,
+  "contractCheck": {
+    "problems": [],
+    "observed": {
+      "initialValue": "0"
+    }
+  },
+  "c3": {
+    "criterion": "C3: exactly 1 DOM write per counter increment, 0 render-tree allocation",
+    "domWrites": {
+      "method": "MutationObserver on body with {childList, subtree, characterData, attributes}, counted across ONE #increment click and a trailing rAF + 60ms settle. Framework-agnostic: identical code runs on Blazor and on Filament.",
+      "observeRoot": "body",
+      "whyThisRoot": "The widest root available, deliberately. A narrow root (#app, #counter-value) is a way to not-see writes, and the framework under test must not choose where the instrument looks. A wider root can only over-count, never under-count.",
+      "writeDefinition": "childList: addedNodes + removedNodes; characterData: 1; attributes: 1. Reported separately from `records` because one MutationRecord can carry many added nodes — conflating the two would be its own fabrication.",
+      "increments": 5,
+      "writesPerIncrement": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "recordsPerIncrement": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "medianWrites": 1,
+      "byType": {
+        "childList": 0,
+        "characterData": 1,
+        "attributes": 0
+      },
+      "firstIncrementDetail": [
+        {
+          "type": "characterData",
+          "target": "#text in <span#counter-value>",
+          "attributeName": null,
+          "added": 0,
+          "removed": 0
+        }
+      ],
+      "timedOut": false,
+      "verdict": "Exactly 1 DOM write on every counted increment."
+    },
+    "statsCrossCheck": {
+      "present": true,
+      "selfReportedDomWritesPerIncrement": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "observedDomWritesPerIncrement": [
+        1,
+        1,
+        1,
+        1,
+        1
+      ],
+      "agrees": true,
+      "finding": "The runtime's self-reported __filament.stats.domWrites matches the independent MutationObserver count on every increment."
+    },
+    "allocation": {
+      "method": "CDP HeapProfiler.startSampling (V8 sampling allocation profiler: allocation THROUGHPUT, including garbage later collected — not retained-heap growth). Two-point slope over N to cancel fixed per-sample cost; median of repeated slopes. HeapProfiler.collectGarbage between samples.",
+      "whyNotHeapSnapshotDelta": "A snapshot delta measures RETAINED growth. A framework that allocates a render tree per increment and drops it shows ~0 retained growth while allocating heavily — so a snapshot delta would report \"0 allocation\" for exactly the behaviour C3 exists to detect, and would report it as a PASS. Allocation throughput is the quantity C3 names.",
+      "samplingIntervalBytes": 1024,
+      "nLow": 200,
+      "nHigh": 1000,
+      "repeats": 3,
+      "bytesPerIncrement": {
+        "median": 312.97,
+        "min": 246.77,
+        "max": 352.69,
+        "samples": [
+          246.77,
+          312.97,
+          352.69
+        ]
+      },
+      "rawSamples": [
+        {
+          "nLow": 200,
+          "lowBytes": 143540,
+          "nHigh": 1000,
+          "highBytes": 340956,
+          "bytesPerIncrement": 246.77
+        },
+        {
+          "nLow": 200,
+          "lowBytes": 78068,
+          "nHigh": 1000,
+          "highBytes": 328444,
+          "bytesPerIncrement": 312.97
+        },
+        {
+          "nLow": 200,
+          "lowBytes": 73128,
+          "nHigh": 1000,
+          "highBytes": 355280,
+          "bytesPerIncrement": 352.69
+        }
+      ],
+      "topSites": [
+        {
+          "site": "driveIncrements @ (unknown):450",
+          "bytes": 144788
+        },
+        {
+          "site": "Promise @ (unknown):-1",
+          "bytes": 92256
+        },
+        {
+          "site": "(anonymous) @ (unknown):458",
+          "bytes": 80932
+        },
+        {
+          "site": "tick @ (unknown):460",
+          "bytes": 25860
+        },
+        {
+          "site": "evaluate @ (unknown):296",
+          "bytes": 6764
+        },
+        {
+          "site": "(V8 API) @ (unknown):-1",
+          "bytes": 1556
+        },
+        {
+          "site": "(BYTECODE_COMPILER) @ (unknown):-1",
+          "bytes": 1056
+        },
+        {
+          "site": "_promiseAwareJsonValueNoThrow @ (unknown):318",
+          "bytes": 1036
+        }
+      ],
+      "scope": "javascript-heap-only",
+      "caveat": "SCOPE: JavaScript heap only. This probe is V8's sampling allocation profiler, so it sees\nallocations made by JavaScript and nothing else.\n\nFOR FILAMENT this is complete and the claim is falsifiable. Filament's runtime IS JavaScript,\nso every allocation its increment path makes is a JS-heap allocation and appears here. At\nN=1000 increments and a 1024 B sampling interval, even 32 B/increment would surface as ~32 KB\n— far above the observed noise floor. A \"0 tree allocation\" claim that is false will show up.\n\nFOR BLAZOR IT IS NOT A MEASUREMENT OF THE RENDER TREE, AND MUST NEVER BE QUOTED AS ONE.\nBlazor's render tree — RenderTreeFrame buffers, the diff, the .NET object graph — is allocated\ninside the WebAssembly linear memory backing the .NET GC heap. To V8 that entire heap is ONE\nArrayBuffer: the JS sampling profiler cannot see individual .NET allocations within it and\nreports none of them. What this probe measures on Blazor is only the JS-side interop glue\n(dotnet.runtime.js marshalling, UTF8ArrayToString, js-to-wasm thunks) — see topSites, which is\nreported precisely so this claim can be checked rather than believed.\n\nCONSEQUENCE: bytesPerIncrement UNDER-REPORTS Blazor by an unknown amount. \"Filament 0 B vs\nBlazor N B\" is therefore NOT a C3 result — it is a comparison between Filament's total\nallocation and Blazor's interop-glue-only subset. The correct reading: this probe can prove or\nrefute FILAMENT's half of C3, and is silent on Blazor's. Quantifying Blazor's render-tree\nallocation needs a .NET-side instrument (GC.GetTotalAllocatedBytes via a [JSExport] probe, or\ndotnet-counters), which is not built here.\n\nThe number also includes a constant per-iteration cost from the harness's own drive loop, which\nthe two-point slope below cancels only insofar as that cost is constant in N. It is IDENTICAL\nfor every framework, so it biases both the same way and cannot manufacture a difference."
+    }
+  },
+  "expectedLabels": null,
+  "environment": {
+    "machine": {
+      "hostname": "Mac",
+      "model": "Mac17,6",
+      "cpu": "Apple M5 Max",
+      "cpuCount": 18,
+      "arch": "arm64",
+      "totalMemBytes": 68719476736
+    },
+    "os": {
+      "platform": "darwin",
+      "release": "25.5.0",
+      "version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
+      "productVersion": "26.5.1"
+    },
+    "chrome": {
+      "channel": "chrome",
+      "version": "150.0.7871.124",
+      "headless": true
+    },
+    "dotnetSdk": "10.0.301",
+    "node": "v26.5.0",
+    "playwright": "1.61.1",
+    "aot": false,
+    "aotDeclared": false,
+    "aotObserved": null,
+    "aotVerification": {
+      "declared": false,
+      "observed": null,
+      "agrees": null,
+      "verified": false,
+      "basis": "no-signature-matched",
+      "evidence": [],
+      "warnings": [],
+      "note": "declared = the --aot CLI flag, self-reported by the operator and never trusted on its own. observed = an independent verdict derived from the RAW size of an artifact matching a known AOT signature (see evidence[].rationale). verified = observed agrees with declared AND the artifact it was derived from was SERVED during the weight run (evidence[].servedInWeightRun) — a file that was never requested may be a leftover from an earlier build and cannot confirm anything about the build that was measured. observed:null means no evidence was available for this framework, NOT that AOT is absent — the harness declines to guess rather than confirming a claim it cannot check."
+    },
+    "harnessVersion": "1.2.0"
+  },
+  "totals": {
+    "scenarioCount": 2,
+    "scenarioNames": [
+      "increment-cold",
+      "increment-warm"
+    ],
+    "runsPerScenario": 3,
+    "timedIterationsPlanned": 6,
+    "timedIterationsRecorded": 6,
+    "timedIterationFailures": 0,
+    "warmupIterationsDiscarded": 0,
+    "note": "timedIterationsRecorded is summed from the per-scenario sample counts actually retained, so it is derived from the same data the medians are, and cannot drift from it. planned - recorded == the iterations that failed and were refused a number."
+  },
+  "config": {
+    "runs": 3,
+    "warmup": 0,
+    "weightRuns": 1,
+    "scenarios": [
+      "increment-cold",
+      "increment-warm"
+    ],
+    "allScenariosForApp": [
+      "increment-cold",
+      "increment-warm"
+    ],
+    "scenariosComplete": true,
+    "actionTimeoutMs": 10000,
+    "idleBeatMs": 50,
+    "networkQuietMs": 2000,
+    "maxSettleMs": 30000,
+    "serviceWorkers": "block",
+    "maxEncoding": "br",
+    "encodingNote": "No encoding cap: brotli is served to any client that accepts it (production-like).",
+    "compression": "Content negotiated per request, smallest encoding the client accepts: brotli before gzip. Precompressed sibling (.br/.gz) when present, else on-the-fly at publish-equivalent quality (brotli q11 / gzip level 9). Eligibility is a denylist of already-compressed formats, so an unanticipated extension is compressed rather than silently shipped raw."
+  },
+  "protocol": {
+    "weight": "Transferred bytes = sum of CDP Network.loadingFinished.encodedDataLength (falling back to Network.responseReceived header bytes + summed Network.dataReceived.encodedDataLength when loadingFinished reports 0) over every request, from navigation until the app-ready contract hook is clickable AND the network has been idle for networkQuietMs. This is wire bytes, not disk size and not decompressed size. Cold cache is enforced three ways: a fresh BrowserContext per iteration, CDP Network.setCacheDisabled, and Cache-Control: no-store from the server.",
+    "timing": "All timestamps are taken in-page. A click is followed by a MutationObserver-driven wait for a DOM predicate; the clock stops INSIDE the observer callback at the instant the predicate is observed true (msToMutation, the headline metric). Frame boundaries are never used as a proxy for completion, so an asynchronously dispatched handler (e.g. Blazor @onclick) cannot produce a fabricated sub-millisecond time. msToPaint additionally waits one requestAnimationFrame + setTimeout(0); because the predicate resolves at an arbitrary phase of the vsync cycle, msToPaint carries a 0-16.7ms offset contributed by the display and the harness rather than the framework, and is reported separately so it can never be mistaken for framework cost. A predicate already true before the click is rejected as vacuous. A predicate that does not become true within actionTimeoutMs throws and is recorded as a failure, never as a number. An iteration whose network has not gone idle is a failure too, not a silently inflated sample.",
+    "predicates": "Scenario predicates are TOTAL: #update requires all 100 targeted rows to carry the suffix and sampled non-targeted rows to lack it; #swaprows requires BOTH index 1 and index 998 to hold the other's original id. A partial implementation times out as a failure rather than stopping the clock early and reporting the shortfall as speed.",
+    "workloadEquality": "verifyContract drives #run -> #update -> #swaprows -> #clear -> #run untimed and asserts the full post-condition of each. BOTH #run clicks are gated against the deterministic Park-Miller label stream (expected-labels.json, hash recorded above): rows 0-4 and 999 of the FIRST run (LCG draws 1..3000, the stream create-cold times) and of the SECOND run on the same page (draws 3001..6000, the stream create-warm — the headline — times), plus every row id in both runs (1..1000 then 1001..2000, the monotonic counter). Gating only the first run would leave the headline click asserted by nothing but \"1000 rows exist\", which an app that generates the stream once and reuses the interned strings satisfies while doing none of the LCG or concatenation work on the run that is timed. An app that emits constant labels, caches its labels after the first run, resets the id counter, updates fewer rows, or duplicates instead of swapping is refused with exit code 3 rather than reported as fast.",
+    "coldVsWarm": "Every scenario carries `runtime` (\"cold\" | \"warm\") and `headline` (whether it answers the question its name asks). A COLD scenario times the first click after a fresh page load, so a framework that initialises its runtime lazily boots INSIDE the measured window and the number is boot + work. For a Blazor build the boot term is the majority of cold `create`, which means a framework with no runtime to boot wins that scenario without rendering anything faster — the metric would be reporting startup and calling it rendering. A WARM scenario runs an identical interaction UNTIMED first (see scenarios[].untimedSetup), so the runtime is booted and the measured window is the work alone. update/swap/clear were always warm — they have always had an untimed #run setup — so create-warm/increment-warm make create/increment consistent with them rather than introducing a new kind of measurement. Every warm scenario is separated from its timed click by the SAME idle beat (two chained requestAnimationFrames, so the setup has been through style/layout/paint, plus a >= config.idleBeatMs macrotask to drain post-render bookkeeping), so the four are measured under one settling regime rather than the setup tail of some of them being billed to their timed click. Both variants are reported; cold is a real user-visible cost and is not deleted, it is simply not a rendering number. Compare frameworks on the warm variants, and only ever against the same variant.",
+    "monotonicState": "Per the DOM contract, row ids are monotonic and never reset, and the label LCG is seeded only at page load. A warm scenario's timed #run therefore emits ids 1001..2000 with the LCG continuing, and increment-warm's timed click goes 1 -> 2 rather than 0 -> 1. This is intended and the harness deliberately does NOT reset the seed or the id counter to make the timed run look identical to the setup run: the WORK is identical either way (1000 rows, 3000 LCG draws, 1000 three-part concatenations; one increment), and resetting hidden state would be the harness manufacturing a condition no user is ever in.",
+    "statistics": "MEDIAN and IQR (p75 - p25) over `runs` iterations, using linear-interpolation quantiles (type 7, the numpy/R default). The mean is never reported. Per-run BREAKDOWNS in `weight` are quoted from weight.representativeRun — the run nearest the median, which for an even run count is not the median itself and no longer claims to be.",
+    "aot": "environment.aot / environment.aotDeclared is the operator's --aot claim and is never trusted on its own. environment.aotObserved is an INDEPENDENT verdict derived from the raw size of an artifact matching a known AOT signature, and environment.aotVerification carries the evidence, the thresholds and the reasoning. aotVerification.verified is true ONLY when the verdict agrees with the claim AND the artifact it came from was SERVED during the weight run (evidence[].servedInWeightRun): a file present in the publish directory but never requested may be a leftover from an earlier build, so it can corroborate nothing about the build that was measured, and evidence selection prefers served artifacts before it prefers conclusive ones. A disagreement is a loud warning and sets aotVerification.agrees=false; an unverifiable claim sets aotObserved=null and is reported as UNVERIFIED rather than confirmed. The harness never rewrites the declared flag to match the evidence. This is metadata verification only: it touches no timing, no byte total and no predicate, and a framework with no signature is measured identically, just not corroborated.",
+    "agnosticism": "This harness contains no framework-specific code path. Only --dir/--route change between frameworks; every app is driven exclusively through the shared DOM contract."
+  },
+  "weight": {
+    "unit": "bytes",
+    "method": "CDP Network.loadingFinished.encodedDataLength summed across all requests from navigation until app-interactive AND network idle",
+    "toInteractive": {
+      "n": 1,
+      "samples": [
+        21127
+      ],
+      "median": 21127,
+      "p25": 21127,
+      "p75": 21127,
+      "iqr": 0,
+      "min": 21127,
+      "max": 21127
+    },
+    "afterFirstInteraction": {
+      "n": 1,
+      "samples": [
+        21127
+      ],
+      "median": 21127,
+      "p25": 21127,
+      "p75": 21127,
+      "iqr": 0,
+      "min": 21127,
+      "max": 21127
+    },
+    "lazyLoadedOnInteractionBytes": 0,
+    "representativeRun": {
+      "index": 0,
+      "totalBytes": 21127,
+      "medianBytes": 21127,
+      "isExactlyTheMedian": true,
+      "selection": "The run whose transferred total is NEAREST the interpolated (type-7) median of all weight runs; ties resolve to the lower total, then the lower index. Every per-run breakdown below (decodedBytesRepresentativeRun, requestCount, bytesByOrigin, topRequests, crossCheck, serverEncodings, untrackedRequests) is quoted from THIS run. For an even number of weight runs the median falls between two runs and no run holds it, so isExactlyTheMedian is false and this is the nearer of the two — it is not, and is no longer called, \"the median run\"."
+    },
+    "decodedBytesRepresentativeRun": 62729,
+    "requestCount": 3,
+    "bytesByOrigin": {
+      "http://127.0.0.1:60157": 21127
+    },
+    "topRequests": [
+      {
+        "url": "http://127.0.0.1:60157/app.js",
+        "type": "Script",
+        "status": 200,
+        "mimeType": "text/javascript",
+        "protocol": "http/1.1",
+        "contentEncoding": "br",
+        "transferredBytes": 19955,
+        "decodedBytes": 61301,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:60157/css/app.css",
+        "type": "Stylesheet",
+        "status": 200,
+        "mimeType": "text/css",
+        "protocol": "http/1.1",
+        "contentEncoding": "br",
+        "transferredBytes": 633,
+        "decodedBytes": 795,
+        "redirectCount": 0
+      },
+      {
+        "url": "http://127.0.0.1:60157/",
+        "type": "Document",
+        "status": 200,
+        "mimeType": "text/html",
+        "protocol": "http/1.1",
+        "contentEncoding": "br",
+        "transferredBytes": 539,
+        "decodedBytes": 633,
+        "redirectCount": 0
+      }
+    ],
+    "crossCheck": {
+      "cdpTransferredBytes": 21127,
+      "serverBodyBytes": 20298,
+      "serverRequestCount": 3,
+      "deltaBytes": 829,
+      "note": "CDP counts wire bytes (compressed body + response headers); the server counts body bytes only. delta ~= response header overhead. A negative delta or a delta far larger than ~300 B/request indicates a measurement problem."
+    },
+    "serverEncodings": {
+      "br": {
+        "responses": 24,
+        "bytes": 162384
+      }
+    },
+    "untrackedRequests": [],
+    "servedPaths": [
+      "/",
+      "/css/app.css",
+      "/app.js"
+    ],
+    "warnings": []
+  },
+  "scenarios": {
+    "increment-cold": {
+      "scenario": "increment-cold",
+      "status": "ok",
+      "ok": true,
+      "runtime": "cold",
+      "headline": false,
+      "untimedSetup": [],
+      "measures": "Fresh page load, then the FIRST #increment click is timed (0 -> 1). Includes any one-time runtime boot deferred to first interaction, so this is boot + increment.",
+      "metric": "msToMutation",
+      "n": 3,
+      "samples": [
+        0.5,
+        0.3,
+        0.4
+      ],
+      "median": 0.4,
+      "p25": 0.35,
+      "p75": 0.45,
+      "iqr": 0.1,
+      "min": 0.3,
+      "max": 0.5,
+      "unit": "ms",
+      "toPaint": {
+        "n": 3,
+        "samples": [
+          1.6,
+          0.8,
+          0.7
+        ],
+        "median": 0.8,
+        "p25": 0.75,
+        "p75": 1.2,
+        "iqr": 0.45,
+        "min": 0.7,
+        "max": 1.6,
+        "unit": "ms",
+        "note": "msToMutation plus one requestAnimationFrame + setTimeout(0). The predicate resolves in a MutationObserver microtask at an arbitrary phase of the vsync cycle, so this carries a 0-16.7ms additive offset contributed by the display refresh and this harness, NOT by the framework. Its IQR is largely vsync phase jitter. Never compare frameworks on this number; it is reported so the ~16ms quantum is visibly the harness's."
+      },
+      "failureCount": 0,
+      "failures": [],
+      "diagnostics": {
+        "transferredBytesToInteractive": [
+          21127,
+          21127,
+          21127
+        ],
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    },
+    "increment-warm": {
+      "scenario": "increment-warm",
+      "status": "ok",
+      "ok": true,
+      "runtime": "warm",
+      "headline": true,
+      "untimedSetup": [
+        "#increment (untimed, 0 -> 1)",
+        "idle beat"
+      ],
+      "measures": "Fresh page load; one UNTIMED #increment (0 -> 1) boots the runtime, then a second, identical #increment (1 -> 2) is TIMED. This is the increment cost with the boot term removed.",
+      "metric": "msToMutation",
+      "n": 3,
+      "samples": [
+        0,
+        0.1,
+        0.1
+      ],
+      "median": 0.1,
+      "p25": 0.05,
+      "p75": 0.1,
+      "iqr": 0.05,
+      "min": 0,
+      "max": 0.1,
+      "unit": "ms",
+      "toPaint": {
+        "n": 3,
+        "samples": [
+          0.4,
+          0.3,
+          0.3
+        ],
+        "median": 0.3,
+        "p25": 0.3,
+        "p75": 0.35,
+        "iqr": 0.05,
+        "min": 0.3,
+        "max": 0.4,
+        "unit": "ms",
+        "note": "msToMutation plus one requestAnimationFrame + setTimeout(0). The predicate resolves in a MutationObserver microtask at an arbitrary phase of the vsync cycle, so this carries a 0-16.7ms additive offset contributed by the display refresh and this harness, NOT by the framework. Its IQR is largely vsync phase jitter. Never compare frameworks on this number; it is reported so the ~16ms quantum is visibly the harness's."
+      },
+      "failureCount": 0,
+      "failures": [],
+      "diagnostics": {
+        "transferredBytesToInteractive": [
+          21127,
+          21127,
+          21127
+        ],
+        "consoleErrors": [],
+        "pageErrors": []
+      }
+    }
+  }
+}

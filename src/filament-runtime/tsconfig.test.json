@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Tests spread HTMLCollection ([...parent.children]) to assert DOM order.
+    // Only the tests need this; src/ deliberately never iterates a DOM
+    // collection, so tsconfig.json stays on the narrower lib.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noEmit": true,
+    "emitDeclarationOnly": false,
+    "declaration": false,
+    "noUnusedLocals": false,
+    "types": ["vitest/globals"]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.mjs"]
+}

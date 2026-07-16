@@ -1,0 +1,222 @@
+{
+  "runId": "phase1-clean",
+  "purpose": "Re-measure BOTH frameworks on ONE harness. The previous Phase 1 record compared a Blazor baseline taken on harness 1.2.0 (pre-C3) against a Filament run taken on a 701-line-modified harness that also called itself 1.2.0. This run makes the C4 comparison genuinely like-for-like.",
+  "generatedAt": "2026-07-16T18:09:18.513Z",
+  "harness": {
+    "sha256": "47e7e46f372f8573e9a574713cee9cd6c125d55361fdb5d4b47755ac7d4536f8",
+    "version": "1.3.0",
+    "files": {
+      "bench.mjs": "e4b5e96e5e9194e0cea9537f4f9bbb2cc552815bdba81b6f83eb0de8be6d7c54",
+      "expected-labels.json": "877b14615b32f85a5d9826ee43558f63a1dda59eaae85d42813f7ad3070d51d5",
+      "server.mjs": "c4867310477486d206f9e2df5319974f99676a0fb66771d878c5f734d96f7034"
+    },
+    "configsSharingHash": 12,
+    "unified": true
+  },
+  "headlineEncoding": "br",
+  "resolutionMs": 0.1,
+  "environment": {
+    "machine": {
+      "hostname": "Mac",
+      "model": "Mac17,6",
+      "cpu": "Apple M5 Max",
+      "cpuCount": 18,
+      "arch": "arm64",
+      "totalMemBytes": 68719476736
+    },
+    "os": {
+      "platform": "darwin",
+      "release": "25.5.0",
+      "version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
+      "productVersion": "26.5.1"
+    },
+    "chrome": {
+      "channel": "chrome",
+      "version": "150.0.7871.124",
+      "headless": true
+    },
+    "node": "v26.5.0",
+    "playwright": "1.61.1",
+    "dotnetSdk": "10.0.301"
+  },
+  "health": {
+    "blazor-counter-aot.br": {
+      "ok": true,
+      "recorded": 20,
+      "planned": 20,
+      "failures": 0
+    },
+    "blazor-counter-aot.gzip": {
+      "ok": true,
+      "recorded": 20,
+      "planned": 20,
+      "failures": 0
+    },
+    "blazor-counter-nojit.br": {
+      "ok": true,
+      "recorded": 20,
+      "planned": 20,
+      "failures": 0
+    },
+    "blazor-counter-nojit.gzip": {
+      "ok": true,
+      "recorded": 20,
+      "planned": 20,
+      "failures": 0
+    },
+    "blazor-rows-aot.br": {
+      "ok": true,
+      "recorded": 50,
+      "planned": 50,
+      "failures": 0
+    },
+    "blazor-rows-aot.gzip": {
+      "ok": true,
+      "recorded": 50,
+      "planned": 50,
+      "failures": 0
+    },
+    "blazor-rows-nojit.br": {
+      "ok": true,
+      "recorded": 50,
+      "planned": 50,
+      "failures": 0
+    },
+    "blazor-rows-nojit.gzip": {
+      "ok": true,
+      "recorded": 50,
+      "planned": 50,
+      "failures": 0
+    },
+    "filament-counter.br": {
+      "ok": true,
+      "recorded": 20,
+      "planned": 20,
+      "failures": 0
+    },
+    "filament-counter.gzip": {
+      "ok": true,
+      "recorded": 20,
+      "planned": 20,
+      "failures": 0
+    },
+    "filament-rows.br": {
+      "ok": true,
+      "recorded": 50,
+      "planned": 50,
+      "failures": 0
+    },
+    "filament-rows.gzip": {
+      "ok": true,
+      "recorded": 50,
+      "planned": 50,
+      "failures": 0
+    }
+  },
+  "c1": {
+    "filament-counter.gzip": {
+      "wireBytesMedian": 2976,
+      "iqr": 0,
+      "previousBytes": 2864,
+      "deltaBytes": 112,
+      "gateDecimal10k": "PASS",
+      "headroomBytes": 7024
+    },
+    "filament-rows.gzip": {
+      "wireBytesMedian": 4365,
+      "iqr": 0,
+      "previousBytes": 4243,
+      "deltaBytes": 122,
+      "gateDecimal10k": "PASS",
+      "headroomBytes": 5635
+    },
+    "filament-counter.br": {
+      "wireBytesMedian": 2604,
+      "iqr": 0,
+      "previousBytes": 2494,
+      "deltaBytes": 110,
+      "gateDecimal10k": null,
+      "headroomBytes": null
+    },
+    "filament-rows.br": {
+      "wireBytesMedian": 3904,
+      "iqr": 0,
+      "previousBytes": 3794,
+      "deltaBytes": 110,
+      "gateDecimal10k": null,
+      "headroomBytes": null
+    }
+  },
+  "c4": [
+    {
+      "scenario": "create-cold",
+      "filamentMedianMs": 6.2,
+      "filamentIqr": 0.425,
+      "blazorAotMedianMs": 33.85,
+      "blazorNoJitMedianMs": 36.1,
+      "notSlowerThanAot": true,
+      "floorLimited": false,
+      "note": "Cold: includes runtime boot, NOT a rendering comparison. Blazor pays .NET/wasm startup inside the measured window; Filament has no runtime to boot. Real and user-visible, but create-warm/increment-warm is the like-for-like rendering number."
+    },
+    {
+      "scenario": "create-warm",
+      "filamentMedianMs": 3.65,
+      "filamentIqr": 1.475,
+      "blazorAotMedianMs": 7.8,
+      "blazorNoJitMedianMs": 14.6,
+      "notSlowerThanAot": true,
+      "floorLimited": false,
+      "note": "Resolved: ~2.1x faster than Blazor AOT, ~4.0x vs non-AOT."
+    },
+    {
+      "scenario": "update",
+      "filamentMedianMs": 0.3,
+      "filamentIqr": 0.1,
+      "blazorAotMedianMs": 4.1,
+      "blazorNoJitMedianMs": 13.55,
+      "notSlowerThanAot": true,
+      "floorLimited": false,
+      "note": "Resolved but COARSE: a 0.3 ms median is ~3 quanta, so the ratio (~13.7x vs AOT) carries roughly +/-17% from resolution alone. No sample hit 0.0 ms, so the value itself was measured, not floored."
+    },
+    {
+      "scenario": "swap",
+      "filamentMedianMs": 0.4,
+      "filamentIqr": 0,
+      "blazorAotMedianMs": 3.85,
+      "blazorNoJitMedianMs": 12.6,
+      "notSlowerThanAot": true,
+      "floorLimited": false,
+      "note": "Resolved but COARSE: a 0.4 ms median is ~4 quanta, so the ratio (~9.6x vs AOT) carries roughly +/-13% from resolution alone. No sample hit 0.0 ms, so the value itself was measured, not floored."
+    },
+    {
+      "scenario": "clear",
+      "filamentMedianMs": 1.7,
+      "filamentIqr": 0.5,
+      "blazorAotMedianMs": 3,
+      "blazorNoJitMedianMs": 4.8,
+      "notSlowerThanAot": true,
+      "floorLimited": false,
+      "note": "Resolved: ~1.8x faster than Blazor AOT, ~2.8x vs non-AOT."
+    },
+    {
+      "scenario": "increment-cold",
+      "filamentMedianMs": 0.4,
+      "filamentIqr": 0.075,
+      "blazorAotMedianMs": 21.45,
+      "blazorNoJitMedianMs": 17.75,
+      "notSlowerThanAot": true,
+      "floorLimited": false,
+      "note": "Resolved but COARSE: a 0.4 ms median is ~4 quanta, so the ratio (~53.6x vs AOT) carries roughly +/-13% from resolution alone. No sample hit 0.0 ms, so the value itself was measured, not floored."
+    },
+    {
+      "scenario": "increment-warm",
+      "filamentMedianMs": 0.1,
+      "filamentIqr": 0.075,
+      "blazorAotMedianMs": 1.1,
+      "blazorNoJitMedianMs": 1.65,
+      "notSlowerThanAot": true,
+      "floorLimited": true,
+      "note": "FLOOR-LIMITED: 3/10 Filament samples read exactly 0.0 ms, below the harness's ~0.1 ms resolution. Filament's true cost is UNKNOWN and smaller than the instrument can see. Blazor AOT's 1.1 ms is a real, resolved value. The honest statement is \"Filament is at least 11x faster\" (bounding Filament at one quantum) — NOT a measured 11x, which divides by a quantization artifact."
+    }
+  ]
+}

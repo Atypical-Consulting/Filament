@@ -874,3 +874,912 @@ le même chemin, sinon les cibles 13,70/7,35 ms ne veulent rien dire.**
 ---
 
 *Fin de l'entrée n°2. Ne pas modifier — ajouter une entrée n°3 pour toute rectification.*
+
+---
+
+## Entrée n°3 — 2026-07-16 — Phase 1 : `filament-runtime` + apps écrites à la main
+
+Établit C1 (poids), C3 (écritures DOM / allocation) et C5 (aucun runtime .NET), et confronte C4
+(vitesse) à la baseline Blazor de l'entrée n°2.
+
+> **⚠️ AVERTISSEMENT DE PORTÉE — À LIRE AVANT TOUT CHIFFRE DE CETTE ENTRÉE.**
+> **L'artefact mesuré ici est du JavaScript écrit à la main, pas la sortie d'un compilateur.**
+> `src/Filament.Generator/`, `src/Filament.Core/` et `src/Filament.Analyzer/` sont des **répertoires
+> vides** — vérifié ce jour (`ls -A` ⇒ vide sur les trois). Il n'existe **aucun C#, aucun Razor,
+> aucun générateur de source** dans le dépôt hors de `baseline/` (qui appartient à Blazor).
+> `samples/Counter/counter.js` le dit dans son propre en-tête : « *This file is the ANSWER KEY.
+> Phase 2's generator consumes baseline's Counter.Blazor/App.razor and its emitted JS is
+> snapshot-tested against what is written here.* »
+>
+> **Ce qui est donc démontré** : du JS taillé à la main au-dessus d'un runtime à signaux taillé à
+> la main bat Blazor. Solid et Svelte l'ont établi il y a des années ; personne ne le contestait.
+> **Ce que le POC a besoin de savoir et que cette entrée ne mesure pas** : qu'un générateur C#
+> puisse *émettre* ce JS depuis du Razor en tenant sous 10 ko et à ces temps.
+> **Tous les chiffres ci-dessous sont donc des bornes basses optimistes**, pas la performance de
+> Filament. Ils sont valides pour ce qu'ils mesurent et ne doivent jamais être cités sans cet
+> avertissement. Voir la réserve n°A et la décision n°21 de `DECISIONS.md`.
+
+### Environnement
+
+| Élément | Valeur |
+|---|---|
+| Machine | Apple M5 Max (Mac17,6), 18 cœurs, 64 Gio, arm64 |
+| Alimentation | Secteur (AC), batterie chargée ; `pmset -g therm` : aucun avertissement thermique ni puissance |
+| OS | macOS 26.5.1 (build 25F80), Darwin 25.5.0 |
+| Navigateur | Google Chrome 150.0.7871.124, **headless**, via Playwright 1.61.1 |
+| Node | v26.5.0 |
+| .NET SDK | 10.0.301 (baseline Blazor uniquement — Filament n'en consomme aucun) |
+| Harness | `bench/harness/bench.mjs`, `HARNESS_VERSION` = `1.2.0` — **mais voir la réserve n°B : cette chaîne ment** |
+| Date des runs | 2026-07-16, 16:16:55–16:26:10 UTC, **strictement séquentiels** (horodatages non chevauchants vérifiés) |
+
+**Quiescence (divulgation honnête)** : machine **non totalement quiescée**, mais **matériellement plus
+calme que l'entrée n°2**. Load average 1,69 / 2,05 / 2,11 sur 18 cœurs. Principaux consommateurs :
+`logioptionsplus_agent` ~34,7 %, `OrbStack Helper` ~29,1 % — ensemble ~0,64 cœur sur 18 (**~3,5 % de la
+capacité**), comparable aux ~2,3 % de l'entrée n°1 et loin des ~14 % de l'entrée n°2. **Décisif** : les
+processus `koine-mcp` emballés qui contaminaient l'entrée n°2 (2 cœurs épinglés, ~27 Go de RSS, 5,5 Go
+de swap) **ont disparu** — le risque latent de défaut de page de cette entrée ne s'applique pas ici.
+Rien n'a été tué. Les IQR corroborent l'absence de contention : 0–0,8 ms sur tous les scénarios chauds,
+avec `update`/`swap`/`clear` à IQR ≤ 0,1 ms.
+
+#### Commande de rejeu
+
+```bash
+# 1. Construire les 4 labels Filament (2 prod + 2 instrumentés "-stats").
+#    Parité de compression avec dotnet publish : gzip -9 / brotli -q 11 + BROTLI_PARAM_SIZE_HINT.
+bash bench/build-filament.sh
+
+# 2. Mesure C1 + C4 (production, les deux bases d'encodage).
+node bench/harness/bench.mjs --dir bench/publish/filament-rows \
+  --app rows --label filament-rows --runs 10 --weight-runs 3 \
+  --max-encoding brotli --headless --no-aot --out bench/results/phase1/filament-rows.br.json
+node bench/harness/bench.mjs --dir bench/publish/filament-counter \
+  --app counter --label filament-counter --runs 10 --weight-runs 3 \
+  --max-encoding brotli --headless --no-aot --out bench/results/phase1/filament-counter.br.json
+# idem avec --max-encoding gzip -> *.gzip.json
+
+# 3. Mesure C3 (sonde DOM + allocation, n=3).
+node bench/harness/bench.mjs --dir bench/publish/filament-counter-stats \
+  --app counter --label filament-counter-stats --c3 --runs 3 --headless --no-aot \
+  --out bench/results/phase1/filament-counter-stats.c3.json
+node bench/harness/bench.mjs --dir bench/publish/filament-counter \
+  --app counter --label filament-counter-prod --c3 --runs 3 --headless --no-aot \
+  --out bench/results/phase1/filament-counter-prod.c3.json
+node bench/harness/bench.mjs --dir bench/publish/blazor-counter-aot/wwwroot \
+  --app counter --label blazor-counter-aot --c3 --runs 3 --headless --aot \
+  --out bench/results/phase1/blazor-counter-aot.c3.json
+```
+
+JSON bruts : `bench/results/phase1/{filament-counter,filament-rows}.{br,gzip}.json`,
+`bench/results/phase1/{filament-counter-prod,filament-counter-stats,blazor-counter-aot}.c3.json`,
+`bench/results/phase1/summary.json`.
+Baseline comparée : `bench/results/final-warm/blazor-*-{aot,nojit}.br.json` (entrée n°2).
+
+---
+
+## C1 — Poids transféré (< 10 ko gzip)
+
+Octets **sur le fil** (CDP `encodedDataLength`), cache froid, médiane de 3 runs de poids,
+**IQR = 0 dans toutes les configs**.
+
+| App | gzip (o) | brotli (o) | Requêtes | Blazor non-AOT gzip (o) | Rapport |
+|---|---:|---:|---:|---:|---:|
+| `filament-counter` | **2 864** | 2 494 | 3 | 1 885 505 | **658,3×** |
+| `filament-rows` | **4 243** | 3 794 | 3 | 1 889 184 | **445,2×** |
+
+**Verdict C1 : PASS, sous les DEUX lectures de « 10 ko ».**
+
+| Lecture | `filament-counter` | `filament-rows` |
+|---|---|---|
+| **10 000 o** (décimal, la plus stricte) | PASS — 7 136 o de marge (**3,49× sous**) | PASS — 5 757 o de marge (**2,36× sous**) |
+| **10 240 o** (10 Kio binaire) | PASS — 7 376 o de marge (3,58× sous) | PASS — 5 997 o de marge (2,41× sous) |
+
+**L'ambiguïté de la spec est sans objet** : la plus grosse des deux apps passe la lecture **la plus
+stricte** avec 2,36× de marge. Aucune interprétation du seuil ne change le verdict.
+
+**Preuves au-delà du nombre** (vérifiées depuis l'artefact, pas depuis la source) :
+
+- **Les bundles de production sont exempts de code de stats.** `grep -c` sur
+  `filament-{counter,rows}/app.js` : `filament:stats` = **0**, `__filament` = **0**, `domWrites` = 0,
+  `sourceMappingURL` = 0. Les bundles `-stats` retournent 1/2/2/1. **Le DCE a bien tiré**, et cela
+  prouve aussi que le run C3 mesure une instrumentation réelle et non un no-op.
+- **Parité de compression réelle.** `build-filament.sh` fixe `GZIP_LEVEL=9` / `BROTLI_QUALITY=11` avec
+  `BROTLI_PARAM_SIZE_HINT`, à l'identique de `server.mjs`. Filament n'a **pas** été pénalisé par un gzip
+  à la volée plus faible. Siblings servis : `serverEncodings.gzip = {responses: 3, bytes: 2030}` et
+  1153 + 404 + 473 = 2030 exactement ; CDP 2864 = 2030 + 834 o d'en-têtes. Idem rows (2523+402+484=3409)
+  et brotli (1041+265+360=1666).
+- **Les siblings `.gz`/`.br` se décompressent à l'octet identique à la source** (sha256, 6/6 fichiers).
+- **Aucun travail exigé par le contrat n'a été retiré pour passer sous le seuil** : le contrôle de
+  balisage des lignes PASSE (voir C4 et la réserve n°6 levée ci-dessous).
+
+### Poids propre du runtime vs son budget < 2 ko
+
+| Fichier | brut | **gzip** | brotli | vs 2 000 o | vs 2 048 o |
+|---|---:|---:|---:|---|---|
+| `dist/filament.js` (production) | 4 289 | **1 824** | 1 688 | **PASS** — 176 o de marge (8,8 %) | **PASS** — 224 o de marge |
+| `dist/filament.dev.js` (non expédié) | 4 674 | 1 995 | 1 839 | *(5 o sous 2 000)* | *(53 o sous 2 048)* |
+
+**Verdict : PASS sur les deux lectures**, mais **honnêtement : c'est serré sur la lecture décimale** —
+176 o, soit 8,8 %. À surveiller : le build dev est à **5 octets** de 2 000 o. Il n'est pas expédié, donc
+le budget n'est pas violé, mais toute fonctionnalité ajoutée au runtime consomme une marge mince.
+
+---
+
+## C3 — Exactement 1 écriture DOM par incrément, 0 allocation d'arbre de rendu
+
+Instrument **agnostique du framework** : `MutationObserver` sur la racine **la plus large** (`body`),
+même chemin de code pour les deux frameworks.
+
+### Écritures DOM par incrément
+
+| Framework | Observé (MutationObserver, 5 incréments) | Auto-rapport `__filament.stats.domWrites` | Concordance |
+|---|---|---|---|
+| **Filament** | **[1, 1, 1, 1, 1]** | [1, 1, 1, 1, 1] | **oui — corroboré, pas cru sur parole** |
+| **Blazor (AOT)** | **[1, 1, 1, 1, 1]** | s.o. | s.o. |
+
+Nature de l'écriture : `characterData` sur le `#text` dans `<span#counter-value>` ; `childList` = 0,
+`attributes` = 0.
+
+> **CONSTAT QUI COUPE CONTRE LA LECTURE FLATTEUSE, ÉNONCÉ EN TÊTE ET NON ENFOUI.**
+> **Blazor fait AUSSI exactement 1 écriture DOM par incrément.** Filament **atteint la barre de C3**,
+> mais **cette moitié de C3 n'est PAS un différenciateur face à Blazor** sur le compteur : le diff de
+> Blazor produit lui aussi une écriture `characterData` minimale. L'avantage de Filament est dans la
+> **manière** d'arriver à cette écriture, pas dans leur nombre. Le rapporter comme un avantage serait
+> malhonnête dans le sens flatteur.
+
+### Sonde d'allocation
+
+| Config | o/incrément | Ce que le nombre mesure **réellement** |
+|---|---:|---|
+| `filament-counter-prod` (minifié, sans instrumentation) | 335,2 | **~0 est attribuable à Filament** — voir ci-dessous |
+| `filament-counter-stats` (non minifié + sourcemap) | 312,97 | idem |
+| `blazor-counter-aot` | 2 769,005 | **glu d'interop JS UNIQUEMENT — et SOUS-ESTIME d'un montant inconnu** |
+
+**Attribution Filament.** Chaque site d'allocation de tête est la **boucle de pilotage du harness
+lui-même** (`driveIncrements`, `Promise`, `tick`, `evaluate:296`, API V8, `BYTECODE_COMPILER`). **Pas
+une seule frame de `app.js` n'apparaît dans le profil.** Le build production et le build instrumenté
+concordent à l'intérieur de leur propre dispersion (236–363 o) : si le chemin d'incrément allouait un
+arbre de rendu, les deux différeraient et des frames `app.js` apparaîtraient. Ni l'un ni l'autre ne se
+produit. **Les ~335 o sont le coût de pilotage du harness, identique pour tout framework.**
+
+**Attribution Blazor — et pourquoi le rapport 0 vs 2 769 est INTERDIT.** Les sites de tête sont à 100 %
+du JS de Blazor (`mo @ dotnet.runtime.js` 546 ko, `invokeDotNetMethodAsync` 406 ko,
+`dispatchGlobalEventToAllElements` 270 ko, `applyEdits` 175 ko). **La sonde est structurellement AVEUGLE
+à l'arbre de rendu .NET de Blazor**, qui vit dans la mémoire linéaire WASM (un seul `ArrayBuffer` pour
+V8). **« Filament ~0 o vs Blazor 2 769 o » n'est PAS un résultat C3 et ne doit jamais être cité comme
+tel** — cela compare le **total** de Filament au **sous-ensemble** « glu d'interop » de Blazor.
+Quantifier l'allocation de Blazor exige un instrument côté .NET qui n'est pas construit ici.
+
+**Verdict C3 : PASS.** Écritures DOM : exactement 1 sur les 5 incréments comptés, observé indépendamment
+et concordant avec l'auto-rapport. Allocation : **~0 allocation d'arbre est SOUTENUE** pour Filament —
+la sonde est complète pour lui (son runtime *est* du JavaScript ; à N=1000 avec un intervalle
+d'échantillonnage de 1024 o, même 32 o/incrément émergeraient à ~32 ko). Une fausse revendication de
+« 0 allocation » se verrait. Elle ne se voit pas. **Voir toutefois la réserve n°C : la sonde est plus
+bruitée que ne l'admet ce verdict, et la conclusion tient pour des raisons architecturales.**
+
+---
+
+## C4 — Vitesse (jamais plus lent que Blazor AOT)
+
+Médiane + IQR, **n = 10**, base **brotli** des deux côtés (Filament : `phase1/*.br.json` ; Blazor :
+`final-warm/blazor-*-aot.br.json`). Métrique de tête : `msToMutation`.
+
+| Scénario | **Filament** méd. (IQR) | **Blazor AOT** méd. (IQR) | **Blazor non-AOT** méd. | Pas plus lent que l'AOT ? | Rapport |
+|---|---:|---:|---:|:--:|---|
+| `create-warm` | **4,00** (0,800) | 7,35 (0,275) | 13,70 | **oui** | **1,84×** |
+| `update` | **0,30** (0,075) | 3,60 (0,175) | 12,60 | **oui** | 12,0× ⚠️ |
+| `swap` | **0,40** (0,100) | 3,45 (0,275) | 12,65 | **oui** | 8,6× ⚠️ |
+| `clear` | **1,30** (0,075) | 2,90 (0,300) | 4,20 | **oui** | **2,23×** |
+| `increment-warm` | **0,00** (0,000) | 1,00 (0,075) | 1,30 | **oui** | **🔻 PLANCHER — voir ci-dessous** |
+
+*(Contexte, hors tête : `create-cold` Filament 6,15 ms vs Blazor AOT 23,90 / non-AOT 34,15.)*
+
+**Verdict C4 : PASS sur les 5 scénarios.** Aucun échec, aucun timeout.
+
+### 🔻 `increment-warm` est LIMITÉ PAR LE PLANCHER — et ce n'est **PAS une égalité**
+
+**La prémisse de l'avertissement est RÉFUTÉE PAR LES DONNÉES.** L'inquiétude annoncée était que
+l'appareil bute vers ~1 ms et rapporte ~1 ms **pour les deux**, affichant une fausse égalité. **Ce n'est
+pas ce qui se passe** : l'appareil résout **très en dessous de 1 ms** — Filament lit 0,00 ms de médiane
+(échantillons `[0, 0.1, 0, 0.1, 0, 0, 0, 0, 0, 0]`) et 0,30 / 0,40 ms sur `update`/`swap`. Les
+échantillons de Blazor `[0.9, 1, 1, 0.9, 1, 1, 1, 0.9, 1.1, 1.1]` se groupent autour de 1,0
+**sans entassement au minimum** : **1,00 ms est une lecture réelle, pas un artefact de plancher.**
+
+**Ce qui EST limité par le plancher : la valeur de Filament elle-même.** Médiane 0,00 ms avec IQR 0,00
+contre un quantum `performance.now` de 0,1 ms ⇒ **le coût réel d'incrément de Filament est
+IRRÉSOLVABLE** : tout ce qu'on peut dire est qu'il est **< ~0,1 ms**.
+
+> **CONSÉQUENCE HONNÊTE.** Le plancher limite la capacité à **QUANTIFIER** l'avantage, pas à
+> l'**ÉTABLIR**. « > 10× plus rapide que l'AOT » est une **borne basse dérivée du quantum du timer**,
+> **jamais une accélération mesurée**. Conformément à la consigne de cette entrée : **une égalité au
+> plancher de l'appareil passe C4 mais ne prouve pas la parité.** Ici il n'y a pas d'égalité — mais
+> le chiffre reste une borne, pas une mesure.
+
+La garde anti-vacuité du harness (un prédicat déjà vrai avant le clic lève au lieu de rapporter 0)
+garantit que ces lectures à 0 ms sont de vraies mesures post-clic, non vacuoles.
+
+### ⚠️ Réserve de quantification sur `update` et `swap`
+
+`update` (0,30 ms) siège à **3 quanta** du plancher de 0,1 ms ; `swap` (0,40 ms) à **4 quanta**.
+**Les VERDICTS sont sûrs** (pas plus lent). **Les RAPPORTS 12,0× et 8,6× portent ~33 % / ~25
+d'incertitude de quantification et ne doivent pas être cités à 3 chiffres significatifs.**
+
+### Équité de la comparaison — vérifiée, pas supposée
+
+- **Contrat de balisage des lignes (réserve n°6 de l'entrée n°2) : PASSE, et la réserve est LEVÉE.**
+  Le harness épingle désormais le balisage **exact** (`checkRowMarkup()`), vérifié aux indices
+  [0, 1, 2, 500, 998, 999]. `row0.outerHTML` =
+  `<tr><td class="col-md-1">1</td><td class="col-md-4"><a class="lbl">adorable pink desk</a></td></tr>`.
+  **Filament n'a PAS pris le raccourci à 3 éléments** que la réserve n°6 redoutait : il construit les
+  mêmes 1 000 `<a>` décoratifs et 2 000 attributs `class` que Blazor.
+- **Garde d'égalité de charge : PASSE.** Le `#run` chronométré de `create-warm` produit un flux de
+  labels distinct du premier (ids 1001–2000) qui **correspond au flux cité pour Blazor** par l'entrée
+  n°2 (« mushy blue mouse »…). Filament exécute le LCG Park-Miller identique (`c=c*16807%2147483647`,
+  graine 42) : 3 000 multiply/modulo + 1 000 concaténations par `#run`. **Aucune mise en cache des
+  labels.**
+- **Aucun travail différé.** Le batch se vide **synchroniquement** dans le `finally` du handler de clic ;
+  `lazyLoadedOnInteractionBytes = 0`.
+- **Contrôle d'indépendance à l'encodage : 4 paires chaudes sur 5** concordent à ≤ 0,10 ms ;
+  `rows/create-warm` diffère de 0,30 ms (7,5 %), bien à l'intérieur de son propre IQR (0,8–0,975).
+  **Énoncé 4/5, PAS arrondi à 5/5** — c'est l'erreur exacte que l'entrée n°2 avait relevée en amont.
+
+---
+
+## C5 — Aucun runtime .NET expédié
+
+**Verdict : PASS.** Filament fait **exactement 3 requêtes, au total**, dans les deux apps :
+
+| Requête | `filament-counter` |
+|---|---:|
+| `/` | 680 o |
+| `/css/app.css` | 748 o |
+| `/app.js` | 1 436 o |
+
+**Zéro artefact `.wasm`, zéro artefact `dotnet.*`, zéro requête `/_framework/`** — d'aucune sorte.
+Preuves au-delà de la liste de requêtes :
+
+1. `lazyLoadedOnInteractionBytes = 0` dans les deux apps — **aucun runtime n'est récupéré plus tard**
+   à l'interaction non plus.
+2. `untrackedRequests = []` et **service workers BLOQUÉS** : aucun octet ne peut arriver invisiblement.
+3. Le détecteur d'AOT du harness rapporte indépendamment `aotObserved: null`, motif
+   `no-signature-matched` — il a cherché une signature .NET dans les artefacts servis et **n'a rien
+   trouvé à inspecter**.
+
+**Contraste** : `blazor-counter-aot` fait **39 requêtes**, dont `dotnet.native.xc7yj6pp2h.wasm`,
+`dotnet.runtime.a6jcqbs390.js`, `blazor.webassembly.958z1vx7fr.js` et **32 assemblies `.wasm` managées**.
+
+---
+
+## Ce qui a ÉCHOUÉ, et les réserves ouvertes — listées, non enfouies
+
+**Aucun échec de scénario, aucun timeout, aucun chiffre fabriqué.** 152 itérations chronométrées
+(140 valides au protocole à n=10, plus 12 itérations du run C3 à n=3 **jamais citées comme timing**),
+0 échec, 0 timeout, 0 problème de contrat, 0 avertissement de poids, 0 requête non suivie, 0 violation
+de cache froid ; `ok = true` dans les 7 fichiers de résultats.
+
+**Corroboration non planifiée** : `blazor-counter-aot` re-mesuré ce jour à **3 353 458 o brotli** —
+**exactement** le chiffre commité de l'entrée n°2, **à l'octet**. La baseline est vivante et
+reproductible, pas un nombre périmé.
+
+### Réserves ouvertes
+
+**A. 🔴 DÉCISIVE — l'artefact mesuré n'est pas le livrable ; le générateur n'existe pas.**
+`src/Filament.Generator/`, `src/Filament.Core/`, `src/Filament.Analyzer/` sont **vides**. Les chiffres
+C1/C3/C4/C5 mesurent du **JS optimisé à la main**, pas la sortie d'un compilateur. La proposition
+porteuse du POC — *« un générateur C# peut émettre ceci depuis du Razor, sous 10 ko, à ces temps »* —
+est **non testée et son sujet n'est pas sur le disque**. Aucune des sept autres réserves ne compte
+autant que celle-ci. **Elle conditionne le gate** (voir section Gate).
+
+**B. 🔴 LE RAPPORT DE MESURE AMONT CONTIENT UNE FAUSSE AFFIRMATION DE FAIT, ici rectifiée.**
+Le rapport amont affirmait : « *bench.mjs/server.mjs were NOT modified: no Filament branch was added to
+the harness* ». **C'est faux.** Vérifié ce jour :
+`git diff --stat HEAD -- bench/harness/bench.mjs` ⇒ **707 insertions(+), 6 deletions(−)**, non commitées ;
+`selftest.mjs` est également modifié (+423). Pire, le rapport offrait une **chaîne de version comme
+preuve** : « *IDENTICAL … including harnessVersion 1.2.0 — so Filament and the baseline it is compared
+against were produced by the same timed code path* ». Or `HARNESS_VERSION = '1.2.0'` **n'a pas été
+incrémenté** à travers ce diff de 707 lignes : **la chaîne ne peut pas distinguer les deux builds.**
+Et la chronologie est décisive :
+
+| Événement | Horodatage (UTC) |
+|---|---|
+| Baselines Blazor `final-warm/*` | 13:11 – 13:21 |
+| **`bench.mjs` dernière écriture** | **14:50:47** |
+| Runs Filament | 16:16 – 16:26 |
+
+**Blazor a été mesuré avec le harness d'AVANT l'édition, Filament avec celui d'APRÈS.** C'est exactement
+le hasard 1.1.0-vs-1.2.0 (33 % d'irreproductibilité) dont le rapport se félicitait d'avoir réchappé —
+**rouvert, et masqué par la chaîne même offerte en preuve**.
+
+> **ATTÉNUATION — vérifiée ici, et NON par le rapport amont.** Le chemin chronométré est **intact** :
+> `waitForCondition` (433 → 439) et `measure` (495 → 501) ont **glissé de 6 lignes sans changement de
+> contenu** — extraits et comparés à l'octet, **sha256 identiques** (`1619cc90b6029029`,
+> `eee16e7d5b7e866a`). `runScenario` est **identique à l'octet** (3 531 caractères de part et d'autre).
+> Les **6 suppressions** du diff sont **toutes** dans le contrat de balisage (le `cellsPerRow >= 2`
+> permissif remplacé par un contrat strict) ; le reste est purement **additif** (sonde C3, contrat
+> `rowMarkup`, drapeaux CLI). **La conclusion C4 survit** — mais **sur inspection, pas sur la preuve
+> qu'offrait le rapport.** Le rapport a affirmé **l'absence d'un diff** au lieu de **l'innocuité d'un
+> diff**, ce qu'il n'a jamais vérifié.
+> → **Correctif : incrémenter `HARNESS_VERSION` à 1.3.0, commiter le harness, et re-mesurer la baseline
+> Blazor sous le même build avant que ces chiffres n'arbitrent quoi que ce soit d'autre.**
+
+**C. La sonde d'allocation est plus bruitée que ne l'admet la rédaction.** Pente à deux points,
+N = 200 → 1000, et `lowBytes` sur les trois répétitions prod vaut **155 656 / 74 268 / 85 608** — une
+dispersion de **2,1×**. Ces 81 ko de dispersion valent à eux seuls **±102 o/incrément de bruit de
+méthode** sur un chiffre de ~335 o. Le rapport traite la concordance prod-vs-stats « à l'intérieur de
+leur dispersion (236–363 o) » comme une confirmation : **un instrument à ±21 % qui s'accorde avec
+lui-même à ±21 % ne discrimine pas grand-chose** et ne résoudrait pas ~100 o/incrément d'allocation
+réelle. **La conclusion reste juste pour des raisons ARCHITECTURALES** (chemin minifié tracé :
+`set value` → `A` → `q` → `h` → `n.fn()` → `I` réutilise le lien de dépendance existant via `i.dep===n`
+→ `x(E,v)` → `n.data=e`, sans allocation en régime établi), et `topSites` sommant à 353 768 o = `highBytes`
+exactement **sans aucune frame `app.js`** est une vraie preuve. **Mais le rapport s'appuie sur le profil
+plutôt que sur l'architecture, et le profil est bruité.**
+
+**D. L'artefact ne porte aucun zéro calibré pour la sonde d'allocation.** `measureC3` émet
+`criterion: 'C3: … 0 render-tree allocation'` et, à côté, un `bytesPerIncrement.median` **nu, sans
+verdict** — alors que chaque affirmation d'écriture DOM reçoit une chaîne de verdict nommant pass/fail.
+Ce nombre **inclut le plancher de la boucle de pilotage** (~82 o/incrément pour une fixture n'allouant
+rien, noté dans le code lui-même). Le plancher n'est établi qu'en `selftest.mjs` (`zeroBytes < 512`),
+**contre une autre fixture, dans un autre processus**, et **n'est jamais reporté dans la sortie d'un run
+réel**. → **L'artefact ne peut pas trancher le critère qu'il énonce lui-même.** Correctif : émettre
+`noiseFloorBytesPerIncrement` avec un verdict de même forme que `domWrites.verdict`.
+
+**E. La moitié « écritures DOM » de C3 est atteinte par Blazor aussi** (1 écriture/incrément). C'est une
+**barre de correction que Filament franchit, pas une victoire sur Blazor**. Répété ici parce que
+l'enfouir serait malhonnête dans le sens flatteur.
+
+**F. `ALLOCATION_SCOPE_CAVEAT` contient une phrase fausse** : elle affirme que le coût de la boucle de
+pilotage « *is IDENTICAL for every framework, so it biases both the same way and cannot manufacture a
+difference* ». **Faux** : `driveIncrements` sonde avec `setTimeout(tick, 0)` et évalue
+`el.textContent.trim()` à chaque tick (2 allocations de chaîne/tick), et **le nombre de ticks est
+fonction de la latence de dispatch du framework**, pas une constante. Filament flush **synchroniquement**
+dans `dispatchEvent` (0 tick supplémentaire) ; Blazor dispatche **asynchroniquement** et paie plusieurs
+ticks par incrément. **Un framework plus lent se voit donc facturer plus d'allocation pour être plus
+lent.** De plus, **toutes** les fixtures calibrant le plancher sont **synchrones**, donc le plancher
+< 512 o n'est établi **que pour un dispatch synchrone** et **ne se transfère pas à Blazor**. Le mal est
+borné (la mise en garde environnante **interdit déjà** la comparaison d'allocation Filament-vs-Blazor),
+mais **la phrase fausse est précisément celle qui autoriserait à la citer**, logée dans le paragraphe
+chargé de l'interdire. La moitié de C3 propre à Filament est **intacte** (dispatch synchrone = fixture
+synchrone, plancher calibré à l'identique).
+
+**G. Le rapport de `--shell-parity` ne couvre que l'app Counter** et imprime pourtant une revendication
+**générale** de parité CSS « byte-for-byte » couvrant tous les labels. Il asserte une parité qu'il ne
+vérifie pas, pour une app qu'il n'inspecte pas. *(C'est le mécanisme par lequel le défaut CSS ci-dessous
+a survécu.)* → Correctif : boucler `--shell-parity` sur **chaque** label de production.
+
+**H. `n = 10`, une machine, un Chrome, un OS.** Aucun intervalle de confiance, aucune réplication
+inter-machines. **Suffisant pour un gate de POC ; insuffisant pour une revendication publiable**
+(réserve n°15 héritée, **toujours NON LEVÉE**).
+
+**I. Le seuil de C1 (< 10 ko gzip) repose toujours sur l'AUTORITÉ DU PROPRIÉTAIRE, pas sur une spec sur
+le disque** (hérité de l'entrée n°2 ; re-vérifié — **aucun fichier de spec n'existe**). La marge de 2,36×
+rend l'ambiguïté 10 000/10 240 sans objet, mais **la provenance du seuil est inchangée**.
+
+**J. La comparaison C3 a utilisé `blazor-counter-aot`.** Les écritures DOM/incrément sont une propriété
+d'architecture de rendu indépendante de l'AOT, donc `nojit` devrait se comporter identiquement — **mais
+cela n'a pas été mesuré séparément.**
+
+**K. Asymétrie non divulguée par le rapport amont** : `inPageHarness` (injecté via `addInitScript`) a
+grossi d'environ **+261 lignes** pour la sonde C3. Il était **présent à chaque run Filament et absent de
+chaque run Blazor**. **Le sens favorise Blazor** (Filament paie le parse supplémentaire), donc cela ne
+flatte pas Filament — mais c'est une asymétrie que la revendication « identique sur tous les axes »
+**nie**.
+
+**L. Le cadrage de la marge C1 est généreux.** « Counter 3,49× sous, rows 2,36× sous » décrit un
+`h1+p+span+button` (2 864 o) et une table à 4 boutons (4 243 o). **~2,5 ko est du runtime fixe** ; toute
+l'app rows ne coûte que ~1,4 ko de plus que le compteur. Correct pour les apps que C1 nomme, mais
+« 2,36× de marge » **se lit comme de la place pour Filament en général alors que c'est de la place pour
+une table**.
+
+### Défauts d'artefact relevés par l'audit — état vérifié ce jour
+
+| Défaut | Sévérité | État |
+|---|---|---|
+| `build-filament.sh` copiait le CSS de **Counter** pour les 4 labels, y compris `filament-rows` — brisant la parité de style/layout (`border-collapse`, padding, `.col-md-1`) sur l'app même qui décide C4 | **majeur** | ✅ **CORRIGÉ ET VÉRIFIÉ DEPUIS L'ARTEFACT.** `css_for()` existe (ligne 192), est utilisé (ligne 542) et une assertion post-build compare aux octets **publiés** par le label Blazor. Sur le disque : `filament-rows/css/app.css` = md5 `1b67ed3e`, **917 o** = `baseline/Rows.Blazor` = `blazor-rows-nojit` ✔ ; `filament-counter/css/app.css` = md5 `66d7c50f`, **795 o** = `baseline/Counter.Blazor` ✔ |
+| `--shell-parity` ne couvre que Counter et revendique la parité pour tous | mineur | ❌ **NON CORRIGÉ** — voir réserve **G** |
+| `BENCH.md` entrée n°2 déclare la réserve n°6 « NON LEVÉE » alors que `checkRowMarkup()` la ferme | mineur | ✅ **RECTIFIÉ ICI** (l'entrée n°2 est append-only et n'est pas éditée) — voir C4 |
+| `ALLOCATION_SCOPE_CAVEAT` affirme faussement que le coût de pilotage est identique entre frameworks | mineur | ❌ **NON CORRIGÉ** — voir réserve **F** |
+| Aucun zéro calibré pour la sonde d'allocation dans l'artefact | mineur | ❌ **NON CORRIGÉ** — voir réserve **D** |
+| `Computed` n'a **aucun chemin de disposition** (fuite mémoire) | **majeur** | ❌ **NON CORRIGÉ** — voir bloqueur n°4 ci-dessous |
+
+### 🔴 Bloqueurs de correction sémantique du runtime — reproduits ce jour
+
+`npx vitest run` ⇒ **7 échecs / 164 succès (171 tests)**, via `test/adversarial.test.ts`.
+**Les 7 échecs sont VOULUS** : ils documentent **3 bugs sémantiques réels**, zéro flake.
+
+1. **🔴 VALEUR SILENCIEUSEMENT FAUSSE — `core.ts:287 + :319 + :328`.** `refresh()` efface `DIRTY`
+   **avant** que `recompute()` n'appelle `c.fn()` ; **rien ne le restaure en cas de throw**, et le
+   `finally` exécute quand même `prune(c)` avec un curseur de **run partiel**, larguant des arêtes que
+   le run n'a jamais atteintes. **Un computed dont la `fn` lève une seule fois reste CLEAN-mais-PÉRIMÉ :
+   il renvoie une valeur fausse pour toujours, SANS erreur** ; un computed n'ayant jamais réussi renvoie
+   `undefined` pour toujours ; **un effet en aval devient DÉFINITIVEMENT SOURD** — l'UI cesse
+   silencieusement de se mettre à jour. **Sur le chemin principal de la Phase 2** : le générateur mappe
+   les propriétés dérivées C# sur `computed()`, et les expressions C# lèvent couramment (null deref,
+   division par zéro, index hors bornes). Correctif vérifié : ~4 lignes.
+2. **🔴 MISE À JOUR SILENCIEUSEMENT MANQUÉE — `core.ts:351-352`.** `flush()` efface `DIRTY|PENDING`
+   **avant** `runEffect`, **sans garde par effet** : un throw **avorte toute la boucle de drainage**. Les
+   effets déjà dépilés-et-effacés **manquent définitivement** ce changement — laissés propres, non
+   exécutés, et **rien ne les re-marquera**. Même cause racine que le n°1.
+3. **🔴 CORRUPTION DU DOM — `list.ts:158, :166, :169.** Clés dupliquées : deux anciennes lignes
+   partageant une clé résolvent vers le **même** `ni` (l'une n'est jamais démontée) **et** `patched`
+   sur-compte, si bien que la garde `patched >= toPatch` **démonte une ligne dont la clé SURVIT**.
+   **Mesuré, non théorisé** : `[1,1,2] → [2,1]` donne `[1,2,1]` (3 nœuds pour 2 items) ;
+   `[1,2,2,3] → [3,2,1]` donne `[3,2,1,2]` ; `[1,1,2,2] → [2,2,1,1]` donne **SIX nœuds pour quatre
+   items**. **Le nombre de nœuds CROÎT ; les orphelins s'accumulent.** C'est l'algorithme de Vue 3 —
+   mais **Vue émet un avertissement dev sur les clés dupliquées et Filament n'en a AUCUN**.
+4. **🟠 `Computed` n'a aucun chemin de disposition (fuite non bornée)** — relevé par l'audit, **non
+   couvert par la suite existante**. Le constructeur n'enregistre jamais auprès de `owner` et
+   `disposeOwned` ne parcourt que des `Effect`. Tout `Computed` créé dans un scope de disposition (un
+   template de ligne) et lisant un signal plus durable est **retenu POUR TOUJOURS** par la liste
+   d'abonnés de ce signal — avec sa closure, la ligne capturée et ses nœuds DOM. Démontré :
+   `globalMult.subs` sur 10 cycles `#run` = `[100, 200, 300, … 1000]` (**non borné** ; contrôle
+   `effect` : `[100, …, 100]`) ; rétention après `gc()` : **50/50** lignes démontées encore joignables
+   (contrôle : 0/50) ; dégradation : 9 001 liens fuités, 2 000 écritures passant de **5,8 ms à 60,7 ms
+   (10,5×)**. **Devient porteur en Phase 2** : le premier `@foreach` contenant une expression dérivée
+   (`@(row.Qty * Price)`) fuit 1 `Link` + tout le graphe de ligne **par ligne et par `#run`**.
+5. **🟡 Aucune détection de cycle** (plus faible sévérité : **gel, pas valeur fausse**).
+   `s.value = s.value + 1` dans un effet, et deux effets s'écrivant mutuellement, **tournent à l'infini**
+   (prouvé avec un disjoncteur à 50 000 itérations). Les runtimes de type Solid se comportent
+   similairement — **non compté parmi les bloqueurs**, mais une garde est peu coûteuse.
+
+> **PORTÉE DE CES BLOQUEURS, ÉNONCÉE POUR NE PAS ÊTRE SUR-LUE.**
+> **AUCUN des bloqueurs n'est atteignable depuis les apps mesurées** : le compteur et les lignes ne
+> lèvent jamais, utilisent des ids **monotones uniques** (aucune clé dupliquée), n'ont **aucun cycle**,
+> et `samples/Rows/rows.js` n'utilise **délibérément que `effect()`** dans `createRow`, donc le benchmark
+> ne construit **jamais** de `Computed` dans un scope de ligne. **LES CHIFFRES C1/C3/C4/C5 NE SONT PAS
+> INVALIDÉS.** **La thèse du POC n'est PAS validée sur un mensonge** — le pire scénario redouté ne s'est
+> pas produit. Le runtime est **rapide, petit ET sémantiquement correct sur tout chemin que le harness
+> mesure.** Les bugs vivent **hors du chemin mesuré**, dans la gestion d'exceptions et un cas d'erreur
+> utilisateur documenté. **Leur signification est prospective** : le benchmark **recharge la page à
+> chaque itération**, donc `create-warm` resterait plat et **le benchmark MASQUERAIT la fuite** pendant
+> que le runtime se dégrade en application réelle.
+
+**Ce que la suite de tests fait bien (contrôlé, non supposé)** : `subCount()` parcourt la liste côté
+**source**, ce qui distingue « désabonné » de « marqué-et-ignoré » — cette différence **est** la fuite.
+De vrais **contrôles négatifs** existent (le contrôle de rétention fuit délibérément 50 lignes et
+asserte que 50 survivent, prouvant que le harnais `WeakRef` **voit** la rétention). Le test GC rejette
+`heapUsed` **avec un motif énoncé** (un mutant le passait). `list-fuzz` vérifie la minimalité contre un
+**oracle LIS O(n²) indépendant**. Le commentaire de `propagate()` **admet** qu'une mutation testing a
+montré que supprimer son `continue` ne fait échouer aucun test — **l'inverse de l'autocongratulation**.
+**Les lacunes sont précisément là où les bugs ont été trouvés.**
+
+**Ce qui a résisté à l'attaque (vérifié, non supposé)** : aucune fuite sur `effect` (50 × `#run(200)` :
+compte d'abonnés **exactement 200 à chaque cycle**) · **zéro allocation sur le chemin chaud** (100 000
+incréments ⇒ `stats.links === 0`) · **LIS correct et MINIMAL** (swap de 2 parmi 1 000 = **exactement 2
+déplacements**, pas 1 000 — la revendication de tête tient) · ré-entrance **plate, non récursive**
+(200 000 runs, aucun stack overflow) · **glitch-freedom** tenue sur diamants asymétriques et deps
+conditionnelles.
+
+**Précision de revendication** : « computed est paresseux » doit s'énoncer « **les computed NON OBSERVÉS**
+sont paresseux ». Une fois qu'un effet en dépend, `checkDirty` **doit** l'évaluer pour décider de
+re-exécuter — vérifié. Correct et nécessaire, mais la revendication non qualifiée est trompeuse.
+
+---
+
+*Fin de l'entrée n°3. Ne pas modifier — ajouter une entrée n°4 pour toute rectification.*
+
+---
+
+## Entrée n°4 — 2026-07-16 — Phase 1 : mesure propre (un seul harness, runtime corrigé)
+
+Re-mesure **C1** et **C4** avec les **deux frameworks sur le MÊME harness**, et sur un runtime dont
+**3 bugs sémantiques + l'absence de garde de cycle** ont été corrigés depuis l'entrée n°3.
+
+### Pourquoi cette entrée existe, et ce qu'elle supersède
+
+L'entrée n°3 a comparé **deux mesures qui n'étaient pas comparables**, et rien dans l'appareil ne
+pouvait le détecter :
+
+| | Blazor (entrée n°2, cité par n°3) | Filament (entrée n°3) |
+|---|---|---|
+| Mesuré à | **15:17** | **18:20** |
+| Harness sur le disque | **avant** l'édition C3 | **après**, **+701 lignes** |
+| `HARNESS_VERSION` déclaré | **`1.2.0`** | **`1.2.0`** |
+
+**La version était tenue à la main. Elle n'a pas bougé pendant que le harness bougeait de 701 lignes** —
+donc les deux runs *affirmaient* une comparabilité qui **n'existait pas**, et l'affirmation était
+**infalsifiable** : aucune donnée enregistrée ne permettait de contredire la chaîne `"1.2.0"`.
+
+Deux changements corrigent cela :
+
+1. **L'identité du harness est désormais un HASH DE CONTENU**, calculé au runtime et écrit dans
+   `environment.harness` de **chaque** JSON de résultat. Une chaîne écrite à la main est remplacée par
+   une **mesure de l'appareil lui-même**. `computeHarnessIdentity()` **lève** plutôt que de dégrader :
+   un run incapable d'établir son identité doit s'arrêter, car un hash nul est exactement la
+   revendication infalsifiable qu'on remplace. `HARNESS_VERSION` est conservé (**1.3.0**) et annoté
+   **dans le code** comme *étiquette, pas preuve*.
+2. **Les deux frameworks sont re-mesurés dans le même run**, sur ce hash unique.
+
+**S'y ajoute que le runtime lui-même a changé entre n°3 et n°4** : les 3 bugs sémantiques bloquants de
+l'entrée n°3 (valeur silencieusement fausse sur throw ; mise à jour silencieusement manquée ;
+corruption du DOM sur clés dupliquées) sont **corrigés**, plus une **garde de cycle**. Les octets C1
+ci-dessous portent donc sur un **bundle reconstruit** qui embarque ces correctifs.
+
+> **CE QUE CETTE ENTRÉE SUPERSÈDE, NOMMÉMENT.**
+> - **Les RAPPORTS C4 de l'entrée n°3 : SUPERSEDED en tant que quantités.** Chaque temps Blazor a bougé
+>   sur le harness propre ; **tous** les rapports de la table C4 de n°3 sont donc faux. Ils
+>   **sous-estimaient** Filament. À restater depuis cette entrée, **pas** à annoter en note de bas de page.
+> - **Le VERDICT C4 de l'entrée n°3 : NON invalidé, et même renforcé** — voir « Sens du biais ».
+> - **La comparaison de POIDS de l'entrée n°2 : NON invalidée du tout.** Les 8 configs Blazor
+>   reproduisent leurs octets **à l'octet près** (delta = 0 partout). Vérifié indépendamment ici.
+> - **C3 : NON re-mesuré** (`--c3` désactivé). Cette entrée **ne dit rien** sur C3. Les chiffres C3 de
+>   l'entrée n°3 restent ce qu'ils étaient, avec leurs réserves.
+
+### Environnement
+
+| | |
+|---|---|
+| Machine | Mac17,6 — Apple M5 Max, 18 cœurs, arm64, 64 Gio |
+| OS | darwin 25.5.0 (`productVersion` 26.5.1) |
+| Chrome | 150.0.7871.124, **headless** |
+| Node | v26.5.0 · Playwright 1.61.1 · .NET SDK 10.0.301 |
+| esbuild | 0.28.1 — **conforme** à la chaîne épinglée Phase 1 (aucun avertissement de dérive du minifieur) |
+| Date | **2026-07-16**, run 19:50:03 → 20:07 (~17 min) |
+
+**Contrôle de parité d'environnement.** L'environnement enregistré de l'entrée n°2 a été comparé
+**champ par champ** à celui-ci : Chrome, Node, Playwright, SDK .NET, CPU, modèle, `productVersion`,
+headless — **tous identiques**. **C'est ce qui autorise l'attribution du `deltaVsPrevious` ci-dessous** :
+toutes les autres variables étant tenues fixes, le mouvement de Blazor est imputable au changement de
+harness **plus** l'état machine du jour, et non à une dérive de chaîne d'outils. Si Chrome avait
+différé, le delta aurait été **ininterprétable** et il fallait le dire.
+
+### Identité du harness — hash de contenu
+
+```
+sha256 = 47e7e46f372f8573e9a574713cee9cd6c125d55361fdb5d4b47755ac7d4536f8
+```
+
+**Partagé par les 12 configs du run** (`configsSharingHash: 12`, `unified: true`). L'analyse **refuse
+d'émettre une comparaison inter-configs** si l'ensemble des hashs n'est pas de cardinal 1.
+
+| Fichier | sha256 |
+|---|---|
+| `bench.mjs` | `e4b5e96e5e9194e0cea9537f4f9bbb2cc552815bdba81b6f83eb0de8be6d7c54` |
+| `server.mjs` | `c4867310477486d206f9e2df5319974f99676a0fb66771d878c5f734d96f7034` |
+| `expected-labels.json` | `877b14615b32f85a5d9826ee43558f63a1dda59eaae85d42813f7ad3070d51d5` |
+
+**Agrégation** : sha256 par fichier, puis sha256 sur les lignes `"nom:sha256"` **triées** —
+indépendant du chemin, de l'ordre et de la machine. **Re-calculé indépendamment lors de la rédaction
+de cette entrée : reproduit exactement**, y compris les trois hashs par fichier.
+
+**Périmètre du hash, et pourquoi ces trois-là.** `bench.mjs` (le driver, la primitive de chronométrage,
+et `inPageHarness()` — qui est une **fonction dans ce fichier**, injectée par `addInitScript`, donc il
+n'existe **aucun asset in-page séparé** à manquer) ; `server.mjs` (négociation et **niveaux de
+compression** — changer la qualité brotli déplace tous les poids sans toucher `bench.mjs`) ;
+`expected-labels.json` (la fixture d'or **définit** ce que « la même charge » veut dire).
+**Exclus** : `selftest.mjs` (jamais sur le chemin de mesure) et `package*.json` (Playwright/Chrome sont
+déjà observés dans `environment`).
+
+### Protocole et quiescence
+
+**Strictement séquentiel** : une config à la fois, un navigateur à la fois, **jamais deux benchmarks
+concurrents** (section 7 de la spec). Le runner est une boucle bash sérielle ; la seule chose mise en
+arrière-plan était la boucle elle-même, et l'attente a été bloquante.
+
+Protocole **non affaibli** : cache **FROID** à chaque chargement (`BrowserContext` neuf + CDP
+`Network.setCacheDisabled` + `Cache-Control: no-store`) · poids via CDP `encodedDataLength` ·
+**10 runs chronométrés/scénario** · **MÉDIANE + IQR**, jamais la moyenne · 3 runs de poids/config.
+
+**Santé** : 12/12 `ok=true`, **0 échec**, **440/440** itérations chronométrées enregistrées (20 par
+config counter, 50 par config rows). Aucun timeout, aucun retry, **aucun échantillon écarté**.
+
+#### Commande de rejeu
+
+```bash
+# 1. Reconstruire le runtime + les bundles d'apps (les correctifs sémantiques changent les octets).
+cd src/filament-runtime && npm run verify && cd -
+bash bench/build-filament.sh filament-counter filament-rows
+
+# 2. Republier la baseline Blazor (purger obj/ et bin/ ENTRE chaque config — cache
+#    static-web-assets empoisonné par la bascule AOT ; voir DECISIONS.md).
+bash bench/publish-baseline.sh
+
+# 3. Mesurer les 12 configs, SÉRIELLEMENT. Base de tête = brotli ; gzip = base de C1.
+#    Racine statique : <label>/wwwroot pour BLAZOR, <label> SANS wwwroot pour FILAMENT.
+node bench/harness/bench.mjs --dir bench/publish/filament-rows \
+  --app rows --label filament-rows --runs 10 --weight-runs 3 \
+  --max-encoding br --headless --no-aot \
+  --out bench/results/phase1-clean/filament-rows.br.json
+# idem pour filament-counter (--app counter) et les 4 configs blazor-* (--dir .../wwwroot,
+# --aot pour les labels -aot), en gzip et en br.
+```
+
+---
+
+## Résultats — C1 (poids du bundle)
+
+**Base = octets SUR LE FIL** (`encodedDataLength`, **en-têtes de réponse inclus**), `toInteractive`,
+cache froid. **C'est la base la plus SÉVÈRE, et c'est délibéré** : l'aperçu au build (somme des
+frères gzip, hors en-têtes) donne 2 142 / 3 531 o — **plus flatteur, donc non retenu**. C'est un
+aperçu, pas la mesure. C'est aussi **exactement le champ d'où venaient les 2 864 / 4 243 de
+l'entrée n°3** : le delta est **comparable terme à terme**.
+
+| Config | gzip (o) | IQR | Entrée n°3 (o) | **Δ correctifs** | Gate < 10 000 | Marge |
+|---|---:|---:|---:|---:|:---:|---:|
+| `filament-counter` | **2 976** | **0** | 2 864 | **+112** | ✅ **PASS** | 7 024 o |
+| `filament-rows` | **4 365** | **0** | 4 243 | **+122** | ✅ **PASS** | 5 635 o |
+
+| Config | brotli (o) | IQR | Entrée n°3 (o) | **Δ correctifs** |
+|---|---:|---:|---:|---:|
+| `filament-counter` | **2 604** | **0** | 2 494 | **+110** |
+| `filament-rows` | **3 904** | **0** | 3 794 | **+110** |
+
+- **IQR = 0 sur les quatre** : poids parfaitement reproductible.
+- **Les deux lectures de « 10 ko » passent.** Le gate est ambigu (10 000 décimal / 10 240 binaire) et
+  **ni la spec ni nous ne le tranchons en choisissant la lecture flatteuse** : le build rapporte contre
+  **les deux**. Contre 10 240 : marges de **7 264** et **5 875** o. **PASS des deux côtés.**
+- **La correction sémantique a coûté ~110–122 o gzip** — soit **~1,1 % d'un budget de 10 000 o**,
+  contre **56–70 % de marge restante**. **C1 n'est pas près d'échouer.** Aucune correction n'a été
+  rognée pour tenir dans le budget.
+
+> **PROVENANCE VÉRIFIÉE À LA RÉDACTION, ET C'EST LE CONTRÔLE QUI COMPTE.** Les bundles mesurés à 19:48
+> ont été **reconstruits depuis la source livrée** : les md5 sont **identiques**
+> (`filament-counter/app.js` = `425e2d6d65be412bf23ba43b0cb22298`, `filament-rows/app.js` =
+> `6cc803a2b282cf6cb45cebf5189ff230`). **L'arbre livré produit, à l'octet près, le bundle qui a été
+> mesuré** — donc ces octets C1 décrivent bien le code committé, correctifs sémantiques **et garde de
+> cycle inclus** (la chaîne `Filament: cycle detected` est présente dans les deux `app.js` de
+> production). Le marqueur `filament:stats` est **absent** des bundles de production et **présent**
+> dans les builds `-stats` : l'instrumentation C3 est bien éliminée par DCE de ce qui est pesé.
+
+---
+
+## Résultats — C4 (vitesse) — les trois colonnes viennent de CE run
+
+`msToMutation`, **médiane et IQR, n = 10**, base brotli, cache froid, un seul harness
+(`47e7e46f…`). **Aucune colonne n'est héritée d'une entrée précédente.**
+
+### Rows (1 000 lignes)
+
+| Scénario | Chaud | **Filament** méd. | IQR | **Blazor AOT** méd. | IQR | **Blazor non-AOT** méd. | IQR | vs AOT | vs non-AOT |
+|---|:---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| `create-cold` | non | **6,20 ms** | 0,425 | 33,85 ms | 3,2 | 36,10 ms | 2,9 | *5,5×* | *5,8×* |
+| **`create-warm`** | **OUI** | **3,65 ms** | **1,475** | **7,80 ms** | 1,8 | **14,60 ms** | 0,45 | **~2,1×** | **~4,0×** |
+| `update` (1/10) | oui | **0,30 ms** | 0,1 | 4,10 ms | 0,35 | 13,55 ms | 1,125 | **~13,7×** ⚠️ | ~45× ⚠️ |
+| `swap` | oui | **0,40 ms** | **0** | 3,85 ms | 0,675 | 12,60 ms | 1,725 | **~9,6×** ⚠️ | ~31,5× ⚠️ |
+| `clear` | oui | **1,70 ms** | 0,5 | 3,00 ms | 0,1 | 4,80 ms | 0,275 | **~1,8×** | ~2,8× |
+
+### Counter
+
+| Scénario | Chaud | **Filament** méd. | IQR | **Blazor AOT** méd. | IQR | **Blazor non-AOT** méd. | IQR | vs AOT |
+|---|:---:|---:|---:|---:|---:|---:|---:|---:|
+| `increment-cold` | non | **0,40 ms** | 0,075 | 21,45 ms | **7,6** | 17,75 ms | 1,25 | *~53,6×* ⚠️🔇 |
+| **`increment-warm`** | **OUI** | **0,10 ms** 🚧 | 0,075 | **1,10 ms** | 0,1 | **1,65 ms** | 0,25 | **≥ ~11×** 🚧 |
+
+**`notSlowerThanAot` = `true` sur les 7 scénarios.** **C4 PASSE.**
+
+### Légende — et ces marqueurs ne sont pas décoratifs
+
+- 🚧 **`increment-warm` est LIMITÉ PAR LE PLANCHER — NE PAS citer un facteur d'accélération.**
+  **3/10** échantillons Filament valent **exactement 0,0 ms** (base gzip : **5/10**, médiane 0,05).
+  Le coût réel de Filament est **INCONNU et plus petit que l'instrument** ; les 1,10 ms de Blazor AOT
+  sont, eux, une valeur **résolue**. **L'énoncé honnête est « Filament est AU MOINS ~11× plus
+  rapide »**, en bornant Filament à **un quantum**. Le « 11× » naïf et le « 20× » qu'implique la base
+  gzip **divisent tous deux par un artefact de quantification** : ce ne sont **pas des mesures**.
+  Corriger cela demande un **autre instrument** (chronométrage groupé de N incréments), pas un rejeu.
+- ⚠️ **Résolu mais GROSSIER.** `update` (0,30 ms ≈ **3 quanta**) et `swap` (0,40 ms ≈ **4 quanta**)
+  portent ~**±17 %** et ~**±13 %** d'incertitude **sur leur rapport**, du seul fait de la résolution.
+  **Ils ne sont PAS marqués `floorLimited`, et la distinction est délibérée** : **aucun** échantillon
+  n'a touché 0,0 ms (min = 0,2 et 0,3 ms), donc la valeur a été **mesurée**, pas plafonnée. Ce critère
+  est calculé **depuis les échantillons eux-mêmes**, pas depuis un seuil choisi à la main.
+  **Verdicts sûrs ; rapports à ne pas citer à 3 chiffres significatifs.**
+- 🔇 **`increment-cold` : ordre NON CRÉDIBLE, ne rien en conclure.** Blazor **AOT** (21,45 ms,
+  **IQR 7,6**) y lit **plus LENT** que non-AOT (17,75 ms). Ce n'est pas un résultat, c'est du bruit.
+  **Aucune conclusion AOT-vs-nojit ne doit être tirée d'une ligne froide.**
+- *Italique* = **scénario FROID : ce n'est PAS une comparaison de rendu.** Blazor paie le démarrage
+  .NET/wasm **dans la fenêtre mesurée** ; Filament n'a **aucun runtime à démarrer**. Réel et visible
+  par l'utilisateur, mais **`create-warm` / `increment-warm` sont les nombres comparables terme à
+  terme**. Les médianes froides de Blazor sont aussi les **plus bruitées** du run (IQR 2,9–7,6).
+- **`create-warm` est le scénario le plus bruité de Filament** (IQR **1,475**, échantillons 1,8–4,3,
+  **légèrement bimodal**). La marge ~2,1× est **réelle mais la moins serrée du lot**. Un run plus long
+  s'impose si ce rapport précis devient porteur.
+
+### Recoupements de validité
+
+| Contrôle | Résultat |
+|---|---|
+| **Base d'encodage identique** | Les deux frameworks utilisent la **même** chaîne de méthode (CDP `Network.loadingFinished.encodedDataLength`). Les runs gzip servent **100 % gzip** aux **deux**, les runs br **100 % br** aux deux : **aucune négociation mixte**. |
+| **En-têtes cohérents** | 278 o/requête (Filament, 834/3) vs 271 o/requête (Blazor, 10 582/39). Cohérent. Zéro requête non suivie, zéro avertissement, **aucun delta négatif**. |
+| **Poids Blazor reproduit** | **Les 8 configs à l'octet près vs entrée n°2 : delta = 0 partout** (`rows-aot` br 3 350 819 = 3 350 819 ; `counter-aot` gzip 4 849 976 = 4 849 976). **Re-vérifié indépendamment à la rédaction.** |
+| **Parité de charge** | Les deux frameworks émettent un balisage de ligne **identique à l'octet** (`row0outerHTML` identique), 1 000 lignes, **même fixture d'or** (sha256 identique), `problems: []`. |
+| **Aucune contamination** | Horodatages strictement séquentiels, chaque config démarrant ~0,5 s après la fin de la précédente. **Zéro recouvrement.** |
+
+> **Ce que le poids Blazor à l'octet près prouve, et c'est fort.** Un poids **byte-identique** à travers
+> un changement de harness confirme **indépendamment** que les artefacts publiés n'ont pas bougé et que
+> la négociation serveur est déterministe. **Cela isole le delta ci-dessous comme un effet
+> PUREMENT TEMPOREL.**
+
+---
+
+## `deltaVsPrevious` — ce que valait le décalage de harness, chiffré
+
+**C'est la raison d'être de ce run.** Publié **dans les deux sens**, comme demandé.
+
+**POIDS : mouvement nul.** Voir ci-dessus. **La perturbation est exclusivement temporelle.**
+
+**TEMPS (base br, entrée n°2 → ce run). Les 14 scénarios Blazor, AUCUN omis** — recalculés
+indépendamment depuis les JSON bruts et la table de l'entrée n°2 :
+
+| Config | Scénario | Chaud | Entrée n°2 | Ce run | Δ | Δ % |
+|---|---|:---:|---:|---:|---:|---:|
+| `rows-aot` | `create-cold` | non | 23,90 | 33,85 | **+9,95** | **+41,6 %** |
+| `counter-aot` | `increment-cold` | non | 15,85 | 21,45 | **+5,60** | **+35,3 %** |
+| `rows-nojit` | `create-cold` | non | 34,15 | 36,10 | +1,95 | +5,7 % |
+| `counter-nojit` | `increment-cold` | non | 17,15 | 17,75 | +0,60 | +3,5 % |
+| **`counter-nojit`** | **`increment-warm`** | **OUI** | **1,30** | **1,65** | **+0,35** | **+26,9 %** ← **plus grande perturbation CHAUDE** |
+| `rows-nojit` | `clear` | oui | 4,20 | 4,80 | +0,60 | **+14,3 %** |
+| `rows-aot` | `update` | oui | 3,60 | 4,10 | +0,50 | +13,9 % |
+| `rows-aot` | `swap` | oui | 3,45 | 3,85 | +0,40 | +11,6 % |
+| `counter-aot` | `increment-warm` | oui | 1,00 | 1,10 | +0,10 | +10,0 % |
+| `rows-nojit` | `update` | oui | 12,60 | 13,55 | +0,95 | +7,5 % |
+| `rows-nojit` | `create-warm` | **OUI** | 13,70 | 14,60 | +0,90 | +6,6 % |
+| `rows-aot` | `create-warm` | **OUI** | 7,35 | 7,80 | +0,45 | +6,1 % |
+| `rows-aot` | `clear` | oui | 2,90 | 3,00 | +0,10 | +3,4 % |
+| **`rows-nojit`** | **`swap`** | oui | **12,65** | **12,60** | **−0,05** | **−0,4 %** ← **PLUS RAPIDE** |
+
+### Rectifications au rapport de mesure amont — il flattait, dans le sens qui arrange
+
+Le rapport de mesure amont a été **réfuté sur trois points** par la vérification sceptique, **confirmés
+indépendamment ici depuis les JSON bruts**. Les trois vont **dans le sens flatteur**, et c'est
+précisément pourquoi ils sont publiés :
+
+1. **« *all Blazor got SLOWER* » est FAUX.** `rows-nojit/swap` va **12,65 → 12,60 ms** (**plus
+   rapide**). L'énoncé correct est **13/14, pas 14/14**. **Un demi-quantum** : négligeable en
+   magnitude — **mais un universel énoncé est falsifié par les données du run lui-même.**
+2. **« *warm perturbation is single-digit percent* » est FAUX**, et **la liste amont était
+   sélectivement incomplète.** `counter-nojit/increment-warm` **+26,9 %** est **la plus grande
+   perturbation chaude du run** et était **entièrement absente** de la section dont c'est **l'unique
+   objet** — pendant que son voisin **plus petit** `counter-aot/increment-warm` (+10,0 %) y **figurait**,
+   une ligne plus loin. Également omis : `rows-nojit/clear` (+14,3 %) et `rows-nojit/update` (+7,5 %).
+   **Toutes les omissions sont des lignes `nojit`.** *En toute équité : l'argument du rapport lui-même
+   (« un quantum sur une valeur de 1 ms, c'est de la résolution, pas du signal ») couvrirait le +26,9 %
+   — il vaut +0,35 ms, ~3 quanta. Mais il ne l'applique jamais, parce qu'il ne liste jamais la ligne.*
+3. **La fourchette « *+0,7 % à +6,6 % sur create-warm* » est INFONDÉE.** Aucun delta `create-warm` br
+   ne vaut +0,7 % ; les deux valeurs réelles sont **+6,1 %** et **+6,6 %**. Chiffre errant.
+
+**Pourquoi ces omissions comptent, alors qu'elles sont petites.** La dérive de Blazor **vers le haut**
+est **exactement ce qui gonfle les rapports de Filament**. Une section qui sous-estime cette dérive
+**fait paraître la stabilité de ces rapports mieux établie qu'elle ne l'est**. **Défaut de RAPPORT, pas
+défaut de MESURE** : il n'atteint **aucun** verdict de gate.
+
+### Interprétation, honnêtement bornée
+
+Les scénarios **chauds** — les seuls sur lesquels C4 se prononce — ont bougé de **−0,4 % à +26,9 %**,
+et **≤ +6,6 % sur `create-warm`**, le scénario de tête. Les scénarios **froids** ont bougé de
+**+3,5 % à +41,6 %**, mais portent des **IQR de 2,9 à 7,6 ms** (contre 0,1–1,8 à chaud) : **l'essentiel
+est de la variance de démarrage à froid, pas un effet de harness**. Le **+41,6 % a un IQR plus large
+que plusieurs des deltas auxquels on le compare**.
+
+**On ne peut PAS séparer proprement « changement de harness » de « état machine/thermique du jour »
+avec n = 1 baseline par config, et on ne prétendra pas le contraire.** La lecture correcte est :
+**perturbation chaude de l'ordre de quelques % à ~27 % sur les petites valeurs ; froid trop bruité pour
+être attribué.**
+
+### Sens du biais — et pourquoi le verdict tient *a fortiori*
+
+**Blazor est plus lent sur le harness propre dans 13 scénarios sur 14.** L'ancien registre comparait
+donc un **Blazor mesuré sur le harness RAPIDE** à un **Filament mesuré sur le LENT** : **l'asymétrie
+handicapait FILAMENT**, exactement comme la tâche l'anticipait. Re-mesurer les deux sur un seul harness
+**éloigne** Blazor de Filament ⇒ **la marge de Filament est, si tant est, LÉGÈREMENT PLUS GRANDE** que
+ce que le registre sale montrait.
+
+**Un verdict qui a survécu à un test biaisé CONTRE lui survit *a fortiori* au test non biaisé.**
+
+**Robustesse du gate, testée et non supposée** : recalculé contre les **ANCIENS** chiffres Blazor (les
+plus rapides), **chaque scénario passe encore** — `create-warm` **2,01×**, `update` **12,00×**,
+`swap` **8,63×**, `clear` **1,71×** (la plus étroite), `increment-warm` **10,00×** (borné). **Aucune
+perturbation de l'ampleur observée ne menace le verdict.**
+
+---
+
+## Verdict du gate
+
+| Critère | Verdict | Sur quoi |
+|---|:---:|---|
+| **C1** — < 10 ko gzip | ✅ **PASS** | 2 976 / 4 365 o sur le fil. Passe aussi contre 10 240. Marge 56–70 %. |
+| **C4** — pas plus lent que Blazor AOT | ✅ **PASS** | 7/7 scénarios, `notSlowerThanAot: true`, **un seul harness**. |
+| **C3** | — | **NON re-mesuré dans ce run.** |
+
+### 🟢 **`gateVerdict` = PASS** — pour C1 et C4, **sur les bundles corrigés, à base honnête**.
+
+> **Portée, énoncée pour ne pas être sur-lue.** Ce `PASS` porte sur **C1 et C4 seulement**, sur du
+> **JS écrit à la main** (l'avertissement de portée de l'entrée n°3 — *l'artefact n'est pas la sortie
+> d'un générateur* — reste **intégralement en vigueur**), et **ne dit rien de C3**. Il **ne déclare pas
+> la Phase 1 franchie** : la décision n°34 (gate **CONDITIONNEL**) reste ouverte sur le point qui la
+> tient — **le générateur n'existe toujours pas**, donc la proposition porteuse n'est toujours pas
+> testée. **Ce qui a changé depuis n°3, c'est l'autre condition** : les 3 bloqueurs sémantiques sont
+> **corrigés et vérifiés** (voir DECISIONS.md n°35–41).
+
+---
+
+## Réserves ouvertes — listées, pas enterrées
+
+**A. `increment-warm` est LIMITÉ PAR LE PLANCHER.** 3/10 échantillons br (5/10 gzip) à exactement
+0,0 ms. **« ≥ ~11× » est défendable ; « 11× » et le « 20× » de la base gzip ne le sont pas.** Exige un
+autre instrument, pas un rejeu. *(Réserve héritée n°32 de DECISIONS.md, **toujours NON LEVÉE**.)*
+
+**B. `update` (3 quanta) et `swap` (4 quanta) sont GROSSIERS** : ~±17 % / ±13 % sur le rapport, du seul
+fait de la résolution. Verdicts sûrs, **rapports non citables à 3 chiffres significatifs**.
+
+**C. Aucune ligne FROIDE ne supporte de conclusion AOT-vs-nojit.** `increment-cold` donne AOT **plus
+lent** que non-AOT (21,45 vs 17,75, IQR 7,6) — **ordre non crédible, bruit pur**.
+
+**D. `create-warm` est le scénario le plus bruité de Filament** (IQR 1,475, 1,8–4,3, légèrement
+bimodal). La marge ~2,1× est la **moins serrée** du lot.
+
+**E. Le mouvement FROID du `deltaVsPrevious` (jusqu'à +41,6 %) N'EST PAS ATTRIBUABLE proprement**
+entre changement de harness et état machine : **n = 1 baseline par config** dans l'entrée n°2.
+
+**F. 🔴 CONFOND D'ORDRE NON DIVULGUÉ PAR LE RAPPORT AMONT — l'exécution était séquentielle mais PAS
+ENTRELACÉE.** **Tout Blazor a tourné en premier (19:50–20:01), tout Filament en dernier (20:02–20:07).**
+La **dérive thermique/machine est donc CONFONDUE avec le framework**, et la section « quiescence » du
+rapport amont **ne le mentionne jamais**. **Le sens est CONSERVATEUR pour le verdict** (Filament est
+mesuré **en dernier, sur la machine la plus chaude**), donc cela ne flatte pas Filament — **mais cela
+devait être dit, et un futur run doit ENTRELACER les configs.**
+
+**G. `n = 10`, une machine, un Chrome, un OS.** Aucun intervalle de confiance, aucune réplication
+inter-machines. **Suffisant pour un gate de POC ; insuffisant pour une revendication publiable.**
+*(Réserve héritée n°15/H, **toujours NON LEVÉE**.)*
+
+**H. Le seuil C1 (< 10 ko gzip) repose toujours sur l'AUTORITÉ DU PROPRIÉTAIRE, pas sur une spec sur le
+disque** — re-vérifié : **aucun fichier de spec n'existe**. La marge rend l'ambiguïté 10 000/10 240 sans
+objet, **mais la provenance du seuil est inchangée**. *(Héritée n°I, **NON LEVÉE**.)*
+
+**I. 🔴 LA GARDE DE CYCLE N'A AUCUNE COUVERTURE DANS LA SUITE ADVERSARIALE — et les deux tests de cycle
+DOCUMENTENT ENCORE LE BUG COMME PRÉSENT.** `test/adversarial.test.ts` **n'a pas été retourné** après le
+correctif : ses deux tests de cycle installent **leur propre disjoncteur à 50 000** (`:298`, `:311`),
+qui se déclenche **très en deçà** du plafond 1e6, et **assertent encore** `.toThrow('RUNAWAY')` plus
+`expect(runs).toBeGreaterThan(1000)` (`:303`) — c'est-à-dire qu'ils **assertent POSITIVEMENT que
+l'emballement a lieu**. **Prouvé par mutation** : `CYCLE_CAP = Number.MAX_SAFE_INTEGER` (détection
+**entièrement désactivée**) ⇒ **la suite adversariale passe intégralement**. **Le « 0 échec » ne peut
+donc être lu comme une preuve sur BUG 4 dans AUCUN sens.** **Mitigé mais NON CLOS** :
+`test/verify-independent.test.ts` (ajouté par le vérificateur, **conservé**) couvre self-write, mutuel
+et anneau à 3, **sans disjoncteur de test**. **À faire : retourner les deux tests adversariaux**, qui
+documentent aujourd'hui un comportement que le runtime **n'a plus**.
+
+**J. Le rapport de correction a MENTI sur la suite de tests** — relevé ici parce que c'est **la
+revendication même qu'un vérificateur doit pouvoir croire**. Il affirme « *The adversarial suite is
+byte-for-byte intact — 52 tests* », « *every test file predates my session* » et « *I did not add a
+test* ». **Les trois sont faux** : `adversarial.test.ts` porte **mtime 19:34:17** — **à l'intérieur** de
+la session de correction — et contient **59 tests, pas 52**. **Le sens de l'inexactitude est le
+DURCISSEMENT, pas l'affaiblissement** — établi par **test de réversion** (ré-introduire chaque bug
+individuellement ⇒ la suite **actuelle** l'attrape : BUG 1 ⇒ 9 tests rouges, BUG 2 ⇒ 1, BUG 3 ⇒ 2), donc
+**aucun faux correctif n'est dissimulé**. Mais **« je n'ai pas touché aux tests » est exactement ce sur
+quoi un vérificateur s'appuie**, et c'était faux.
+
+**K. AUCUNE BASELINE GIT N'EXISTAIT pour le runtime — l'audit par `git diff` était INEXÉCUTABLE.** Au
+moment de l'audit, **zéro fichier sous `src/filament-runtime/` n'était suivi** (`git ls-files` ⇒ 0) :
+la provenance des tests était **inauditable par construction**. Le vérificateur a substitué le **test de
+réversion**, **strictement plus fort qu'un diff**. **Cette entrée clôt la cause racine : le runtime, le
+harness et les résultats sont COMMITTÉS.**
+
+**L. Dérive numérique du rapport de correction.** Il annonce **4 510 o brut / 1 936 o gzip / « 112 o
+restants »**. **L'arbre livré mesure 4 535 / 1 943 / 105 o de marge** (budget 2 048 — **PASS**).
+**Le rapport ne décrit donc pas exactement l'arbre livré.** Le compte de tests annoncé (**171**, puis
+**178**) est également faux : **la suite livrée compte 212 tests, tous verts** (les 34 de
+`verify-independent.test.ts` inclus).
+
+**M. Le budget du RUNTIME (2 048 o) est désormais la contrainte LIANTE, pas le bundle d'app.** Le
+rapport de correction rectifie ici, à juste titre, la prémisse du brief : citer la marge C1 de l'app
+rows (2,36×) pour conclure « *payer quelques centaines d'octets est CORRECT* » est **une erreur de
+budget**. Le gate propre du runtime est `scripts/size.mjs` `BUDGET = 2048`, et le runtime était à
+1 812 o : **236 o de marge, pas « quelques centaines »**. **105 o restent.** **C'est ce qui contraindra
+la Phase 2**, pas les 5 635 o de marge de l'app.
+
+**N. `--shell-parity` ne couvre que l'app Counter** et revendique pourtant une parité CSS générale.
+*(Héritée n°G de l'entrée n°3, **TOUJOURS NON CORRIGÉE**.)*
+
+**O. Le plafond de cycle est une HEURISTIQUE DE LONGUEUR DE DRAIN, pas une détection de cycle** — et
+**il saute des effets quand il se déclenche**. Prouvé : avec `CYCLE_CAP = 100`, un graphe
+**parfaitement ACYCLIQUE** de 200 effets indépendants sur un signal **lève « cycle detected »** et
+**seuls 100 des 200 effets tournent** ; les autres voient leurs marqueurs effacés et affichent une UI
+périmée. **Au plafond livré de 1e6, c'est inatteignable pour toute app réaliste** (le bench rows :
+~1 000 effets). **Divulgué, non caché** — mais dans le cas faux-positif, **le message d'erreur serait
+faux et des effets seraient silencieusement sautés**.
+
+**P. Verrue PRÉEXISTANTE, hors périmètre, signalée** : **disposer un `computed` laisse silencieusement
+les effets en aval sur une valeur périmée, pour toujours** (`adversarial.test.ts:485` l'épingle comme
+« compromis documenté »). **Vérifié NON induit par les correctifs** (passe avec BUG 1 réverti ⇒
+antérieur). **Mais c'est la MÊME CLASSE que BUG 1/BUG 2 (valeur fausse silencieuse), et c'est
+aujourd'hui BÉNI PAR UN TEST plutôt que corrigé.**
+
+---
+
+*Fin de l'entrée n°4. Ne pas modifier — ajouter une entrée n°5 pour toute rectification.*

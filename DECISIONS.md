@@ -557,3 +557,716 @@ absente) · shell `index.html` identique · `PublishTrimmed` explicite des deux 
 - **`n = 10`, une machine, un Chrome, un OS.** Suffisant pour un POC ; **insuffisant** pour une
   revendication de performance publiable.
 - **Re-run sur machine quiescée** (~12 min) pour lever la dernière réserve de la n°19.
+
+---
+
+# Phase 1 — arbitrages (entrée `BENCH.md` n°3, 2026-07-16)
+
+## 21. Mesurer du JS écrit à la main, et le dire — plutôt que de ne rien mesurer
+
+**Décision.** La Phase 1 mesure `samples/Counter/counter.js` et `samples/Rows/rows.js`, **écrits à la
+main**, au-dessus de `src/filament-runtime` écrit à la main. **Aucun générateur C# n'existe** :
+`src/Filament.Generator/`, `src/Filament.Core/` et `src/Filament.Analyzer/` sont des **répertoires
+vides**.
+
+**Raison.** Le choix réel n'était pas « mesurer le générateur contre mesurer la main » mais « mesurer
+la main maintenant contre ne rien mesurer ». Écrire le générateur d'abord aurait exigé de connaître la
+forme du JS cible ; or **la cible est précisément ce que C1/C3/C4 devaient trancher**. Écrire à la main
+la sortie que le compilateur devra émettre — l'« *answer key* », comme le dit l'en-tête de
+`counter.js` — établit une **borne basse** de ce que l'architecture permet, et donne au générateur une
+**cible de snapshot-test** au lieu d'une intuition. Si cette borne basse avait échoué à C1 ou C4, la
+thèse serait morte **sans écrire une ligne de C#** — c'est l'ordre le moins coûteux.
+
+**Conséquence assumée, et c'est la plus lourde du POC.** **Ce qui est prouvé est « du JS taillé à la
+main bat Blazor »** — que Solid et Svelte ont établi il y a des années et que personne ne contestait.
+**Ce que le POC a besoin de savoir reste non testé** : qu'un générateur C# puisse émettre ceci depuis du
+Razor **en tenant sous 10 ko et à ces temps**. Un compilateur émet du code **général** ; un humain écrit
+du code **spécial**. Tout l'écart entre les deux est **du poids et du temps non mesurés**. **Chaque
+chiffre de l'entrée n°3 est donc une borne basse optimiste, jamais « la performance de Filament ».**
+→ **Le gate est CONDITIONNEL sur ce point** (voir décision n°27) : le premier livrable de la Phase 2
+doit être le générateur émettant le compteur, **re-mesuré sous C1/C3/C4**. Si sa sortie manque 10 ko ou
+les temps AOT, **c'est la Phase 2 qui échoue, pas la Phase 1** — mais on l'apprendra alors, pas
+maintenant.
+
+## 22. Forme de l'API du runtime : `signal()` / `computed()` / `effect()`, et pourquoi elle mappe sur `Signal<T>.Value`
+
+**Décision.** Le runtime expose trois primitives — `signal(v)`, `computed(fn)`, `effect(fn)` — où
+lecture et écriture passent par une **propriété d'accès** (`s.value` / `s.value = x`), et non par des
+fonctions d'appel (`s()` / `s.set(x)`, la forme Solid).
+
+**Raison.** C'est **le seul choix qui rend le mapping C# mécanique**. `Filament.Core` déclarera
+`Signal<T> { public T Value { get; set; } }` et `Computed<T> { public T Value { get; } }` : une
+propriété C# **est** un couple `get`/`set`, donc `s.Value` se traduit en `s.value` **caractère pour
+caractère**, sans que le générateur ait à décider si un identifiant est une lecture ou un appel. La
+forme Solid `s()` aurait obligé le générateur à **réécrire les sites d'accès** — c'est-à-dire à faire
+de l'analyse de flot pour distinguer `s` (la référence) de `s()` (la lecture) — pour **zéro gain
+d'exécution**. Le suivi de dépendance se fait dans le **getter**, ce que C# et JS implémentent
+identiquement.
+
+**Conséquence assumée.** L'API est **moins idiomatique en JS** que `s()` et surprendra un lecteur venu
+de Solid. C'est accepté : **le consommateur de cette API est un générateur, pas un humain.** La lisibilité
+JS n'est pas un objectif de ce projet ; la **traduisibilité 1:1 depuis C#** en est un.
+**Réserve de revendication** : « computed est paresseux » doit s'énoncer « **les computed NON OBSERVÉS**
+sont paresseux ». Dès qu'un effet en dépend, `checkDirty` **doit** l'évaluer pour savoir s'il faut
+re-exécuter — vérifié en test. C'est correct et nécessaire, mais la formule non qualifiée est trompeuse
+et ne doit pas être publiée telle quelle.
+
+## 23. Modèle d'ordonnancement : batch synchrone, drainage plat, glitch-freedom par marquage en deux temps
+
+**Décision.** Les écritures marquent les dépendants `DIRTY|PENDING` et **empilent** ; le flush est
+**synchrone**, dans le `finally` du handler d'événement ; les flushs imbriqués sont **collapsés en une
+seule boucle de drainage** par une garde `flushing` ; la glitch-freedom vient de `checkDirty`, qui
+**vérifie** la fraîcheur avant de ré-exécuter au lieu de propager aveuglément.
+
+**Raison.** Trois exigences en tension, et une seule combinaison les satisfait toutes. (1) **C3 exige
+1 écriture DOM par incrément** : sans batch, un diamant de dépendances écrirait deux fois. (2) **C4 est
+mesuré par un `MutationObserver` dont l'horloge s'arrête dans le callback** — donc **tout travail différé
+au-delà du microtask serait chronométré à zéro et serait une TRICHE**. Un flush asynchrone (microtask
+ou rAF) aurait produit de meilleurs chiffres **en mentant** ; le flush synchrone garantit que le temps
+mesuré **est** le temps du travail. (3) **La récursion est un plafond** : un drainage récursif aurait
+débordé la pile sur des cascades profondes. **Vérifié : 200 000 runs ré-entrants, aucun stack overflow**
+— la garde `flushing` collapse réellement.
+
+**Conséquence assumée.** Une écriture depuis un handler paie **tout** son coût de rendu **dans** le
+handler : pas de découpage en tâches, pas de time-slicing, **pas de rendu concurrent**. Pour une app
+qui rendrait 100 000 lignes d'un coup, cela **bloque le thread principal** là où React concurrent
+céderait la main. C'est assumé : Filament vise le **coût total le plus bas**, pas la **meilleure
+répartition** d'un coût élevé. **Aucune détection de cycle** n'est faite : `s.value = s.value + 1` dans
+un effet **tourne à l'infini** (prouvé). Les runtimes de type Solid se comportent similairement — mais
+c'est une **dette explicite**, pas un oubli.
+
+## 24. Stratégie d'allocation : liens de dépendance intrusifs et réutilisés, jamais réalloués
+
+**Décision.** Le graphe est fait de `Link` doublement chaînés, **intrusifs** (pas de `Set`/`Map` par
+nœud). À la ré-exécution, `I()` **réutilise le lien existant** quand la dépendance n'a pas changé
+(`i.dep === n`) au lieu d'en allouer un neuf ; la file d'effets est intrusive et **laisse chaque `nq` à
+`null` après flush** (aucune chaîne retenue).
+
+**Raison.** **C3 exige « 0 allocation d'arbre de rendu »**, et c'est un critère qu'on ne peut pas
+atteindre en optimisant après coup : il faut que **le régime établi n'alloue rien du tout**. Un `Set`
+par signal aurait alloué à chaque abonnement ; une file en `Array` aurait alloué à chaque flush ; des
+liens réalloués à chaque run auraient produit une allocation **proportionnelle au nombre de dépendances
+× le nombre de runs** — exactement la charge GC que Blazor paie et que Filament doit ne pas payer.
+**Vérifié : 100 000 incréments ⇒ `stats.links === 0`, `runs === 100 000`** ; corroboré par un test
+d'événements GC externe aux compteurs du runtime (2 M d'incréments, **0 GC**).
+
+**Conséquence assumée.** Le code du runtime est **nettement moins lisible** que l'équivalent à `Set` :
+la topologie du graphe est encodée dans des champs de liens mutés en place, et une erreur d'ordre de
+chaînage est une corruption silencieuse plutôt qu'une exception. C'est le prix de C3.
+**Dette réelle et non payée** : `Computed` **n'a aucun chemin de disposition** — il ne s'enregistre
+jamais auprès de `owner` et `disposeOwned` ne parcourt que des `Effect`. Un `Computed` créé dans un scope
+de ligne **fuit sans borne** (mesuré : `[100, 200, … 1000]` abonnés sur 10 cycles ; 9 001 liens fuités
+dégradant 2 000 écritures de **5,8 ms à 60,7 ms**). **Le benchmark ne l'atteint pas** (`rows.js` n'utilise
+que `effect()` — voir décision n°25), **mais la Phase 2 l'atteindra au premier `@foreach` contenant une
+expression dérivée.** → **À corriger avant la Phase 2**, symétriquement à `Effect` (~ownership élargi à
+un `Disposable` commun).
+
+## 25. `rows.js` n'utilise que `effect()` dans `createRow`, jamais `computed()`
+
+**Décision.** Le template de ligne du benchmark n'emploie **délibérément** que `effect()`.
+
+**Raison.** Une ligne n'a **aucune valeur dérivée à mémoïser** : elle écrit son id et son label
+directement dans le DOM. Introduire un `computed()` aurait ajouté un nœud de graphe **sans consommateur**
+— du poids et une indirection pour rien, et un `computed()` non observé ne s'exécute même pas.
+
+**Conséquence assumée, à énoncer parce qu'elle est commode.** Ce choix **contourne accidentellement** la
+fuite de `Computed` de la décision n°24. **Il n'a pas été fait pour cela** — il précède la découverte du
+bug — mais le résultat net est que **le benchmark ne peut pas révéler cette fuite**, et que la Phase 2,
+elle, la révélera. Consigné ici pour que personne ne lise « les chiffres sont bons » comme « le runtime
+ne fuit pas ».
+
+## 26. `stats` hors du bundle de production, par DCE prouvé **depuis l'artefact**
+
+**Décision.** L'instrumentation (`__filament.stats`) vit derrière une constante de build
+`filament:stats` éliminée par DCE ; **quatre** labels sont construits — 2 production, 2 `-stats`.
+
+**Raison.** C1 et C3 **se contredisent** : C3 exige un compteur d'écritures DOM interne, C1 interdit
+d'en payer les octets. Deux bundles résolvent la contradiction, **à condition de prouver que le bundle
+pesé est bien celui sans instrumentation** — sinon C1 mesure un bundle et C3 un autre, et les deux
+critères parlent d'artefacts différents. **La preuve est tirée de l'artefact, jamais de l'intention du
+build** : `grep -c` sur les bundles de production ⇒ `filament:stats` **0**, `__filament` **0**,
+`domWrites` **0**, `sourceMappingURL` **0** ; sur les bundles `-stats` ⇒ 1/2/2/1. Cela prouve **deux**
+choses d'un coup : le DCE a tiré, **et** le run C3 mesure une instrumentation **réelle** et non un no-op.
+
+**Conséquence assumée.** Deux artefacts par app à maintenir, et **le risque permanent qu'ils divergent**.
+La garde est le `grep` ci-dessus, à rejouer à chaque build — **pas** la lecture du script de build.
+
+## 27. Parité de compression avec `dotnet publish`, imposée et non supposée
+
+**Décision.** `build-filament.sh` émet les siblings `.gz`/`.br` à **`gzip -9`** et **`brotli -q 11` avec
+`BROTLI_PARAM_SIZE_HINT`**, exactement les réglages de `server.mjs` et de `dotnet publish`.
+
+**Raison.** C1 est un **rapport de 658×** : il serait resté vrai avec n'importe quel réglage. Mais le
+défaut aurait été **structurel et invisible** — Blazor arrive avec des siblings précompressés au maximum
+par le SDK, tandis que Filament, servi sans siblings, aurait été compressé **à la volée** à un niveau
+plus faible. Filament aurait alors été **pénalisé** et le chiffre aurait été faux **dans le sens
+défavorable**. Un chiffre faux qui vous dessert reste un chiffre faux : **il salit l'instrument**.
+Vérifié sur le fil : `serverEncodings.gzip = {responses: 3, bytes: 2030}`, 1153+404+473 = 2030
+exactement ; CDP 2864 = 2030 + 834 o d'en-têtes. Les siblings **se décompressent à l'octet identique à
+la source** (sha256, 6/6).
+
+**Conséquence assumée.** Le script de build doit rester synchronisé avec `server.mjs` **à la main** ; rien
+ne le vérifie automatiquement.
+
+## 28. Parité du shell `index.html` **et de la feuille de style** — l'invariant a été brisé, puis réparé
+
+**Décision.** Filament sert le **même shell** et la **même feuille de style, à l'octet**, que le label
+Blazor correspondant. La source CSS est **pilotée par le label** (`css_for()`), et une **assertion
+post-build compare aux octets PUBLIÉS par Blazor**.
+
+**Raison, et l'échec qui l'a imposée.** `build-filament.sh` **codait en dur** le CSS de **Counter** et le
+copiait pour **les quatre** labels — **y compris `filament-rows`**. Les deux apps Blazor expédient des
+feuilles **différentes** (Counter 795 o, md5 `66d7c50f` ; Rows 917 o, md5 `1b67ed3e`). `filament-rows`
+n'expédiait donc **jamais** le style spécifique aux tables : `border-collapse: collapse`, le padding des
+`td`, la largeur `.col-md-1`. **Le biais allait dans le sens de Filament, sur l'app même qui décide C4** :
+Blazor mettait 1 000 lignes en page sous `border-collapse: collapse` (matériellement plus coûteux dans
+Blink que `separate`) pendant que Filament les mettait en page **sans aucun style**. Le script
+**proclamait** pourtant l'invariant contraire (« *ships the SAME file, copied byte-for-byte … so neither
+side is styling-subsidised* »).
+
+**Portée honnête de la faute.** Le **chiffre de tête de C4 était insulé** : `waitForCondition` capture
+`performance.now()` **dans le callback du `MutationObserver`**, un microtask qui court **avant**
+style/layout/paint — `msToMutation` **exclut** donc le coût de layout. C1 était insensible (11 o gzip
+d'écart contre 5 757 o de marge). **Aucun verdict n'a basculé.** Mais c'était une **rupture de parité
+réelle, non divulguée, dans l'artefact expédié**, qui biaisait `msToPaint` (métrique secondaire rapportée
+par échantillon) et la comparaison de poids — et qui **falsifiait silencieusement un invariant que le
+script revendiquait explicitement**.
+
+**État : CORRIGÉ ET VÉRIFIÉ DEPUIS L'ARTEFACT** (`css_for()` ligne 192, employé ligne 542, assertion
+post-build) : `filament-rows/css/app.css` = md5 `1b67ed3e`, 917 o = `baseline/Rows.Blazor` =
+`blazor-rows-nojit` ✔ ; `filament-counter/css/app.css` = md5 `66d7c50f`, 795 o ✔.
+
+**Conséquence assumée, NON corrigée.** Le rapport `--shell-parity` **n'exerce toujours que Counter** et
+imprime néanmoins une revendication **générale** de parité CSS « byte-for-byte » pour tous les labels.
+**C'est le mécanisme par lequel le défaut a survécu** : le seul outil qu'un relecteur lancerait pour
+valider la parité était **structurellement incapable** de voir une divergence propre à `rows`, **et
+affirmait que la parité tenait**. Cela transforme un défaut d'artefact en une revendication qu'un
+relecteur croirait vérifiée — l'exact contraire du principe affiché par le script (« *parity is only
+worth having if it cannot drift* »). → Boucler `--shell-parity` sur **chaque** label de production.
+
+## 29. Un instrument C3 agnostique du framework — pourquoi un compteur auto-rapporté était insuffisant
+
+**Décision.** Les écritures DOM sont comptées par un `MutationObserver` **sur `body`** (la racine la plus
+large), **le même code pour les deux frameworks**. `__filament.stats.domWrites` n'est **jamais** la
+mesure : il n'est qu'un **contre-contrôle**.
+
+**Raison.** Un compteur auto-rapporté mesure **ce que le runtime croit faire**, pas ce que le DOM
+subit — c'est **la définition d'un instrument qui ne peut pas se réfuter**. Trois défauts rédhibitoires :
+(1) il ne verrait pas une écriture émise **hors** du chemin instrumenté ; (2) il est **structurellement
+inapplicable à Blazor**, qui n'a pas ce compteur — **il n'y aurait donc AUCUNE comparaison**, seulement
+une auto-déclaration de Filament ; (3) il rendrait C3 **invérifiable par un tiers**. L'observer, lui,
+est **le même instrument des deux côtés** et voit **le DOM réel**. Résultat : observé `[1,1,1,1,1]`,
+auto-rapporté `[1,1,1,1,1]` — **concordance sur chaque incrément**. La valeur de l'auto-rapport n'est pas
+d'établir le fait, c'est que **son désaccord avec l'observer serait un bug**.
+
+**Conséquence assumée, et elle coupe contre nous.** L'instrument honnête montre que **Blazor fait AUSSI
+exactement 1 écriture DOM par incrément**. La moitié « écritures DOM » de C3 est donc une **barre de
+correction que Filament franchit**, **pas un différenciateur** face à Blazor. Un compteur auto-rapporté
+n'aurait jamais produit ce constat — il aurait rapporté « Filament : 1 » et laissé le lecteur supposer
+que Blazor faisait pire. **C'est précisément ce que cet arbitrage achète.**
+
+## 30. La sonde d'allocation est **complète pour Filament** et **aveugle à Blazor** — et le rapport est interdit
+
+**Décision.** `bytesPerIncrement` est rapporté pour les deux frameworks, mais **aucun rapport entre les
+deux n'est un résultat C3**, et la mise en garde le dit dans l'artefact.
+
+**Raison.** La sonde échantillonne l'**allocation JavaScript**. Le runtime de Filament **est** du
+JavaScript : la sonde est donc **complète** pour lui, et une fausse revendication de « 0 allocation » se
+verrait (à N=1000, intervalle 1024 o, même 32 o/incrément émergeraient à ~32 ko). L'arbre de rendu de
+Blazor vit dans la **mémoire linéaire WASM** — **un seul `ArrayBuffer` pour V8** : la sonde en est
+**structurellement aveugle** et ne voit que la **glu d'interop**. « Filament ~0 o vs Blazor 2 769 o »
+compare donc le **total** de Filament au **sous-ensemble** de Blazor. Le publier serait la
+**mesure malhonnête la plus flatteuse disponible dans ce dépôt** — d'où l'interdiction explicite.
+
+**Conséquences assumées, non corrigées, toutes contre nous.** (1) La mise en garde contient une **phrase
+fausse** : le coût de pilotage **n'est pas identique entre frameworks** — `driveIncrements` sonde par
+`setTimeout(tick, 0)` et évalue `el.textContent.trim()` à chaque tick (2 chaînes/tick), et **le nombre de
+ticks suit la latence de dispatch**. Filament flush **synchroniquement** (0 tick de plus) ; Blazor
+dispatche **asynchroniquement** et paie plusieurs ticks : **un framework plus lent est facturé plus
+d'allocation pour être plus lent.** La phrase fausse est **exactement celle qui autoriserait à citer le
+rapport**, logée dans le paragraphe chargé de l'interdire. (2) Les fixtures calibrant le plancher sont
+**toutes synchrones** : le plancher < 512 o n'est établi **que** pour un dispatch synchrone et **ne se
+transfère pas à Blazor**. (3) **L'artefact ne porte aucun zéro calibré** : `bytesPerIncrement` sort **nu,
+sans verdict**, alors que chaque affirmation d'écriture DOM en reçoit un — **l'artefact ne peut donc pas
+trancher le critère qu'il énonce lui-même**. (4) La sonde est **plus bruitée que sa rédaction ne
+l'admet** (`lowBytes` : 155 656 / 74 268 / 85 608, **dispersion 2,1×** ⇒ **±102 o/incrément** de bruit de
+méthode sur ~335 o) ; **la conclusion tient pour des raisons architecturales**, pas parce que le profil
+la prouve.
+
+## 31. Ne pas incrémenter `HARNESS_VERSION` était une faute — et le rapport amont a affirmé un fait faux
+
+**Décision (rectificative).** Le rapport amont affirmait « *bench.mjs/server.mjs were NOT modified* » et
+offrait `harnessVersion 1.2.0` comme **preuve** que Filament et sa baseline venaient du **même chemin de
+code chronométré**. **Les deux affirmations sont fausses** et sont rectifiées ici.
+
+**Les faits, vérifiés ce jour.** `git diff --stat HEAD -- bench/harness/bench.mjs` ⇒ **707 insertions,
+6 suppressions**, non commitées ; `selftest.mjs` modifié (+423). `HARNESS_VERSION` **n'a pas bougé** à
+travers ce diff : **la chaîne ne peut pas distinguer les deux builds**. Chronologie : baselines Blazor
+**13:11–13:21 UTC** · `bench.mjs` écrit **14:50:47 UTC** · Filament **16:16–16:26 UTC**. **Blazor a été
+mesuré avec le harness d'avant, Filament avec celui d'après** — le hasard 1.1.0-vs-1.2.0 (33 %
+d'irreproductibilité) que le rapport se félicitait d'avoir évité, **rouvert et masqué par la chaîne
+offerte en preuve**.
+
+**Pourquoi C4 survit quand même — vérifié ici, et non par le rapport.** Le chemin chronométré est
+**intact** : `waitForCondition` (433 → 439) et `measure` (495 → 501) ont **glissé de 6 lignes sans
+changement de contenu**, extraits et comparés à l'octet — **sha256 identiques** ; `runScenario` est
+**identique à l'octet**. Les **6 suppressions** sont **toutes** dans le contrat de balisage (le
+`cellsPerRow >= 2` permissif remplacé par un contrat strict) ; le reste est **purement additif**.
+
+**Conséquence assumée.** **Le rapport a affirmé l'ABSENCE d'un diff au lieu de l'INNOCUITÉ d'un diff** —
+une affirmation qu'il n'avait pas vérifiée, et qui se trouvait fausse. La conclusion tient ; **la méthode
+qui l'établissait, non**. Une **asymétrie** subsiste et doit être dite : `inPageHarness` a grossi
+d'environ **+261 lignes** pour la sonde C3, **présent à chaque run Filament, absent de chaque run
+Blazor**. **Le sens favorise Blazor** (Filament paie le parse en plus), donc cela ne flatte pas Filament
+— mais la revendication « identique sur tous les axes » **le nie**. → **Correctif : incrémenter à 1.3.0,
+commiter le harness, re-mesurer la baseline Blazor sous le même build.**
+
+## 32. Rapporter le plancher de l'appareil comme une limite de QUANTIFICATION, jamais comme une parité
+
+**Décision.** `increment-warm` est marqué **`floorLimited`**, son rapport n'est **pas** cité, et
+« > 10× plus rapide que l'AOT » est énoncé comme **borne basse dérivée du quantum**, jamais comme une
+accélération mesurée. `update` et `swap` portent une réserve de quantification explicite.
+
+**Raison.** La consigne du gate est nette : **une égalité au plancher de l'appareil passe C4 mais ne
+prouve pas la parité**. La rigueur exige d'appliquer la règle **dans les deux sens** — y compris quand
+elle **dessert** Filament. Filament lit **0,00 ms** de médiane, IQR 0,00, contre un quantum
+`performance.now` de **0,1 ms** : **son coût réel est IRRÉSOLVABLE** ; tout ce qu'on peut dire est
+« < ~0,1 ms ». **Mais la prémisse de l'avertissement est réfutée par les données** : l'appareil **ne
+bute pas vers ~1 ms** — il résout à 0,0–0,1 ms et lit 0,30/0,40 ms sur `update`/`swap`. Les échantillons
+de Blazor `[0.9, 1, 1, 0.9, 1, 1, 1, 0.9, 1.1, 1.1]` **ne s'entassent pas au minimum** : **1,00 ms est
+une lecture réelle**, et Filament est **véritablement en dessous**. **Le plancher limite la capacité à
+QUANTIFIER l'avantage, pas à l'ÉTABLIR.**
+
+**Conséquence assumée.** Le résultat le plus spectaculaire du POC (« incrément > 10× plus rapide que
+l'AOT ») est **le moins bien mesuré**, et est publié comme une **borne**, pas comme un chiffre. `update`
+(3 quanta) et `swap` (4 quanta) portent **~33 % / ~25 %** d'incertitude sur leur **rapport** : les
+verdicts sont sûrs, **les rapports ne doivent pas être cités à 3 chiffres significatifs**. Résoudre
+réellement l'incrément exigerait un autre instrument (boucle de N incréments chronométrée en bloc), non
+construit ici.
+
+## 33. Publier les défauts de l'appareil et les bugs du runtime **dans la même entrée que les succès**
+
+**Décision.** L'entrée n°3 liste 12 réserves ouvertes (A–L) et 5 bloqueurs de correction sémantique
+**dans le corps de l'entrée**, pas en annexe — dont **deux** que le rapport amont **niait** (harness
+modifié ; « identique sur tous les axes »).
+
+**Raison.** `BENCH.md` est **append-only** parce que l'historique **est** la preuve. Une entrée qui ne
+publierait que ses succès **n'est pas une mesure, c'est une plaidoirie** — et le seul lecteur qui compte
+est celui qui essaie de **réfuter** le chiffre. Le précédent est établi : l'entrée n°2 a **attrapé un
+chiffre flatteur** d'un rapport amont (un resserrement « ~8× » qui valait 3,5× à base égale). **La même
+discipline s'applique ici, à notre propre rapport.**
+
+**Conséquence assumée.** L'entrée n°3 se lit comme un réquisitoire contre son propre projet. C'est
+**voulu** : un `PASS` accompagné de 12 réserves est **falsifiable** ; un `PASS` nu ne l'est pas. Les 3 bugs
+sémantiques du runtime (**7 échecs voulus** dans `npx vitest run`) sont publiés **alors qu'aucun n'est
+atteignable depuis les apps mesurées** et qu'ils **n'invalident aucun chiffre** — parce que le lecteur
+doit pouvoir établir **lui-même** cette portée au lieu de nous croire.
+
+## 34. Décision du gate Phase 1 : **CONDITIONNEL** — les critères passent, le gate n'est pas franchi
+
+**Décision.** **C1, C3 et C4 PASSENT** sur l'artefact mesuré (C5 aussi). **Le gate de la Phase 1 n'est
+pas déclaré franchi pour autant** : il est **CONDITIONNEL**, sur deux points nommés (décision n°21 et
+décision n°24 / bloqueurs sémantiques). **Aucun seuil n'a été déplacé pour faire passer quoi que ce soit.**
+
+**Raison.** Le gate demande « C1, C3, C4 passent ». Ils passent — **mais un gate est un test sur un
+livrable, et le livrable n'a pas été mesuré** : le générateur n'existe pas (répertoires vides), donc les
+chiffres portent sur l'**answer key** écrite à la main (décision n°21). Déclarer « Phase 1 franchie »
+reviendrait à laisser croire que la proposition porteuse — *« un générateur C# émet ceci sous 10 ko à ces
+temps »* — a été testée. **Elle ne l'a pas été.** S'y ajoute la règle explicite du protocole : **un bug
+sémantique réel est un bloqueur de Phase 1 quelle que soit la qualité des chiffres** — il y en a **trois**
+(valeur silencieusement fausse sur throw ; mise à jour silencieusement manquée ; corruption du DOM sur
+clés dupliquées), plus la fuite de `Computed`, **reproduits ce jour**.
+
+**Ce que les données autorisent réellement à dire.** **C4 passe ⇒ la thèse n'est PAS falsifiée ⇒ le dépôt
+n'est PAS archivé.** **C1 passe aussi ⇒ la variante RADICALE n'est pas éliminée** — mais elle n'est pas
+**établie** non plus, car sa condition de viabilité (la sortie du **générateur** sous 10 ko) est
+précisément ce qui n'est pas mesuré. Le prix de la variante radicale reste **la rupture totale avec
+l'écosystème de composants Blazor**, et **on ne paie pas ce prix sur la foi d'une borne basse**.
+
+**Conséquence assumée — recommandation.** **Phase 2, mais avec un premier livrable imposé et un
+ré-arbitrage explicite** :
+1. **Corriger les 3 bloqueurs sémantiques + la disposition de `Computed`** (décision n°24). Ils sont hors
+   du chemin mesuré aujourd'hui et **sur le chemin principal de la Phase 2**.
+2. **Écrire le générateur pour le SEUL compteur**, et **re-mesurer C1/C3/C4 sur sa sortie**. C'est le
+   test décisif, et il est **peu coûteux** : une app, un snapshot contre `counter.js`.
+3. **Ne trancher RADICAL vs PRUDENT qu'ensuite**, sur ce chiffre-là. Si la sortie du générateur tient
+   sous 10 ko et à ces temps, **RADICAL est viable et le prix de la rupture est justifié**. Si elle
+   dépasse 10 ko **en tenant les temps C4**, c'est le cas nommé par la spec §8 : **variante PRUDENTE** —
+   signaux comme mode de rendu Blazor, réutilisant `Filament.Core` et émettant du C# court-circuitant
+   `RenderTreeBuilder`. **Cette décision est reportée parce que la donnée qui la tranche n'existe pas
+   encore, pas parce qu'elle est inconfortable.**
+4. **Assainir l'appareil avant qu'il n'arbitre à nouveau** : `HARNESS_VERSION` → 1.3.0, harness commité,
+   baseline Blazor re-mesurée sous le même build (décision n°31), `--shell-parity` bouclé sur tous les
+   labels (n°28), plancher d'allocation calibré et émis avec un verdict (n°30).
+
+---
+
+# Phase 1 — arbitrages de la mesure propre (entrée `BENCH.md` n°4, 2026-07-16)
+
+## 35. BUG 1 — restaurer le marqueur de re-run sur throw, avec un bit **`STALE` SÉPARÉ** de `DIRTY`
+
+**Décision.** `prune(c)` sort du `finally` et passe **DANS le `try`, APRÈS `fn()`** — chemin de succès
+**uniquement**. Un `catch` positionne un **nouveau drapeau `STALE`**, **distinct de `DIRTY`**.
+
+**Raison.** Le bug avait **deux trous indépendants**, et n'en corriger qu'un ne suffit pas.
+(a) `refresh()` effaçait `DIRTY` **avant** `recompute()` et **rien ne le restaurait** ; (b) le
+`finally { prune(c) }` tournait contre un **curseur PARTIEL** : les arêtes que `fn()` n'avait jamais
+atteintes étaient **indiscernables** de celles qu'elle avait délibérément cessé de lire, et étaient donc
+**déliées**. **Pourquoi `STALE` et pas `DIRTY` — c'est le point non évident** : `propagate()` **élague**
+sa marche sur tout nœud déjà porteur de `DIRTY|PENDING`, sur l'invariant *« un nœud marqué a déjà marqué
+son sous-arbre »*. Or **un computed marqué par un recompute ÉCHOUÉ n'a marqué RIEN DU TOUT**. Réutiliser
+`DIRTY` **empoisonne cet invariant** et `propagate()` **cesse de descendre au-delà du computed en échec,
+pour toujours** — le test *« un effet en aval d'un computed qui lève devient définitivement sourd »*
+**échoue** sur un build corrigé-de-(a)-seulement. **`STALE` RESTAURE l'invariant au lieu d'affaiblir la
+marche.**
+
+**Conséquence assumée.** Le commentaire de `core.ts` affirmant que le `continue` de `propagate()` est
+« *une OPTIMISATION d'élagage de marche, pas la garde de correction* » **devient FAUX** dès qu'un
+computed peut rester sale par un throw. **Rectifié dans le code**, parce qu'un commentaire faux sur un
+invariant est la manière dont le prochain lecteur réintroduit le bug.
+
+## 36. BUG 1 (racine) — la garde va sur l'**INVARIANT**, pas sur la ligne que le test pointait
+
+**Décision.** Le `try/catch` de `refresh()` **enveloppe AUSSI la branche `PENDING`** — donc l'appel à
+`checkDirty()`, qui **peut lever** en rafraîchissant des computeds amont — et pas seulement la branche
+`DIRTY → recompute()`.
+
+**Raison.** **Le premier correctif ne corrigeait le bug qu'à LA PROFONDEUR QUE LE TEST ÉPINGLAIT.**
+`refresh()` contenait **le même motif effacer-avant-appel-risqué** que celui corrigé dans `recompute()`
+**deux lignes plus haut** : il faisait `c.flags = f & ~PENDING` **puis** appelait `checkDirty(c)`,
+**sans `try/catch` ni restauration**. Un computed dont la vérification `PENDING` levait restait
+**CLEAN**, **jamais recalculé**, **assis sur une valeur que sa `fn` n'a jamais retournée**. La suite
+passait parce que le test épinglé est à **profondeur 1** (`effect → computed → signal`), où `refresh()`
+prend la branche `DIRTY` vers le `recompute()` désormais gardé. **Ajouter UN computed à la chaîne** — *la
+forme réelle massivement majoritaire* — et le bug de valeur silencieusement fausse était **intégralement
+intact** : `a=signal(1); b=computed(a*2); c=computed(b+1)` ⇒ après un throw de `b`, mesuré
+**simultanément**, **`b.value === 10` et `c.value === 3`** : l'invariant `c === b+1` **violé
+définitivement, sans erreur, et sans qu'aucune écriture ultérieure ne le répare**. **La règle générale
+est : TOUTE voie qui efface un marqueur de re-run avant d'exécuter du code pouvant lever DOIT le
+restaurer.** La garde est posée sur **cette règle**, pas là où pointait la stack trace.
+
+**Conséquence assumée, et c'est le vrai enseignement de cette passe.** C'est **la signature du
+chemin-le-plus-court-vers-le-vert** : la transition 7→0 mesurait « *les entrées épinglées passent* », pas
+« *la sémantique est correcte* ». **Un consommateur qui aurait fait confiance à la suite verte aurait
+expédié un runtime servant des valeurs fausses depuis toute chaîne de computeds à 2 niveaux ou plus.**
+Le test de profondeur est désormais **paramétré sur la PROFONDEUR (`[1,2,3,5]`)** dans
+`adversarial.test.ts` : **c'est l'invariant qui est épinglé, plus la profondeur.**
+
+## 37. BUG 1 (seconde voie) — **créer l'arête même si le refresh lève** (`link` dans un `finally`)
+
+**Décision.** Le getter `Computed.value` fait `try { refresh(this) } finally { if (activeSub !== null)
+link(this, activeSub) }`.
+
+**Raison.** L'effet définitivement sourd **survivait par une SECONDE voie, non corrigée** : **l'arête
+d'abonnement n'était JAMAIS CRÉÉE quand le PREMIER accès à un computed levait.** Le getter faisait
+`refresh()` **puis** `link()` ; le throw **saute par-dessus le `link()`**, donc **l'abonné ne s'abonne
+jamais**. **`STALE` n'y peut RIEN** : il marque correctement le computed, `propagate()` le traverse
+correctement — **puis parcourt `c.subs`, qui est VIDE**. Mesuré : `subCount(c) === 0` après le premier
+run ; le computed **est** atteint et **est** marqué à l'écriture suivante, mais **n'a aucun abonné**, donc
+l'effet ne re-tourne jamais. **Ce n'est pas un chemin exotique : c'est ce que fait une FRONTIÈRE D'ERREUR
+ORDINAIRE** — `effect(() => { try { use(c.value) } catch { showError() } })`, la manière naturelle
+d'écrire du code récupérable. L'ancien test ne l'attrapait pas parce qu'il **laissait le computed RÉUSSIR
+d'abord**, ce qui **construisait l'arête avant le throw** : il ne testait que la **RÉTENTION** d'arête,
+**jamais la CRÉATION**. **Lier avec la version PRÉ-refresh n'est pas un compromis, c'est le principe** :
+le computed est `STALE`, donc le `checkDirty()` suivant de l'abonné le rafraîchit, **voit la version
+bouger**, et re-exécute. Une version qui paraît périmée sur une arête vers un computed **qui EST périmé**
+est simplement **la vérité**.
+
+**Conséquence assumée, nommée plutôt que masquée.** Un computed qui lève **avant d'avoir lu le moindre
+signal** n'a de dépendance **nulle part** : **aucune écriture ne peut jamais le re-déclencher**. **Aucun
+runtime push ne peut récupérer cela** — il n'y a **rien d'où pousser**. **Hors périmètre, et dit.**
+
+## 38. BUG 2 — isolation par effet, **première erreur gagne, RE-LEVÉE APRÈS le drain**
+
+**Décision.** `try/catch` **par effet** dans `flush()` : **le drain va TOUJOURS jusqu'au bout**. La
+**première** erreur est **différée puis re-levée une fois la queue vide**. Les erreurs suivantes sont
+**abandonnées**.
+
+**Raison.** Un throw **avortait toute la boucle de drainage** : les effets déjà dépilés-et-effacés
+**manquaient définitivement** le changement — laissés propres, non exécutés, **et rien ne les
+re-marquait**. La re-levée **différée** préserve la propriété qui compte : **l'erreur surgit toujours
+SYNCHRONEMENT sur le site d'écriture**. Vérifié : **même instance d'`Error`**, `.stack` nommant toujours
+le corps de l'effet utilisateur, **et l'effet frère tourne désormais** (`[0,1]` contre `[0]` en
+baseline). **NE PAS avaler : un catch silencieux est un bug à lui seul**, et de la même famille que celui
+qu'on corrige. Première-erreur-gagne plutôt qu'un `AggregateError` : **rapporter la première cause vaut
+mieux qu'un agrégat que personne ne lit**, et coûte **0 octet**.
+
+**Conséquence assumée.** Les erreurs des effets **suivants** sont **perdues** — un effet qui lève pendant
+qu'un autre a déjà levé ne sera **jamais** rapporté. Assumé : la **première cause** est presque toujours
+la vraie ; les suivantes sont typiquement des **dommages collatéraux** de la première.
+
+## 39. BUG 3 — clés dupliquées : **TRAITER au runtime, NE PAS lever**
+
+**Décision.** Une ligne : `keyToNew.delete(r.k)` (`list.ts`). **Aucun throw, aucun avertissement dev.**
+Sémantique : **la première ancienne ligne gagne l'identité, les doublons excédentaires sont démontés.**
+
+**Raison, et c'est la suite elle-même qui tranche.** `x.set([1,1,2])` **asserte `dom() === [1,1,2]`** :
+**tout throw échouerait dès le PREMIER `set`**. Indépendamment : **un throw dev-only, éliminé par
+tree-shaking, laisse la PROD faire la corruption** — le seul résultat **PIRE** que l'une ou l'autre
+option. Et **la vérification à la Blazor qu'on écrirait (« la NOUVELLE liste a des clés dupliquées ») NE
+SE DÉCLENCHERAIT MÊME PAS ICI** : `[1,1,2] → [2,1]` a une **nouvelle** liste **sans doublon** — **la
+corruption vient de l'ANCIENNE**. Mécanique : deux anciennes lignes partageant une clé résolvaient vers
+**le même `ni`** (la seconde écrasait `rows[ni]`, la première orpheline) **et** incrémentaient **toutes
+deux** `patched` — qui comptait donc des **revendications**, pas des **cases remplies**, **dépassait
+`toPatch`**, et la garde **démontait une ligne SURVIVANTE**. **Consommer la clé rend chaque revendication
+exclusive** : `patched` recompte des **cases** et **ne PEUT plus** excéder `toPatch` — ce qui rend la
+garde existante **correcte RÉTROACTIVEMENT, au lieu de simplement chanceuse**.
+
+**Conséquence assumée.** Blazor/Svelte **lèvent** ; Vue/React **avertissent en dev**. Filament ne fait
+**ni l'un ni l'autre**, et c'est délibéré : **rejeter un `@key` dupliqué appartient au COMPILATEUR de la
+Phase 2**, où c'est une **propriété STATIQUE du template**, **rapportable contre la source** — au lieu
+d'un throw runtime pointant du JS généré. **Le contrat du runtime est plus étroit et absolu : ne JAMAIS
+corrompre le document.** Vérifié au-delà des repros connus : 11 transitions inédites plus un **fuzz de
+400 itérations × 5 étapes** sur un espace de 3 clés — **zéro corruption**.
+
+## 40. BUG 4 — plafond de cycle **dans `flush()`**, **valeur = 1e6**, imposée par notre propre suite
+
+**Décision.** `CYCLE_CAP = 1_000_000` dans `flush()`. Lève `Filament: cycle detected`.
+
+**Raison.** **Une cascade qui termine et une qui ne termine pas ont LA MÊME FORME** ; seul « *a-t-elle
+convergé ?* » les distingue — d'où **un plafond, dans le drain**, et non une détection structurelle.
+**La VALEUR est FORCÉE par notre propre suite** : le test *« la cascade d'auto-écriture est PLATE »*
+**épingle une cascade de 200 001 exécutions comme LÉGITIME**, donc **un plafond à la Solid (100)
+REJETTERAIT du code que ce dépôt DÉCLARE CORRECT**. 1e6 ≈ **5× ce plafond**. **C'est une garde de
+VIVACITÉ, pas de correction — d'où l'erreur volontairement HAUTE.** Mesuré : baseline **pend pour
+toujours** (tuée à 15 s, **zéro sortie**) ; corrigé **lève en 22 ms**, self-write **et** mutuel ; la
+cascade légitime de 200 k **n'est pas rejetée**, ni la chaîne de 100 computeds, ni la cascade de 300 k.
+
+**Conséquence assumée, et c'est un COÛT RÉEL, pas une formalité.** **Ce n'est pas une détection de cycle,
+c'est une HEURISTIQUE DE LONGUEUR DE DRAIN**, et **quand elle se déclenche elle SAUTE des effets**.
+Prouvé : à `CYCLE_CAP = 100`, un graphe **parfaitement ACYCLIQUE** de 200 effets indépendants sur un
+signal **lève « cycle detected »** et **100 des 200 effets ne tournent JAMAIS** — marqueurs effacés, **UI
+périmée jusqu'à la prochaine écriture de leurs deps**. À 1e6 c'est **inatteignable pour toute app
+réaliste** (le bench rows : ~1 000 effets) — **mais dans le cas faux-positif, le message d'erreur est
+FAUX et des effets sont silencieusement sautés.** Assumé, **et publié** (entrée n°4, réserve n°O).
+
+**Bug introduit puis attrapé, publié parce que c'est le plus instructif de la passe.** Le drain de cycle
+laissait d'abord les effets **spectateurs** `DIRTY`-mais-**non-enfilés** — **le seul état dont
+`propagate()` ne peut PAS se remettre**. Un effet **innocent**, simplement **enfilé derrière** un cycle,
+devenait **définitivement sourd**. **Le correctif d'un bug de surdité en recréait un.** Démontré, puis
+corrigé (**+5 o**).
+
+## 41. Le **5ᵉ bug non listé** — `runEffect()` avait le trou **identique** à `recompute()`
+
+**Décision.** Corrigé, **sans coût en octets** (une ligne déplacée **dans** le `try`).
+
+**Raison.** `runEffect()` présentait **exactement** le même trou d'élagage-sur-throw : **un effet qui lève
+en cours de run larguait toutes les dépendances qu'il n'avait pas encore atteintes** et devenait
+**définitivement sourd** à leur égard. **Trouvé en cherchant la CLASSE du bug plutôt que ses instances
+listées** — c'est le même raisonnement que la décision n°36, appliqué avant qu'un audit ne l'impose. **Non
+demandé par le brief ; corrigé quand même**, parce que le laisser aurait signifié **corriger le symptôme
+et publier la cause**.
+
+## 42. Le coût en octets de la correction — **payé**, et le budget qui compte n'est PAS celui de l'app
+
+**Décision.** **+110 à +122 o gzip sur le fil** par app (counter 2 864 → **2 976** ; rows 4 243 →
+**4 365**). **Payé. Aucune correction rognée pour tenir.** Coût gzip par correctif : BUG 1 **+21 o**,
+BUG 2 **+27 o**, BUG 3 **+8 o**, BUG 4 **+59 o**, `runEffect` **~0**.
+
+**Raison — et elle RECTIFIE la prémisse du brief.** Le brief citait la marge C1 de l'app **rows**
+(4 243 o contre un gate de 10 000, **2,36×**) pour conclure que « *payer quelques centaines d'octets est
+CORRECT et attendu* ». **C'est le mauvais budget.** Le gate **propre au runtime** est `scripts/size.mjs`
+`BUDGET = 2048`, et le runtime était à **1 812 o** : **236 o de marge — pas « quelques centaines »**. **Il
+n'y a JAMAIS eu la place de payer « quelques centaines d'octets » ici.** Le premier jet sortait à
+**1 975 o** (73 o restants) ; la garde de cycle a été **restructurée pour réutiliser la boucle de drain
+principale**, récupérant **~44 o**. **Arbre livré, vérifié à la rédaction : 4 535 o brut / 1 943 o gzip —
+105 o de marge, PASS.** Contre le gate d'**app**, le coût vaut **~1,1 % d'un budget de 10 000 o** avec
+**56–70 % de marge restante** : **C1 n'est pas près d'échouer.**
+
+**Conséquence assumée.** **Le budget de 2 048 o du RUNTIME est désormais la contrainte LIANTE de la
+Phase 2, pas le bundle d'app.** C'est le chiffre à surveiller. **Le chemin chaud reste sans allocation** :
+**`gc_events = 0` à 50 000 000 d'incréments**, avant **et** après (à 16 o/op cela ferait 800 Mo et ne
+pourrait pas rester à zéro GC) ; delta de tas **plat sur un balayage 50×** (o/op → 0,0002 **et
+décroissant** ⇒ une **constante**, pas un coût par opération) ; débit **~93 M op/s avant vs ~89–100 M op/s
+après** — **dans le bruit inter-runs. Le `try/catch` ne coûte rien de mesurable.**
+
+## 43. L'identité du harness devient un **HASH DE CONTENU** — parce que la chaîne écrite à la main a échoué, silencieusement
+
+**Décision.** `computeHarnessIdentity()` calcule **au runtime** un sha256 par fichier source du harness,
+agrégé sur les lignes `"nom:sha256"` **triées** (indépendant du chemin, de l'ordre, de la machine), écrit
+dans `environment.harness` de **CHAQUE** JSON de résultat. **Périmètre** : `bench.mjs`, `server.mjs`,
+`expected-labels.json`. `HARNESS_VERSION` est **conservé et porté à 1.3.0**, **annoté DANS LE CODE comme
+ÉTIQUETTE, PAS PREUVE**.
+
+**Raison — l'échec est CONSTATÉ, pas hypothétique.** `HARNESS_VERSION` était **tenu à la main** et est
+**resté `"1.2.0"` à travers un diff de 701 lignes**. Résultat : le Blazor de l'entrée n°2 et le Filament
+de 18:20 **revendiquaient tous deux « 1.2.0 »** tout en ayant été produits par des harness
+**matériellement différents**. **La chaîne AFFIRMAIT une comparabilité qui n'existait pas, et RIEN ne
+pouvait le détecter** — c'est la définition d'une revendication **infalsifiable**, et c'est exactement le
+défaut que la décision n°31 avait relevé sans pouvoir le clore. **Un hash de contenu ne peut pas mentir
+sur ce qu'il n'a pas lu** : il **EST** une mesure de l'appareil, pas une déclaration à son sujet.
+**`computeHarnessIdentity()` LÈVE plutôt que de dégrader** — un run incapable d'établir son identité
+**doit s'arrêter**, car **un hash nul est EXACTEMENT la revendication infalsifiable qu'on remplace**.
+
+**Pourquoi ce périmètre, et pourquoi ces exclusions.** `bench.mjs` porte le driver, la primitive de
+chronométrage **et `inPageHarness()` — une FONCTION DANS CE FICHIER**, injectée par `addInitScript` : il
+n'existe donc **aucun asset in-page séparé** susceptible d'échapper au hash (**vérifié** : les seuls
+`readFile` visent les fichiers hashés). `server.mjs` porte la négociation et **les niveaux de
+compression** — **changer la qualité brotli déplace TOUS les poids sans toucher `bench.mjs`**.
+`expected-labels.json` est la **fixture d'or** : elle **DÉFINIT** ce que « la même charge de travail »
+signifie. **Exclus** : `selftest.mjs` (**jamais** sur le chemin de mesure) et `package*.json`
+(Playwright/Chrome sont **déjà observés** dans `environment`).
+
+**Conséquence assumée.** Le hash **`47e7e46f…` est partagé par les 12 configs**, et **l'analyse REFUSE
+d'émettre une comparaison inter-configs si l'ensemble des hashs n'est pas de cardinal 1** : **la
+comparabilité est désormais une précondition VÉRIFIÉE PAR LA MACHINE, pas une affirmation dans un
+rapport**. **Re-calculé indépendamment à la rédaction de l'entrée n°4 : reproduit exactement**, les trois
+hashs par fichier inclus. La décision n°31 est ainsi **close sur sa cause racine**, pas sur son symptôme.
+
+## 44. Mesurer C1 sur les **octets DU FIL**, la base la plus SÉVÈRE, alors qu'une base plus flatteuse existait
+
+**Décision.** C1 est prononcé sur `encodedDataLength` (**en-têtes de réponse INCLUS**) : **2 976** /
+**4 365** o. L'aperçu au build (somme des frères gzip, **hors en-têtes**) donne **2 142** / **3 531** o.
+
+**Raison.** L'aperçu est **~830 o plus flatteur** et aurait passé le gate plus confortablement. Il est
+**rejeté** pour deux motifs. (a) **C'est le champ d'où venaient les 2 864 / 4 243 de l'entrée n°3** : le
+**delta des correctifs n'est comparable terme à terme que sur cette base** — changer de base **en même
+temps** qu'on annonce un surcoût aurait rendu le surcoût **inauditable**. (b) **L'utilisateur télécharge
+les en-têtes.** Le build **rapporte contre les DEUX lectures de « 10 ko »** (10 000 décimal et 10 240
+binaire) parce que **la spec est ambiguë** — **et ni elle ni nous ne tranchons cette ambiguïté en
+choisissant la lecture flatteuse**. **Le gate passe des deux côtés.**
+
+**Conséquence assumée.** On publie un chiffre **~28 % plus élevé** que celui qu'on pourrait défendre, et
+on le fait **dans l'entrée qui annonce une régression de poids**. C'est le coût d'une base stable.
+
+## 45. **Conserver** `verify-independent.test.ts`, et **NE PAS** retourner les tests de cycle dans cette passe
+
+**Décision.** Les 34 tests de `test/verify-independent.test.ts` (écrits par le vérificateur sceptique)
+**restent dans l'arbre** : suite livrée **212 tests, tous verts**. Les deux tests de cycle
+**adversariaux** sont **laissés en l'état**, et le défaut est **publié** (entrée n°4, réserve n°I).
+
+**Raison.** Le correctif de BUG 4 a **ZÉRO couverture** dans la suite adversariale — **prouvé par
+mutation** : `CYCLE_CAP = Number.MAX_SAFE_INTEGER` (détection **entièrement désactivée**) ⇒ **la suite
+adversariale passe intégralement**. Pire : les deux tests de cycle **documentent encore le bug comme
+PRÉSENT**. Ils installent leur **propre disjoncteur à 50 000** — qui se déclenche **très en deçà** du
+plafond 1e6 — et **assertent POSITIVEMENT** `.toThrow('RUNAWAY')` et
+`expect(runs).toBeGreaterThan(1000)` (« *Documenting the observed behaviour: it really did spin* »). **La
+suite épingle donc le comportement BUGUÉ comme attendu** : une régression supprimant la détection
+**rapporterait vert**, et un vrai correctif est **indiscernable d'aucun correctif**.
+`verify-independent.test.ts` est **l'UNIQUE couverture de BUG 4** (self-write, mutuel, anneau à 3,
+**sans disjoncteur de test**) et **l'unique couverture fuzz** des clés dupliquées : **le supprimer
+rouvre la lacune**. **Une garde sans test est exactement ce qui pourrit.**
+
+**Conséquence assumée.** Retourner les tests adversariaux **change la sémantique documentée** d'une suite
+déclarée **RED-state** : c'est un **arbitrage de propriétaire**, pas une correction de passage. **Il est
+donc PUBLIÉ comme réserve ouverte plutôt qu'exécuté silencieusement** — même règle que la décision n°33.
+**À faire dans la passe suivante**, avec l'assertion explicite que `CYCLE_CAP` est **au-dessus** de la
+cascade de 200 k, pour que les deux contraintes soient **visiblement liées**. *(Note : le correcteur
+justifiait son abstention par « *vous avez spécifié 171/171, je ne voulais pas déplacer les poteaux* » —
+mais il **avait déjà ajouté 7 tests adversariaux sans le dire**. Voir n°46.)*
+
+## 46. Publier que **le rapport de correction a menti sur la suite de tests** — et pourquoi les correctifs tiennent quand même
+
+**Décision.** L'inexactitude est **publiée** (entrée n°4, réserves n°J et n°L), et **le verdict de
+confiance repose sur le TEST DE RÉVERSION, PAS sur l'auto-déclaration du correcteur**.
+
+**Raison.** Le rapport affirme « *The adversarial suite is byte-for-byte intact — 52 tests* », « *every
+test file predates my session (latest 18:38)* » et « *I did not add a test … I didn't want to silently
+move the goalposts* ». **Les trois sont faux** : `adversarial.test.ts` porte **mtime 19:34:17** —
+**à l'intérieur** de la session de correction — et contient **59 tests, pas 52**. La suite livrée compte
+**212 tests**, ni 171 ni 178. **Et aucune baseline git n'existait** (`git ls-files src/filament-runtime/`
+⇒ **0** ; tout en `??`) : **l'instruction du brief « diffez `src/` ET `test/` contre HEAD » était
+INEXÉCUTABLE par quiconque**, et **la provenance des tests inauditable par construction**. Le
+vérificateur a donc substitué le **test de réversion** — ré-introduire **chaque bug individuellement** et
+confirmer que la suite **ACTUELLE** l'attrape (BUG 1 ⇒ **9** tests adversariaux rouges ; BUG 2 ⇒ **1** ;
+BUG 3 ⇒ **2** ; BUG 4 ⇒ **la suite reste VERTE**, ce qui **confirme** la lacune de n°45) — **strictement
+plus fort qu'un diff** : **un test affaibli serait resté vert**. **Le sens de l'inexactitude est le
+DURCISSEMENT** (les tests ajoutés incluent la boucle paramétrée en profondeur de n°36, dont le
+commentaire dit « *a guard on only one branch passes everything above while c !== b + 1 permanently* » —
+le correcteur a **tenté un correctif partiel, l'a trouvé insuffisant, et a durci le test**), **donc aucun
+faux correctif n'est dissimulé et les correctifs TIENNENT.**
+
+**Conséquence assumée.** « *Je n'ai pas touché aux tests* » est **exactement** la revendication sur
+laquelle un vérificateur s'appuie ; **elle était fausse**. **La cause racine est STRUCTURELLE, et cette
+entrée la clôt : le runtime, le harness et les résultats sont désormais COMMITTÉS.** **Sans baseline git,
+aucun cycle correction/vérification futur n'a de sens** — c'était la condition de possibilité de l'audit,
+et elle manquait. La **dérive numérique** est publiée au même titre : annoncé **4 510 / 1 936 / 112 o**,
+**livré 4 535 / 1 943 / 105 o**. **Le rapport ne décrivait pas l'arbre livré.**
+
+## 47. Publier le **confond d'ordre** que le rapport de mesure ne divulguait pas
+
+**Décision.** Publié comme réserve **n°F** de l'entrée n°4, **avec le sens du biais énoncé**.
+
+**Raison.** L'exécution était **séquentielle** (**aucun recouvrement** — vérifié : chaque config démarre
+~0,5 s après la fin de la précédente) **mais PAS ENTRELACÉE** : **tout Blazor a tourné en premier
+(19:50–20:01), tout Filament en dernier (20:02–20:07)**. **La dérive thermique/machine est donc CONFONDUE
+avec le framework**, et la section « quiescence » du rapport amont **ne le mentionne jamais** tout en
+revendiquant un protocole « *held, unweakened* ». **Le sens est CONSERVATEUR** : Filament est mesuré **en
+dernier, sur la machine la plus chaude** — **le confond joue CONTRE Filament**, donc le verdict n'est pas
+menacé. **Publié quand même**, parce que **c'est au lecteur d'établir le sens du biais, pas à nous de le
+lui dire après coup** — et parce qu'un confond non divulgué **dont le sens nous arrangerait** serait
+découvert par le prochain lecteur, qui aurait alors raison de douter du reste.
+
+**Conséquence assumée — action.** **ENTRELACER les configs** dans tout run futur. C'est **gratuit** et
+cela **supprime** le confond au lieu de le borner.
+
+## 48. Rectifier le `deltaVsPrevious` du rapport amont — les erreurs allaient **toutes dans le sens flatteur**
+
+**Décision.** Les **14** scénarios Blazor sont publiés **INTÉGRALEMENT** dans l'entrée n°4, **aucun
+omis**, avec les **trois réfutations** énoncées en toutes lettres.
+
+**Raison.** Le rapport amont est **faux sur trois points**, **confirmés indépendamment ici depuis les
+JSON bruts et la table de l'entrée n°2**. (1) « *all Blazor got SLOWER* » — **FAUX** : `rows-nojit/swap`
+va **12,65 → 12,60 ms** (**plus RAPIDE**). **13/14, pas 14/14.** Un demi-quantum, **négligeable en
+magnitude — mais un universel énoncé est falsifié par les données du run lui-même.** (2) « *warm
+perturbation is single-digit percent* » — **FAUX** : `counter-nojit/increment-warm` fait **+26,9 %**,
+**la plus grande perturbation CHAUDE du run**, et était **ENTIÈREMENT ABSENTE** de la section dont c'est
+**l'unique objet**, pendant que son voisin **PLUS PETIT** `counter-aot/increment-warm` (+10,0 %) y
+**figurait, une ligne plus loin**. Également omis : `rows-nojit/clear` (+14,3 %) et `rows-nojit/update`
+(+7,5 %). **TOUTES les omissions sont des lignes `nojit`.** (3) La fourchette « *+0,7 % à +6,6 % sur
+create-warm* » — **INFONDÉE** : les deux valeurs réelles sont **+6,1 %** et **+6,6 %**.
+
+**Pourquoi cela compte alors que les magnitudes sont petites.** **La dérive de Blazor VERS LE HAUT est
+EXACTEMENT ce qui GONFLE les rapports de Filament.** Une section qui **sous-estime** cette dérive **fait
+paraître la stabilité de ces rapports mieux établie qu'elle ne l'est** — **l'erreur va dans le sens qui
+nous arrange**. *En toute équité : l'argument du rapport lui-même (« un quantum sur une valeur de 1 ms,
+c'est de la résolution, pas du signal ») **couvrirait** le +26,9 % — il vaut +0,35 ms, ~3 quanta. **Mais
+il ne l'applique jamais, parce qu'il ne liste jamais la ligne.*** **C'est un défaut de RAPPORT, pas de
+MESURE** : la mesure a **survécu à la réfutation** (hash **reproduit indépendamment**, poids Blazor
+**byte-identique sur 8/8 configs**, planchers signalés avec **fidélité EXACTE** aux échantillons bruts —
+3/10 et 5/10 zéros, vérifiés). **Le précédent de la décision n°33 s'applique à notre propre rapport, sans
+exception.**
+
+## 49. Le verdict C4 de l'entrée n°3 est **RENFORCÉ**, mais ses **RAPPORTS sont SUPERSEDED**
+
+**Décision.** **Verdict : TIENT** (*a fortiori*). **Rapports : à RESTATER depuis l'entrée n°4**, **pas** à
+annoter en note de bas de page. **Comparaison de POIDS de l'entrée n°2 : NON invalidée du tout.**
+
+**Raison.** **Blazor est plus lent sur le harness propre dans 13 scénarios sur 14.** L'ancien registre
+comparait donc **un Blazor mesuré sur le harness RAPIDE** à **un Filament mesuré sur le LENT** : **le
+biais courait CONTRE Filament**, exactement comme la tâche l'anticipait. **Un verdict qui a survécu à un
+test biaisé CONTRE lui survit *a fortiori* au test non biaisé.** Et la robustesse a été **testée, pas
+supposée** : recalculé contre les **ANCIENS** chiffres Blazor (les plus rapides), **chaque scénario passe
+encore** — `create-warm` **2,01×**, `update` **12,00×**, `swap` **8,63×**, `clear` **1,71×** (la plus
+étroite), `increment-warm` **10,00×** (borné). **Aucune perturbation de l'ampleur observée ne menace le
+verdict.** **Mais chaque temps Blazor a bougé, donc CHAQUE rapport de la table C4 de l'entrée n°3 est
+FAUX** — et ils **sous-estimaient** Filament. **Un chiffre faux dans le sens flatteur reste un chiffre
+faux** : on ne garde pas un rapport parce qu'il nous dessert. Le **poids**, lui, reproduit **à l'octet
+près sur 8/8 configs** : **rien à rectifier de ce côté**, et c'est **le contrôle qui isole le delta comme
+purement temporel**.
+
+## 50. Ce que le `PASS` de l'entrée n°4 **ne dit pas** — la décision n°34 reste ouverte
+
+**Décision.** `gateVerdict = PASS` **pour C1 et C4**. **La Phase 1 n'est TOUJOURS PAS déclarée
+franchie.** La décision n°34 (**gate CONDITIONNEL**) **reste en vigueur**.
+
+**Raison.** **Une seule** des deux conditions de la n°34 a bougé : les **3 bloqueurs sémantiques + la
+garde de cycle** sont **corrigés et vérifiés par réversion** (n°35–41), et **deux voies supplémentaires**
+que le premier correctif laissait ouvertes ont été fermées (n°36, n°37). **L'autre condition est
+INTACTE : le générateur n'existe toujours pas** — `src/Filament.Generator/`, `src/Filament.Core/` et
+`src/Filament.Analyzer/` restent **vides**. Les chiffres portent donc **toujours** sur l'**answer key
+écrite à la main** (décision n°21), et **la proposition porteuse — *« un générateur C# émet ceci sous
+10 ko à ces temps »* — n'est TOUJOURS PAS testée.** S'y ajoute que **C3 n'a PAS été re-mesuré** dans ce
+run (`--c3` désactivé) : **cette entrée ne dit RIEN sur C3**. Et la **fuite de disposition de `Computed`**
+(n°24) — **désormais corrigée dans le code** (le constructeur s'enregistre auprès de `owner`) — reste
+accompagnée d'une **verrue préexistante NON corrigée** : **disposer un `computed` laisse silencieusement
+les effets en aval sur une valeur périmée**, aujourd'hui **bénie par un test** (`adversarial.test.ts:485`)
+plutôt que corrigée. **Même classe que BUG 1/BUG 2 : valeur fausse silencieuse.**
+
+**Conséquence assumée — le livrable imposé est INCHANGÉ.** **Écrire le générateur pour le SEUL compteur,
+et re-mesurer C1/C3/C4 sur SA sortie.** **RADICAL vs PRUDENT ne se tranche qu'ensuite** — **la donnée qui
+tranche n'existe toujours pas.** **Ce qui a changé, c'est qu'on ne construira plus le générateur au-dessus
+d'un runtime qui sert des valeurs silencieusement fausses depuis toute chaîne de computeds à deux
+niveaux.** C'était le point 1 de la recommandation de la n°34 ; **il est fait.** Restent les points 2, 3
+et une partie du 4 (**`--shell-parity` sur tous les labels** n°28 ; **plancher d'allocation calibré**
+n°30 — **toujours ouverts**).

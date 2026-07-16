@@ -1,0 +1,676 @@
+
+=== [19:50:03] blazor-counter-nojit / gzip ===
+
+[bench] blazor-counter-nojit — app=counter url=http://127.0.0.1:63304/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=false
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-counter-nojit/wwwroot
+
+[bench] DOM contract OK: {"initialValue":"0"}
+
+  [counter/weight] run 1/3: 1885613 B transferred to interactive across 39 requests (server wrote 1875029 B of body)
+  [counter/weight] run 2/3: 1885613 B transferred to interactive across 39 requests (server wrote 1875029 B of body)
+  [counter/weight] run 3/3: 1885613 B transferred to interactive across 39 requests (server wrote 1875029 B of body)
+[bench] AOT verified: declared=false and the served artifacts agree (dotnet-wasm-native-runtime-size)
+  [counter/increment-cold] run 1/10: 26.30 ms to mutation (32.60 ms to paint)
+  [counter/increment-cold] run 2/10: 26.30 ms to mutation (32.90 ms to paint)
+  [counter/increment-cold] run 3/10: 19.40 ms to mutation (24.50 ms to paint)
+  [counter/increment-cold] run 4/10: 19.10 ms to mutation (23.70 ms to paint)
+  [counter/increment-cold] run 5/10: 19.20 ms to mutation (24.00 ms to paint)
+  [counter/increment-cold] run 6/10: 17.90 ms to mutation (23.20 ms to paint)
+  [counter/increment-cold] run 7/10: 19.00 ms to mutation (23.80 ms to paint)
+  [counter/increment-cold] run 8/10: 18.40 ms to mutation (23.40 ms to paint)
+  [counter/increment-cold] run 9/10: 16.60 ms to mutation (21.20 ms to paint)
+  [counter/increment-cold] run 10/10: 20.60 ms to mutation (25.60 ms to paint)
+  [counter/increment-warm] run 1/10: 1.60 ms to mutation (1.90 ms to paint)
+  [counter/increment-warm] run 2/10: 1.20 ms to mutation (1.50 ms to paint)
+  [counter/increment-warm] run 3/10: 1.30 ms to mutation (1.60 ms to paint)
+  [counter/increment-warm] run 4/10: 1.60 ms to mutation (2.00 ms to paint)
+  [counter/increment-warm] run 5/10: 1.90 ms to mutation (2.30 ms to paint)
+  [counter/increment-warm] run 6/10: 1.60 ms to mutation (2.00 ms to paint)
+  [counter/increment-warm] run 7/10: 1.50 ms to mutation (1.80 ms to paint)
+  [counter/increment-warm] run 8/10: 1.80 ms to mutation (2.10 ms to paint)
+  [counter/increment-warm] run 9/10: 1.80 ms to mutation (2.20 ms to paint)
+  [counter/increment-warm] run 10/10: 1.50 ms to mutation (1.80 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/blazor-counter-nojit.gzip.json
+[bench] transferred to interactive (median): 1885613 bytes
+[bench] increment-cold  median=19.15 ms  iqr=1.75 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=23.9 ms iqr=1.85 ms — includes the harness's vsync wait]
+[bench] increment-warm  median=1.6 ms  iqr=0.25 ms  (n=10, failures=0)  [warm]   [toPaint median=1.95 ms iqr=0.275 ms — includes the harness's vsync wait]
+[bench] 20/20 timed iterations recorded across 2 scenario(s), 0 failure(s)
+  ok
+
+=== [19:50:56] blazor-counter-nojit / br ===
+
+[bench] blazor-counter-nojit — app=counter url=http://127.0.0.1:63491/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=false
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-counter-nojit/wwwroot
+
+[bench] DOM contract OK: {"initialValue":"0"}
+
+  [counter/weight] run 1/3: 1551670 B transferred to interactive across 39 requests (server wrote 1541167 B of body)
+  [counter/weight] run 2/3: 1551670 B transferred to interactive across 39 requests (server wrote 1541167 B of body)
+  [counter/weight] run 3/3: 1551670 B transferred to interactive across 39 requests (server wrote 1541167 B of body)
+[bench] AOT verified: declared=false and the served artifacts agree (dotnet-wasm-native-runtime-size)
+  [counter/increment-cold] run 1/10: 16.90 ms to mutation (21.90 ms to paint)
+  [counter/increment-cold] run 2/10: 19.00 ms to mutation (23.50 ms to paint)
+  [counter/increment-cold] run 3/10: 18.50 ms to mutation (23.70 ms to paint)
+  [counter/increment-cold] run 4/10: 17.50 ms to mutation (22.10 ms to paint)
+  [counter/increment-cold] run 5/10: 17.40 ms to mutation (22.20 ms to paint)
+  [counter/increment-cold] run 6/10: 18.00 ms to mutation (23.00 ms to paint)
+  [counter/increment-cold] run 7/10: 17.10 ms to mutation (21.90 ms to paint)
+  [counter/increment-cold] run 8/10: 18.20 ms to mutation (23.40 ms to paint)
+  [counter/increment-cold] run 9/10: 15.90 ms to mutation (20.30 ms to paint)
+  [counter/increment-cold] run 10/10: 20.30 ms to mutation (25.80 ms to paint)
+  [counter/increment-warm] run 1/10: 1.20 ms to mutation (1.50 ms to paint)
+  [counter/increment-warm] run 2/10: 1.20 ms to mutation (1.50 ms to paint)
+  [counter/increment-warm] run 3/10: 1.40 ms to mutation (1.70 ms to paint)
+  [counter/increment-warm] run 4/10: 1.90 ms to mutation (2.30 ms to paint)
+  [counter/increment-warm] run 5/10: 1.70 ms to mutation (2.10 ms to paint)
+  [counter/increment-warm] run 6/10: 1.70 ms to mutation (2.00 ms to paint)
+  [counter/increment-warm] run 7/10: 1.60 ms to mutation (2.00 ms to paint)
+  [counter/increment-warm] run 8/10: 1.60 ms to mutation (2.00 ms to paint)
+  [counter/increment-warm] run 9/10: 1.80 ms to mutation (2.10 ms to paint)
+  [counter/increment-warm] run 10/10: 1.70 ms to mutation (2.10 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/blazor-counter-nojit.br.json
+[bench] transferred to interactive (median): 1551670 bytes
+[bench] increment-cold  median=17.75 ms  iqr=1.25 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=22.6 ms iqr=1.525 ms — includes the harness's vsync wait]
+[bench] increment-warm  median=1.65 ms  iqr=0.25 ms  (n=10, failures=0)  [warm]   [toPaint median=2 ms iqr=0.325 ms — includes the harness's vsync wait]
+[bench] 20/20 timed iterations recorded across 2 scenario(s), 0 failure(s)
+  ok
+
+=== [19:51:49] blazor-counter-aot / gzip ===
+
+[bench] blazor-counter-aot — app=counter url=http://127.0.0.1:63684/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=true
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-counter-aot/wwwroot
+
+[bench] DOM contract OK: {"initialValue":"0"}
+
+  [counter/weight] run 1/3: 4849976 B transferred to interactive across 39 requests (server wrote 4839394 B of body)
+  [counter/weight] run 2/3: 4849976 B transferred to interactive across 39 requests (server wrote 4839394 B of body)
+  [counter/weight] run 3/3: 4849976 B transferred to interactive across 39 requests (server wrote 4839394 B of body)
+[bench] AOT verified: declared=true and the served artifacts agree (dotnet-wasm-native-runtime-size)
+  [counter/increment-cold] run 1/10: 22.00 ms to mutation (28.80 ms to paint)
+  [counter/increment-cold] run 2/10: 24.90 ms to mutation (32.10 ms to paint)
+  [counter/increment-cold] run 3/10: 23.10 ms to mutation (30.10 ms to paint)
+  [counter/increment-cold] run 4/10: 17.40 ms to mutation (22.70 ms to paint)
+  [counter/increment-cold] run 5/10: 16.00 ms to mutation (21.60 ms to paint)
+  [counter/increment-cold] run 6/10: 16.30 ms to mutation (22.00 ms to paint)
+  [counter/increment-cold] run 7/10: 17.20 ms to mutation (23.00 ms to paint)
+  [counter/increment-cold] run 8/10: 15.90 ms to mutation (22.30 ms to paint)
+  [counter/increment-cold] run 9/10: 16.80 ms to mutation (22.00 ms to paint)
+  [counter/increment-cold] run 10/10: 16.30 ms to mutation (21.90 ms to paint)
+  [counter/increment-warm] run 1/10: 1.20 ms to mutation (1.50 ms to paint)
+  [counter/increment-warm] run 2/10: 0.90 ms to mutation (1.20 ms to paint)
+  [counter/increment-warm] run 3/10: 1.00 ms to mutation (1.30 ms to paint)
+  [counter/increment-warm] run 4/10: 1.00 ms to mutation (1.30 ms to paint)
+  [counter/increment-warm] run 5/10: 1.00 ms to mutation (1.40 ms to paint)
+  [counter/increment-warm] run 6/10: 1.00 ms to mutation (1.30 ms to paint)
+  [counter/increment-warm] run 7/10: 0.90 ms to mutation (1.30 ms to paint)
+  [counter/increment-warm] run 8/10: 1.10 ms to mutation (1.40 ms to paint)
+  [counter/increment-warm] run 9/10: 1.20 ms to mutation (1.60 ms to paint)
+  [counter/increment-warm] run 10/10: 1.10 ms to mutation (1.30 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/blazor-counter-aot.gzip.json
+[bench] transferred to interactive (median): 4849976 bytes
+[bench] increment-cold  median=17 ms  iqr=4.55 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=22.5 ms iqr=5.35 ms — includes the harness's vsync wait]
+[bench] increment-warm  median=1 ms  iqr=0.1 ms  (n=10, failures=0)  [warm]   [toPaint median=1.3 ms iqr=0.1 ms — includes the harness's vsync wait]
+[bench] 20/20 timed iterations recorded across 2 scenario(s), 0 failure(s)
+  ok
+
+=== [19:52:44] blazor-counter-aot / br ===
+
+[bench] blazor-counter-aot — app=counter url=http://127.0.0.1:63878/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=true
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-counter-aot/wwwroot
+
+[bench] DOM contract OK: {"initialValue":"0"}
+
+  [counter/weight] run 1/3: 3353458 B transferred to interactive across 39 requests (server wrote 3342957 B of body)
+  [counter/weight] run 2/3: 3353458 B transferred to interactive across 39 requests (server wrote 3342957 B of body)
+  [counter/weight] run 3/3: 3353458 B transferred to interactive across 39 requests (server wrote 3342957 B of body)
+[bench] AOT verified: declared=true and the served artifacts agree (dotnet-wasm-native-runtime-size)
+  [counter/increment-cold] run 1/10: 16.80 ms to mutation (22.20 ms to paint)
+  [counter/increment-cold] run 2/10: 13.90 ms to mutation (19.10 ms to paint)
+  [counter/increment-cold] run 3/10: 14.70 ms to mutation (20.00 ms to paint)
+  [counter/increment-cold] run 4/10: 25.40 ms to mutation (33.20 ms to paint)
+  [counter/increment-cold] run 5/10: 23.60 ms to mutation (30.80 ms to paint)
+  [counter/increment-cold] run 6/10: 24.80 ms to mutation (32.10 ms to paint)
+  [counter/increment-cold] run 7/10: 24.80 ms to mutation (32.20 ms to paint)
+  [counter/increment-cold] run 8/10: 20.20 ms to mutation (26.80 ms to paint)
+  [counter/increment-cold] run 9/10: 22.70 ms to mutation (29.70 ms to paint)
+  [counter/increment-cold] run 10/10: 17.20 ms to mutation (22.30 ms to paint)
+  [counter/increment-warm] run 1/10: 1.00 ms to mutation (1.40 ms to paint)
+  [counter/increment-warm] run 2/10: 1.10 ms to mutation (1.40 ms to paint)
+  [counter/increment-warm] run 3/10: 1.10 ms to mutation (1.40 ms to paint)
+  [counter/increment-warm] run 4/10: 1.10 ms to mutation (1.50 ms to paint)
+  [counter/increment-warm] run 5/10: 1.00 ms to mutation (1.30 ms to paint)
+  [counter/increment-warm] run 6/10: 1.00 ms to mutation (1.20 ms to paint)
+  [counter/increment-warm] run 7/10: 1.20 ms to mutation (1.60 ms to paint)
+  [counter/increment-warm] run 8/10: 1.00 ms to mutation (1.30 ms to paint)
+  [counter/increment-warm] run 9/10: 1.10 ms to mutation (1.40 ms to paint)
+  [counter/increment-warm] run 10/10: 1.10 ms to mutation (1.40 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/blazor-counter-aot.br.json
+[bench] transferred to interactive (median): 3353458 bytes
+[bench] increment-cold  median=21.45 ms  iqr=7.6 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=28.25 ms iqr=9.55 ms — includes the harness's vsync wait]
+[bench] increment-warm  median=1.1 ms  iqr=0.1 ms  (n=10, failures=0)  [warm]   [toPaint median=1.4 ms iqr=0.075 ms — includes the harness's vsync wait]
+[bench] 20/20 timed iterations recorded across 2 scenario(s), 0 failure(s)
+  ok
+
+=== [19:53:38] blazor-rows-nojit / gzip ===
+
+[bench] blazor-rows-nojit — app=rows url=http://127.0.0.1:64077/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=false
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-rows-nojit/wwwroot
+
+[bench] DOM contract OK: {"rowCount":1000,"cellsPerRow":2,"rowMarkup":{"contract":"<tr><td class=\"col-md-1\">{id}</td><td class=\"col-md-4\"><a class=\"lbl\">{label}</a></td></tr>","checkedIndices":[0,1,2,500,998,999],"row0outerHTML":"<tr><td class=\"col-md-1\">1</td><td class=\"col-md-4\"><a class=\"lbl\">adorable pink desk</a></td></tr>","conforms":true},"row1Id":"2","row998Id":"999","row990Label":"clean orange cookie","first5":["adorable pink desk","unsightly purple sandwich","large brown sandwich","important brown house","mushy red desk"],"row1000":"important white pizza","firstRunFirstId":"1","firstRunLastId":"1000","updateMissedCount":0,"swap":{"before":{"id1":"2","id998":"999"},"after":{"id1":"999","id998":"2"}},"rowCountAfterClear":0,"secondRunRowCount":1000,"secondRunFirst5":["mushy blue mouse","expensive yellow keyboard","large blue car","large white pony","unsightly black house"],"secondRunRow1000":"odd pink pizza","secondRunFirstId":"1001","secondRunLastId":"2000"}
+
+  [rows/weight] run 1/3: 1888029 B transferred to interactive across 39 requests (server wrote 1877445 B of body)
+  [rows/weight] run 2/3: 1888029 B transferred to interactive across 39 requests (server wrote 1877445 B of body)
+  [rows/weight] run 3/3: 1888029 B transferred to interactive across 39 requests (server wrote 1877445 B of body)
+[bench] AOT verified: declared=false and the served artifacts agree (dotnet-wasm-native-runtime-size)
+  [rows/create-cold] run 1/10: 37.10 ms to mutation (50.30 ms to paint)
+  [rows/create-cold] run 2/10: 35.10 ms to mutation (48.00 ms to paint)
+  [rows/create-cold] run 3/10: 35.50 ms to mutation (49.00 ms to paint)
+  [rows/create-cold] run 4/10: 36.00 ms to mutation (49.00 ms to paint)
+  [rows/create-cold] run 5/10: 37.70 ms to mutation (51.00 ms to paint)
+  [rows/create-cold] run 6/10: 32.20 ms to mutation (45.00 ms to paint)
+  [rows/create-cold] run 7/10: 34.80 ms to mutation (47.30 ms to paint)
+  [rows/create-cold] run 8/10: 36.30 ms to mutation (49.40 ms to paint)
+  [rows/create-cold] run 9/10: 34.50 ms to mutation (46.40 ms to paint)
+  [rows/create-cold] run 10/10: 37.80 ms to mutation (49.90 ms to paint)
+  [rows/create-warm] run 1/10: 13.60 ms to mutation (21.50 ms to paint)
+  [rows/create-warm] run 2/10: 13.90 ms to mutation (20.90 ms to paint)
+  [rows/create-warm] run 3/10: 13.90 ms to mutation (21.20 ms to paint)
+  [rows/create-warm] run 4/10: 13.90 ms to mutation (21.60 ms to paint)
+  [rows/create-warm] run 5/10: 14.10 ms to mutation (21.70 ms to paint)
+  [rows/create-warm] run 6/10: 13.90 ms to mutation (21.50 ms to paint)
+  [rows/create-warm] run 7/10: 13.20 ms to mutation (20.60 ms to paint)
+  [rows/create-warm] run 8/10: 13.40 ms to mutation (20.70 ms to paint)
+  [rows/create-warm] run 9/10: 13.40 ms to mutation (20.90 ms to paint)
+  [rows/create-warm] run 10/10: 13.70 ms to mutation (21.30 ms to paint)
+  [rows/update] run 1/10: 13.10 ms to mutation (14.70 ms to paint)
+  [rows/update] run 2/10: 12.40 ms to mutation (13.90 ms to paint)
+  [rows/update] run 3/10: 12.00 ms to mutation (13.50 ms to paint)
+  [rows/update] run 4/10: 13.70 ms to mutation (15.40 ms to paint)
+  [rows/update] run 5/10: 14.40 ms to mutation (16.00 ms to paint)
+  [rows/update] run 6/10: 14.60 ms to mutation (16.20 ms to paint)
+  [rows/update] run 7/10: 14.70 ms to mutation (16.30 ms to paint)
+  [rows/update] run 8/10: 14.80 ms to mutation (16.40 ms to paint)
+  [rows/update] run 9/10: 14.90 ms to mutation (16.50 ms to paint)
+  [rows/update] run 10/10: 15.40 ms to mutation (17.20 ms to paint)
+  [rows/swap] run 1/10: 14.60 ms to mutation (15.80 ms to paint)
+  [rows/swap] run 2/10: 14.40 ms to mutation (15.70 ms to paint)
+  [rows/swap] run 3/10: 14.80 ms to mutation (16.00 ms to paint)
+  [rows/swap] run 4/10: 14.70 ms to mutation (15.90 ms to paint)
+  [rows/swap] run 5/10: 14.40 ms to mutation (15.60 ms to paint)
+  [rows/swap] run 6/10: 14.70 ms to mutation (15.90 ms to paint)
+  [rows/swap] run 7/10: 14.60 ms to mutation (15.80 ms to paint)
+  [rows/swap] run 8/10: 14.30 ms to mutation (15.60 ms to paint)
+  [rows/swap] run 9/10: 14.20 ms to mutation (15.50 ms to paint)
+  [rows/swap] run 10/10: 14.80 ms to mutation (15.90 ms to paint)
+  [rows/clear] run 1/10: 4.80 ms to mutation (5.20 ms to paint)
+  [rows/clear] run 2/10: 5.00 ms to mutation (5.30 ms to paint)
+  [rows/clear] run 3/10: 4.80 ms to mutation (5.10 ms to paint)
+  [rows/clear] run 4/10: 5.10 ms to mutation (5.50 ms to paint)
+  [rows/clear] run 5/10: 4.90 ms to mutation (5.30 ms to paint)
+  [rows/clear] run 6/10: 4.00 ms to mutation (4.40 ms to paint)
+  [rows/clear] run 7/10: 4.40 ms to mutation (4.80 ms to paint)
+  [rows/clear] run 8/10: 4.50 ms to mutation (4.90 ms to paint)
+  [rows/clear] run 9/10: 4.60 ms to mutation (5.00 ms to paint)
+  [rows/clear] run 10/10: 4.30 ms to mutation (4.60 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/blazor-rows-nojit.gzip.json
+[bench] transferred to interactive (median): 1888029 bytes
+[bench] create-cold     median=35.75 ms  iqr=2.025 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=49 ms iqr=2.3 ms — includes the harness's vsync wait]
+[bench] create-warm     median=13.8 ms  iqr=0.45 ms  (n=10, failures=0)  [warm]   [toPaint median=21.25 ms iqr=0.6 ms — includes the harness's vsync wait]
+[bench] update          median=14.5 ms  iqr=1.525 ms  (n=10, failures=0)  [warm]   [toPaint median=16.1 ms iqr=1.5 ms — includes the harness's vsync wait]
+[bench] swap            median=14.6 ms  iqr=0.3 ms  (n=10, failures=0)  [warm]   [toPaint median=15.8 ms iqr=0.275 ms — includes the harness's vsync wait]
+[bench] clear           median=4.7 ms  iqr=0.45 ms  (n=10, failures=0)  [warm]   [toPaint median=5.05 ms iqr=0.45 ms — includes the harness's vsync wait]
+[bench] 50/50 timed iterations recorded across 5 scenario(s), 0 failure(s)
+  ok
+
+=== [19:55:41] blazor-rows-nojit / br ===
+
+[bench] blazor-rows-nojit — app=rows url=http://127.0.0.1:64514/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=false
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-rows-nojit/wwwroot
+
+[bench] DOM contract OK: {"rowCount":1000,"cellsPerRow":2,"rowMarkup":{"contract":"<tr><td class=\"col-md-1\">{id}</td><td class=\"col-md-4\"><a class=\"lbl\">{label}</a></td></tr>","checkedIndices":[0,1,2,500,998,999],"row0outerHTML":"<tr><td class=\"col-md-1\">1</td><td class=\"col-md-4\"><a class=\"lbl\">adorable pink desk</a></td></tr>","conforms":true},"row1Id":"2","row998Id":"999","row990Label":"clean orange cookie","first5":["adorable pink desk","unsightly purple sandwich","large brown sandwich","important brown house","mushy red desk"],"row1000":"important white pizza","firstRunFirstId":"1","firstRunLastId":"1000","updateMissedCount":0,"swap":{"before":{"id1":"2","id998":"999"},"after":{"id1":"999","id998":"2"}},"rowCountAfterClear":0,"secondRunRowCount":1000,"secondRunFirst5":["mushy blue mouse","expensive yellow keyboard","large blue car","large white pony","unsightly black house"],"secondRunRow1000":"odd pink pizza","secondRunFirstId":"1001","secondRunLastId":"2000"}
+
+  [rows/weight] run 1/3: 1553388 B transferred to interactive across 39 requests (server wrote 1542885 B of body)
+  [rows/weight] run 2/3: 1553388 B transferred to interactive across 39 requests (server wrote 1542885 B of body)
+  [rows/weight] run 3/3: 1553388 B transferred to interactive across 39 requests (server wrote 1542885 B of body)
+[bench] AOT verified: declared=false and the served artifacts agree (dotnet-wasm-native-runtime-size)
+  [rows/create-cold] run 1/10: 49.20 ms to mutation (62.90 ms to paint)
+  [rows/create-cold] run 2/10: 41.20 ms to mutation (56.10 ms to paint)
+  [rows/create-cold] run 3/10: 37.10 ms to mutation (50.20 ms to paint)
+  [rows/create-cold] run 4/10: 38.80 ms to mutation (51.90 ms to paint)
+  [rows/create-cold] run 5/10: 35.30 ms to mutation (48.00 ms to paint)
+  [rows/create-cold] run 6/10: 32.90 ms to mutation (44.80 ms to paint)
+  [rows/create-cold] run 7/10: 36.10 ms to mutation (49.60 ms to paint)
+  [rows/create-cold] run 8/10: 36.00 ms to mutation (49.30 ms to paint)
+  [rows/create-cold] run 9/10: 36.10 ms to mutation (48.50 ms to paint)
+  [rows/create-cold] run 10/10: 34.30 ms to mutation (47.60 ms to paint)
+  [rows/create-warm] run 1/10: 14.10 ms to mutation (22.70 ms to paint)
+  [rows/create-warm] run 2/10: 14.50 ms to mutation (22.80 ms to paint)
+  [rows/create-warm] run 3/10: 15.10 ms to mutation (23.80 ms to paint)
+  [rows/create-warm] run 4/10: 14.20 ms to mutation (22.60 ms to paint)
+  [rows/create-warm] run 5/10: 14.70 ms to mutation (22.70 ms to paint)
+  [rows/create-warm] run 6/10: 14.70 ms to mutation (22.80 ms to paint)
+  [rows/create-warm] run 7/10: 14.40 ms to mutation (22.80 ms to paint)
+  [rows/create-warm] run 8/10: 14.90 ms to mutation (23.30 ms to paint)
+  [rows/create-warm] run 9/10: 14.80 ms to mutation (23.20 ms to paint)
+  [rows/create-warm] run 10/10: 14.30 ms to mutation (22.30 ms to paint)
+  [rows/update] run 1/10: 14.50 ms to mutation (16.00 ms to paint)
+  [rows/update] run 2/10: 14.30 ms to mutation (16.00 ms to paint)
+  [rows/update] run 3/10: 13.90 ms to mutation (15.80 ms to paint)
+  [rows/update] run 4/10: 14.50 ms to mutation (16.30 ms to paint)
+  [rows/update] run 5/10: 13.80 ms to mutation (15.40 ms to paint)
+  [rows/update] run 6/10: 13.00 ms to mutation (14.50 ms to paint)
+  [rows/update] run 7/10: 13.30 ms to mutation (15.00 ms to paint)
+  [rows/update] run 8/10: 13.30 ms to mutation (14.80 ms to paint)
+  [rows/update] run 9/10: 12.60 ms to mutation (14.10 ms to paint)
+  [rows/update] run 10/10: 13.00 ms to mutation (14.50 ms to paint)
+  [rows/swap] run 1/10: 12.50 ms to mutation (13.60 ms to paint)
+  [rows/swap] run 2/10: 12.80 ms to mutation (13.90 ms to paint)
+  [rows/swap] run 3/10: 14.40 ms to mutation (15.50 ms to paint)
+  [rows/swap] run 4/10: 12.10 ms to mutation (13.30 ms to paint)
+  [rows/swap] run 5/10: 12.00 ms to mutation (13.10 ms to paint)
+  [rows/swap] run 6/10: 12.70 ms to mutation (13.90 ms to paint)
+  [rows/swap] run 7/10: 12.00 ms to mutation (13.10 ms to paint)
+  [rows/swap] run 8/10: 12.50 ms to mutation (13.60 ms to paint)
+  [rows/swap] run 9/10: 14.30 ms to mutation (15.50 ms to paint)
+  [rows/swap] run 10/10: 16.60 ms to mutation (17.80 ms to paint)
+  [rows/clear] run 1/10: 4.70 ms to mutation (5.10 ms to paint)
+  [rows/clear] run 2/10: 4.90 ms to mutation (5.30 ms to paint)
+  [rows/clear] run 3/10: 4.80 ms to mutation (5.30 ms to paint)
+  [rows/clear] run 4/10: 4.60 ms to mutation (5.10 ms to paint)
+  [rows/clear] run 5/10: 5.00 ms to mutation (5.30 ms to paint)
+  [rows/clear] run 6/10: 5.00 ms to mutation (5.40 ms to paint)
+  [rows/clear] run 7/10: 4.20 ms to mutation (4.60 ms to paint)
+  [rows/clear] run 8/10: 4.90 ms to mutation (5.30 ms to paint)
+  [rows/clear] run 9/10: 4.80 ms to mutation (5.20 ms to paint)
+  [rows/clear] run 10/10: 4.50 ms to mutation (4.90 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/blazor-rows-nojit.br.json
+[bench] transferred to interactive (median): 1553388 bytes
+[bench] create-cold     median=36.1 ms  iqr=2.9 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=49.45 ms iqr=3.35 ms — includes the harness's vsync wait]
+[bench] create-warm     median=14.6 ms  iqr=0.45 ms  (n=10, failures=0)  [warm]   [toPaint median=22.8 ms iqr=0.4 ms — includes the harness's vsync wait]
+[bench] update          median=13.55 ms  iqr=1.125 ms  (n=10, failures=0)  [warm]   [toPaint median=15.2 ms iqr=1.375 ms — includes the harness's vsync wait]
+[bench] swap            median=12.6 ms  iqr=1.725 ms  (n=10, failures=0)  [warm]   [toPaint median=13.75 ms iqr=1.725 ms — includes the harness's vsync wait]
+[bench] clear           median=4.8 ms  iqr=0.275 ms  (n=10, failures=0)  [warm]   [toPaint median=5.25 ms iqr=0.2 ms — includes the harness's vsync wait]
+[bench] 50/50 timed iterations recorded across 5 scenario(s), 0 failure(s)
+  ok
+
+=== [19:57:44] blazor-rows-aot / gzip ===
+
+[bench] blazor-rows-aot — app=rows url=http://127.0.0.1:64971/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=true
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-rows-aot/wwwroot
+
+[bench] DOM contract OK: {"rowCount":1000,"cellsPerRow":2,"rowMarkup":{"contract":"<tr><td class=\"col-md-1\">{id}</td><td class=\"col-md-4\"><a class=\"lbl\">{label}</a></td></tr>","checkedIndices":[0,1,2,500,998,999],"row0outerHTML":"<tr><td class=\"col-md-1\">1</td><td class=\"col-md-4\"><a class=\"lbl\">adorable pink desk</a></td></tr>","conforms":true},"row1Id":"2","row998Id":"999","row990Label":"clean orange cookie","first5":["adorable pink desk","unsightly purple sandwich","large brown sandwich","important brown house","mushy red desk"],"row1000":"important white pizza","firstRunFirstId":"1","firstRunLastId":"1000","updateMissedCount":0,"swap":{"before":{"id1":"2","id998":"999"},"after":{"id1":"999","id998":"2"}},"rowCountAfterClear":0,"secondRunRowCount":1000,"secondRunFirst5":["mushy blue mouse","expensive yellow keyboard","large blue car","large white pony","unsightly black house"],"secondRunRow1000":"odd pink pizza","secondRunFirstId":"1001","secondRunLastId":"2000"}
+
+  [rows/weight] run 1/3: 4857650 B transferred to interactive across 39 requests (server wrote 4847068 B of body)
+  [rows/weight] run 2/3: 4857650 B transferred to interactive across 39 requests (server wrote 4847068 B of body)
+  [rows/weight] run 3/3: 4857650 B transferred to interactive across 39 requests (server wrote 4847068 B of body)
+[bench] AOT verified: declared=true and the served artifacts agree (dotnet-wasm-native-runtime-size)
+  [rows/create-cold] run 1/10: 34.00 ms to mutation (50.10 ms to paint)
+  [rows/create-cold] run 2/10: 37.00 ms to mutation (52.20 ms to paint)
+  [rows/create-cold] run 3/10: 34.90 ms to mutation (51.70 ms to paint)
+  [rows/create-cold] run 4/10: 36.20 ms to mutation (51.70 ms to paint)
+  [rows/create-cold] run 5/10: 35.80 ms to mutation (52.20 ms to paint)
+  [rows/create-cold] run 6/10: 25.50 ms to mutation (39.40 ms to paint)
+  [rows/create-cold] run 7/10: 26.90 ms to mutation (41.40 ms to paint)
+  [rows/create-cold] run 8/10: 24.00 ms to mutation (38.30 ms to paint)
+  [rows/create-cold] run 9/10: 25.00 ms to mutation (38.80 ms to paint)
+  [rows/create-cold] run 10/10: 23.70 ms to mutation (37.10 ms to paint)
+  [rows/create-warm] run 1/10: 7.50 ms to mutation (15.50 ms to paint)
+  [rows/create-warm] run 2/10: 7.50 ms to mutation (15.60 ms to paint)
+  [rows/create-warm] run 3/10: 7.60 ms to mutation (16.20 ms to paint)
+  [rows/create-warm] run 4/10: 7.50 ms to mutation (15.80 ms to paint)
+  [rows/create-warm] run 5/10: 7.50 ms to mutation (15.50 ms to paint)
+  [rows/create-warm] run 6/10: 7.70 ms to mutation (16.00 ms to paint)
+  [rows/create-warm] run 7/10: 8.20 ms to mutation (16.20 ms to paint)
+  [rows/create-warm] run 8/10: 7.40 ms to mutation (15.90 ms to paint)
+  [rows/create-warm] run 9/10: 7.50 ms to mutation (14.70 ms to paint)
+  [rows/create-warm] run 10/10: 7.60 ms to mutation (15.80 ms to paint)
+  [rows/update] run 1/10: 3.50 ms to mutation (5.10 ms to paint)
+  [rows/update] run 2/10: 4.10 ms to mutation (5.60 ms to paint)
+  [rows/update] run 3/10: 3.80 ms to mutation (5.30 ms to paint)
+  [rows/update] run 4/10: 3.90 ms to mutation (5.40 ms to paint)
+  [rows/update] run 5/10: 4.00 ms to mutation (5.70 ms to paint)
+  [rows/update] run 6/10: 3.90 ms to mutation (5.50 ms to paint)
+  [rows/update] run 7/10: 4.00 ms to mutation (5.60 ms to paint)
+  [rows/update] run 8/10: 3.70 ms to mutation (5.40 ms to paint)
+  [rows/update] run 9/10: 3.90 ms to mutation (5.50 ms to paint)
+  [rows/update] run 10/10: 4.00 ms to mutation (5.50 ms to paint)
+  [rows/swap] run 1/10: 3.40 ms to mutation (4.60 ms to paint)
+  [rows/swap] run 2/10: 3.50 ms to mutation (4.60 ms to paint)
+  [rows/swap] run 3/10: 3.50 ms to mutation (4.60 ms to paint)
+  [rows/swap] run 4/10: 3.10 ms to mutation (4.20 ms to paint)
+  [rows/swap] run 5/10: 3.30 ms to mutation (4.40 ms to paint)
+  [rows/swap] run 6/10: 3.60 ms to mutation (4.90 ms to paint)
+  [rows/swap] run 7/10: 3.20 ms to mutation (4.30 ms to paint)
+  [rows/swap] run 8/10: 3.10 ms to mutation (4.30 ms to paint)
+  [rows/swap] run 9/10: 3.70 ms to mutation (4.90 ms to paint)
+  [rows/swap] run 10/10: 3.80 ms to mutation (4.90 ms to paint)
+  [rows/clear] run 1/10: 3.20 ms to mutation (3.70 ms to paint)
+  [rows/clear] run 2/10: 3.20 ms to mutation (3.60 ms to paint)
+  [rows/clear] run 3/10: 3.00 ms to mutation (3.50 ms to paint)
+  [rows/clear] run 4/10: 3.40 ms to mutation (3.80 ms to paint)
+  [rows/clear] run 5/10: 3.30 ms to mutation (3.60 ms to paint)
+  [rows/clear] run 6/10: 3.80 ms to mutation (4.30 ms to paint)
+  [rows/clear] run 7/10: 3.00 ms to mutation (3.30 ms to paint)
+  [rows/clear] run 8/10: 3.20 ms to mutation (3.50 ms to paint)
+  [rows/clear] run 9/10: 3.40 ms to mutation (3.70 ms to paint)
+  [rows/clear] run 10/10: 2.80 ms to mutation (3.30 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/blazor-rows-aot.gzip.json
+[bench] transferred to interactive (median): 4857650 bytes
+[bench] create-cold     median=30.45 ms  iqr=10.45 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=45.75 ms iqr=12.75 ms — includes the harness's vsync wait]
+[bench] create-warm     median=7.5 ms  iqr=0.1 ms  (n=10, failures=0)  [warm]   [toPaint median=15.8 ms iqr=0.45 ms — includes the harness's vsync wait]
+[bench] update          median=3.9 ms  iqr=0.175 ms  (n=10, failures=0)  [warm]   [toPaint median=5.5 ms iqr=0.175 ms — includes the harness's vsync wait]
+[bench] swap            median=3.45 ms  iqr=0.35 ms  (n=10, failures=0)  [warm]   [toPaint median=4.6 ms iqr=0.5 ms — includes the harness's vsync wait]
+[bench] clear           median=3.2 ms  iqr=0.325 ms  (n=10, failures=0)  [warm]   [toPaint median=3.6 ms iqr=0.2 ms — includes the harness's vsync wait]
+[bench] 50/50 timed iterations recorded across 5 scenario(s), 0 failure(s)
+  ok
+
+=== [19:59:48] blazor-rows-aot / br ===
+
+[bench] blazor-rows-aot — app=rows url=http://127.0.0.1:65386/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=true
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/blazor-rows-aot/wwwroot
+
+[bench] DOM contract OK: {"rowCount":1000,"cellsPerRow":2,"rowMarkup":{"contract":"<tr><td class=\"col-md-1\">{id}</td><td class=\"col-md-4\"><a class=\"lbl\">{label}</a></td></tr>","checkedIndices":[0,1,2,500,998,999],"row0outerHTML":"<tr><td class=\"col-md-1\">1</td><td class=\"col-md-4\"><a class=\"lbl\">adorable pink desk</a></td></tr>","conforms":true},"row1Id":"2","row998Id":"999","row990Label":"clean orange cookie","first5":["adorable pink desk","unsightly purple sandwich","large brown sandwich","important brown house","mushy red desk"],"row1000":"important white pizza","firstRunFirstId":"1","firstRunLastId":"1000","updateMissedCount":0,"swap":{"before":{"id1":"2","id998":"999"},"after":{"id1":"999","id998":"2"}},"rowCountAfterClear":0,"secondRunRowCount":1000,"secondRunFirst5":["mushy blue mouse","expensive yellow keyboard","large blue car","large white pony","unsightly black house"],"secondRunRow1000":"odd pink pizza","secondRunFirstId":"1001","secondRunLastId":"2000"}
+
+  [rows/weight] run 1/3: 3350819 B transferred to interactive across 39 requests (server wrote 3340318 B of body)
+  [rows/weight] run 2/3: 3350819 B transferred to interactive across 39 requests (server wrote 3340318 B of body)
+  [rows/weight] run 3/3: 3350819 B transferred to interactive across 39 requests (server wrote 3340318 B of body)
+[bench] AOT verified: declared=true and the served artifacts agree (dotnet-wasm-native-runtime-size)
+  [rows/create-cold] run 1/10: 33.70 ms to mutation (49.30 ms to paint)
+  [rows/create-cold] run 2/10: 35.10 ms to mutation (50.50 ms to paint)
+  [rows/create-cold] run 3/10: 32.00 ms to mutation (49.00 ms to paint)
+  [rows/create-cold] run 4/10: 36.00 ms to mutation (51.40 ms to paint)
+  [rows/create-cold] run 5/10: 31.50 ms to mutation (46.30 ms to paint)
+  [rows/create-cold] run 6/10: 34.90 ms to mutation (50.60 ms to paint)
+  [rows/create-cold] run 7/10: 34.90 ms to mutation (50.70 ms to paint)
+  [rows/create-cold] run 8/10: 34.00 ms to mutation (50.00 ms to paint)
+  [rows/create-cold] run 9/10: 31.60 ms to mutation (47.20 ms to paint)
+  [rows/create-cold] run 10/10: 23.60 ms to mutation (37.70 ms to paint)
+  [rows/create-warm] run 1/10: 9.40 ms to mutation (18.40 ms to paint)
+  [rows/create-warm] run 2/10: 9.30 ms to mutation (18.20 ms to paint)
+  [rows/create-warm] run 3/10: 8.10 ms to mutation (16.10 ms to paint)
+  [rows/create-warm] run 4/10: 10.00 ms to mutation (19.50 ms to paint)
+  [rows/create-warm] run 5/10: 8.20 ms to mutation (15.50 ms to paint)
+  [rows/create-warm] run 6/10: 7.50 ms to mutation (14.50 ms to paint)
+  [rows/create-warm] run 7/10: 7.20 ms to mutation (14.40 ms to paint)
+  [rows/create-warm] run 8/10: 7.30 ms to mutation (14.30 ms to paint)
+  [rows/create-warm] run 9/10: 7.20 ms to mutation (14.70 ms to paint)
+  [rows/create-warm] run 10/10: 7.20 ms to mutation (15.00 ms to paint)
+  [rows/update] run 1/10: 3.60 ms to mutation (5.10 ms to paint)
+  [rows/update] run 2/10: 3.40 ms to mutation (5.00 ms to paint)
+  [rows/update] run 3/10: 4.50 ms to mutation (6.40 ms to paint)
+  [rows/update] run 4/10: 4.10 ms to mutation (5.90 ms to paint)
+  [rows/update] run 5/10: 4.60 ms to mutation (6.50 ms to paint)
+  [rows/update] run 6/10: 4.30 ms to mutation (6.10 ms to paint)
+  [rows/update] run 7/10: 4.10 ms to mutation (5.80 ms to paint)
+  [rows/update] run 8/10: 4.30 ms to mutation (6.20 ms to paint)
+  [rows/update] run 9/10: 3.90 ms to mutation (5.70 ms to paint)
+  [rows/update] run 10/10: 4.10 ms to mutation (6.00 ms to paint)
+  [rows/swap] run 1/10: 3.10 ms to mutation (4.30 ms to paint)
+  [rows/swap] run 2/10: 3.80 ms to mutation (5.20 ms to paint)
+  [rows/swap] run 3/10: 4.20 ms to mutation (5.50 ms to paint)
+  [rows/swap] run 4/10: 3.90 ms to mutation (5.20 ms to paint)
+  [rows/swap] run 5/10: 3.30 ms to mutation (4.50 ms to paint)
+  [rows/swap] run 6/10: 4.10 ms to mutation (5.50 ms to paint)
+  [rows/swap] run 7/10: 4.10 ms to mutation (5.50 ms to paint)
+  [rows/swap] run 8/10: 4.10 ms to mutation (5.50 ms to paint)
+  [rows/swap] run 9/10: 3.40 ms to mutation (4.60 ms to paint)
+  [rows/swap] run 10/10: 3.50 ms to mutation (4.70 ms to paint)
+  [rows/clear] run 1/10: 3.00 ms to mutation (3.40 ms to paint)
+  [rows/clear] run 2/10: 2.90 ms to mutation (3.30 ms to paint)
+  [rows/clear] run 3/10: 3.00 ms to mutation (3.30 ms to paint)
+  [rows/clear] run 4/10: 2.90 ms to mutation (3.30 ms to paint)
+  [rows/clear] run 5/10: 3.20 ms to mutation (3.60 ms to paint)
+  [rows/clear] run 6/10: 3.00 ms to mutation (3.40 ms to paint)
+  [rows/clear] run 7/10: 3.20 ms to mutation (3.70 ms to paint)
+  [rows/clear] run 8/10: 3.00 ms to mutation (3.40 ms to paint)
+  [rows/clear] run 9/10: 2.70 ms to mutation (3.10 ms to paint)
+  [rows/clear] run 10/10: 2.80 ms to mutation (3.30 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/blazor-rows-aot.br.json
+[bench] transferred to interactive (median): 3350819 bytes
+[bench] create-cold     median=33.85 ms  iqr=3.2 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=49.65 ms iqr=2.925 ms — includes the harness's vsync wait]
+[bench] create-warm     median=7.8 ms  iqr=1.8 ms  (n=10, failures=0)  [warm]   [toPaint median=15.25 ms iqr=3.125 ms — includes the harness's vsync wait]
+[bench] update          median=4.1 ms  iqr=0.35 ms  (n=10, failures=0)  [warm]   [toPaint median=5.95 ms iqr=0.45 ms — includes the harness's vsync wait]
+[bench] swap            median=3.85 ms  iqr=0.675 ms  (n=10, failures=0)  [warm]   [toPaint median=5.2 ms iqr=0.875 ms — includes the harness's vsync wait]
+[bench] clear           median=3 ms  iqr=0.1 ms  (n=10, failures=0)  [warm]   [toPaint median=3.35 ms iqr=0.1 ms — includes the harness's vsync wait]
+[bench] 50/50 timed iterations recorded across 5 scenario(s), 0 failure(s)
+  ok
+
+=== [20:01:53] filament-counter / gzip ===
+
+[bench] filament-counter — app=counter url=http://127.0.0.1:49423/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=false
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/filament-counter
+
+[bench] DOM contract OK: {"initialValue":"0"}
+
+  [counter/weight] run 1/3: 2976 B transferred to interactive across 3 requests (server wrote 2142 B of body)
+  [counter/weight] run 2/3: 2976 B transferred to interactive across 3 requests (server wrote 2142 B of body)
+  [counter/weight] run 3/3: 2976 B transferred to interactive across 3 requests (server wrote 2142 B of body)
+  [counter/increment-cold] run 1/10: 0.30 ms to mutation (0.80 ms to paint)
+  [counter/increment-cold] run 2/10: 0.40 ms to mutation (0.70 ms to paint)
+  [counter/increment-cold] run 3/10: 0.30 ms to mutation (0.70 ms to paint)
+  [counter/increment-cold] run 4/10: 0.20 ms to mutation (0.40 ms to paint)
+  [counter/increment-cold] run 5/10: 0.20 ms to mutation (0.50 ms to paint)
+  [counter/increment-cold] run 6/10: 0.50 ms to mutation (1.20 ms to paint)
+  [counter/increment-cold] run 7/10: 0.40 ms to mutation (1.30 ms to paint)
+  [counter/increment-cold] run 8/10: 0.40 ms to mutation (0.80 ms to paint)
+  [counter/increment-cold] run 9/10: 0.40 ms to mutation (0.80 ms to paint)
+  [counter/increment-cold] run 10/10: 0.40 ms to mutation (0.80 ms to paint)
+  [counter/increment-warm] run 1/10: 0.00 ms to mutation (0.30 ms to paint)
+  [counter/increment-warm] run 2/10: 0.10 ms to mutation (0.40 ms to paint)
+  [counter/increment-warm] run 3/10: 0.00 ms to mutation (0.40 ms to paint)
+  [counter/increment-warm] run 4/10: 0.00 ms to mutation (0.30 ms to paint)
+  [counter/increment-warm] run 5/10: 0.10 ms to mutation (0.40 ms to paint)
+  [counter/increment-warm] run 6/10: 0.10 ms to mutation (0.30 ms to paint)
+  [counter/increment-warm] run 7/10: 0.10 ms to mutation (0.40 ms to paint)
+  [counter/increment-warm] run 8/10: 0.00 ms to mutation (0.20 ms to paint)
+  [counter/increment-warm] run 9/10: 0.00 ms to mutation (0.40 ms to paint)
+  [counter/increment-warm] run 10/10: 0.10 ms to mutation (0.40 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/filament-counter.gzip.json
+[bench] transferred to interactive (median): 2976 bytes
+[bench] increment-cold  median=0.4 ms  iqr=0.1 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=0.8 ms iqr=0.1 ms — includes the harness's vsync wait]
+[bench] increment-warm  median=0.05 ms  iqr=0.1 ms  (n=10, failures=0)  [warm]   [toPaint median=0.4 ms iqr=0.1 ms — includes the harness's vsync wait]
+[bench] 20/20 timed iterations recorded across 2 scenario(s), 0 failure(s)
+  ok
+
+=== [20:02:45] filament-counter / br ===
+
+[bench] filament-counter — app=counter url=http://127.0.0.1:49536/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=false
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/filament-counter
+
+[bench] DOM contract OK: {"initialValue":"0"}
+
+  [counter/weight] run 1/3: 2604 B transferred to interactive across 3 requests (server wrote 1776 B of body)
+  [counter/weight] run 2/3: 2604 B transferred to interactive across 3 requests (server wrote 1776 B of body)
+  [counter/weight] run 3/3: 2604 B transferred to interactive across 3 requests (server wrote 1776 B of body)
+  [counter/increment-cold] run 1/10: 0.50 ms to mutation (1.30 ms to paint)
+  [counter/increment-cold] run 2/10: 0.40 ms to mutation (0.90 ms to paint)
+  [counter/increment-cold] run 3/10: 0.40 ms to mutation (0.90 ms to paint)
+  [counter/increment-cold] run 4/10: 0.40 ms to mutation (0.90 ms to paint)
+  [counter/increment-cold] run 5/10: 0.20 ms to mutation (0.50 ms to paint)
+  [counter/increment-cold] run 6/10: 0.40 ms to mutation (0.90 ms to paint)
+  [counter/increment-cold] run 7/10: 0.40 ms to mutation (0.80 ms to paint)
+  [counter/increment-cold] run 8/10: 0.30 ms to mutation (0.70 ms to paint)
+  [counter/increment-cold] run 9/10: 0.20 ms to mutation (0.50 ms to paint)
+  [counter/increment-cold] run 10/10: 0.60 ms to mutation (1.30 ms to paint)
+  [counter/increment-warm] run 1/10: 0.10 ms to mutation (0.30 ms to paint)
+  [counter/increment-warm] run 2/10: 0.10 ms to mutation (0.70 ms to paint)
+  [counter/increment-warm] run 3/10: 0.10 ms to mutation (0.60 ms to paint)
+  [counter/increment-warm] run 4/10: 0.10 ms to mutation (0.50 ms to paint)
+  [counter/increment-warm] run 5/10: 0.00 ms to mutation (0.30 ms to paint)
+  [counter/increment-warm] run 6/10: 0.00 ms to mutation (0.40 ms to paint)
+  [counter/increment-warm] run 7/10: 0.10 ms to mutation (0.50 ms to paint)
+  [counter/increment-warm] run 8/10: 0.10 ms to mutation (0.30 ms to paint)
+  [counter/increment-warm] run 9/10: 0.00 ms to mutation (0.20 ms to paint)
+  [counter/increment-warm] run 10/10: 0.10 ms to mutation (0.30 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/filament-counter.br.json
+[bench] transferred to interactive (median): 2604 bytes
+[bench] increment-cold  median=0.4 ms  iqr=0.075 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=0.9 ms iqr=0.175 ms — includes the harness's vsync wait]
+[bench] increment-warm  median=0.1 ms  iqr=0.075 ms  (n=10, failures=0)  [warm]   [toPaint median=0.35 ms iqr=0.2 ms — includes the harness's vsync wait]
+[bench] 20/20 timed iterations recorded across 2 scenario(s), 0 failure(s)
+  ok
+
+=== [20:03:37] filament-rows / gzip ===
+
+[bench] filament-rows — app=rows url=http://127.0.0.1:49618/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=false
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/filament-rows
+
+[bench] DOM contract OK: {"rowCount":1000,"cellsPerRow":2,"rowMarkup":{"contract":"<tr><td class=\"col-md-1\">{id}</td><td class=\"col-md-4\"><a class=\"lbl\">{label}</a></td></tr>","checkedIndices":[0,1,2,500,998,999],"row0outerHTML":"<tr><td class=\"col-md-1\">1</td><td class=\"col-md-4\"><a class=\"lbl\">adorable pink desk</a></td></tr>","conforms":true},"row1Id":"2","row998Id":"999","row990Label":"clean orange cookie","first5":["adorable pink desk","unsightly purple sandwich","large brown sandwich","important brown house","mushy red desk"],"row1000":"important white pizza","firstRunFirstId":"1","firstRunLastId":"1000","updateMissedCount":0,"swap":{"before":{"id1":"2","id998":"999"},"after":{"id1":"999","id998":"2"}},"rowCountAfterClear":0,"secondRunRowCount":1000,"secondRunFirst5":["mushy blue mouse","expensive yellow keyboard","large blue car","large white pony","unsightly black house"],"secondRunRow1000":"odd pink pizza","secondRunFirstId":"1001","secondRunLastId":"2000"}
+
+  [rows/weight] run 1/3: 4365 B transferred to interactive across 3 requests (server wrote 3531 B of body)
+  [rows/weight] run 2/3: 4365 B transferred to interactive across 3 requests (server wrote 3531 B of body)
+  [rows/weight] run 3/3: 4365 B transferred to interactive across 3 requests (server wrote 3531 B of body)
+  [rows/create-cold] run 1/10: 6.00 ms to mutation (13.50 ms to paint)
+  [rows/create-cold] run 2/10: 6.00 ms to mutation (13.10 ms to paint)
+  [rows/create-cold] run 3/10: 5.70 ms to mutation (13.00 ms to paint)
+  [rows/create-cold] run 4/10: 7.00 ms to mutation (21.10 ms to paint)
+  [rows/create-cold] run 5/10: 5.40 ms to mutation (16.80 ms to paint)
+  [rows/create-cold] run 6/10: 5.60 ms to mutation (13.50 ms to paint)
+  [rows/create-cold] run 7/10: 6.20 ms to mutation (14.70 ms to paint)
+  [rows/create-cold] run 8/10: 6.50 ms to mutation (14.90 ms to paint)
+  [rows/create-cold] run 9/10: 6.60 ms to mutation (15.30 ms to paint)
+  [rows/create-cold] run 10/10: 4.40 ms to mutation (12.30 ms to paint)
+  [rows/create-warm] run 1/10: 3.30 ms to mutation (10.20 ms to paint)
+  [rows/create-warm] run 2/10: 1.70 ms to mutation (9.40 ms to paint)
+  [rows/create-warm] run 3/10: 4.10 ms to mutation (11.70 ms to paint)
+  [rows/create-warm] run 4/10: 1.70 ms to mutation (8.30 ms to paint)
+  [rows/create-warm] run 5/10: 4.60 ms to mutation (13.40 ms to paint)
+  [rows/create-warm] run 6/10: 3.40 ms to mutation (10.40 ms to paint)
+  [rows/create-warm] run 7/10: 2.30 ms to mutation (8.90 ms to paint)
+  [rows/create-warm] run 8/10: 1.60 ms to mutation (8.20 ms to paint)
+  [rows/create-warm] run 9/10: 1.60 ms to mutation (8.60 ms to paint)
+  [rows/create-warm] run 10/10: 1.60 ms to mutation (8.00 ms to paint)
+  [rows/update] run 1/10: 0.40 ms to mutation (2.20 ms to paint)
+  [rows/update] run 2/10: 0.40 ms to mutation (2.20 ms to paint)
+  [rows/update] run 3/10: 0.40 ms to mutation (2.30 ms to paint)
+  [rows/update] run 4/10: 0.20 ms to mutation (1.60 ms to paint)
+  [rows/update] run 5/10: 0.30 ms to mutation (1.60 ms to paint)
+  [rows/update] run 6/10: 0.20 ms to mutation (1.60 ms to paint)
+  [rows/update] run 7/10: 0.30 ms to mutation (1.60 ms to paint)
+  [rows/update] run 8/10: 0.20 ms to mutation (1.60 ms to paint)
+  [rows/update] run 9/10: 0.30 ms to mutation (1.70 ms to paint)
+  [rows/update] run 10/10: 0.30 ms to mutation (1.70 ms to paint)
+  [rows/swap] run 1/10: 0.40 ms to mutation (1.40 ms to paint)
+  [rows/swap] run 2/10: 0.40 ms to mutation (1.40 ms to paint)
+  [rows/swap] run 3/10: 0.40 ms to mutation (1.40 ms to paint)
+  [rows/swap] run 4/10: 0.50 ms to mutation (1.40 ms to paint)
+  [rows/swap] run 5/10: 0.50 ms to mutation (2.00 ms to paint)
+  [rows/swap] run 6/10: 0.50 ms to mutation (1.80 ms to paint)
+  [rows/swap] run 7/10: 0.60 ms to mutation (2.00 ms to paint)
+  [rows/swap] run 8/10: 0.60 ms to mutation (1.70 ms to paint)
+  [rows/swap] run 9/10: 0.50 ms to mutation (1.80 ms to paint)
+  [rows/swap] run 10/10: 0.60 ms to mutation (2.20 ms to paint)
+  [rows/clear] run 1/10: 1.40 ms to mutation (1.50 ms to paint)
+  [rows/clear] run 2/10: 1.40 ms to mutation (1.70 ms to paint)
+  [rows/clear] run 3/10: 1.30 ms to mutation (1.60 ms to paint)
+  [rows/clear] run 4/10: 1.30 ms to mutation (1.60 ms to paint)
+  [rows/clear] run 5/10: 1.30 ms to mutation (1.60 ms to paint)
+  [rows/clear] run 6/10: 1.40 ms to mutation (1.70 ms to paint)
+  [rows/clear] run 7/10: 1.40 ms to mutation (1.60 ms to paint)
+  [rows/clear] run 8/10: 1.40 ms to mutation (1.60 ms to paint)
+  [rows/clear] run 9/10: 1.20 ms to mutation (1.40 ms to paint)
+  [rows/clear] run 10/10: 1.10 ms to mutation (1.50 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/filament-rows.gzip.json
+[bench] transferred to interactive (median): 4365 bytes
+[bench] create-cold     median=6 ms  iqr=0.8 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=14.1 ms iqr=2 ms — includes the harness's vsync wait]
+[bench] create-warm     median=2 ms  iqr=1.75 ms  (n=10, failures=0)  [warm]   [toPaint median=9.15 ms iqr=1.975 ms — includes the harness's vsync wait]
+[bench] update          median=0.3 ms  iqr=0.15 ms  (n=10, failures=0)  [warm]   [toPaint median=1.65 ms iqr=0.475 ms — includes the harness's vsync wait]
+[bench] swap            median=0.5 ms  iqr=0.15 ms  (n=10, failures=0)  [warm]   [toPaint median=1.75 ms iqr=0.55 ms — includes the harness's vsync wait]
+[bench] clear           median=1.35 ms  iqr=0.1 ms  (n=10, failures=0)  [warm]   [toPaint median=1.6 ms iqr=0.075 ms — includes the harness's vsync wait]
+[bench] 50/50 timed iterations recorded across 5 scenario(s), 0 failure(s)
+  ok
+
+=== [20:05:35] filament-rows / br ===
+
+[bench] filament-rows — app=rows url=http://127.0.0.1:49836/
+[bench] chrome 150.0.7871.124 (headless=true) | .NET SDK 10.0.301 | aot=false
+[bench] serving /Users/phmatray/Repositories/dotnet/Filament/bench/publish/filament-rows
+
+[bench] DOM contract OK: {"rowCount":1000,"cellsPerRow":2,"rowMarkup":{"contract":"<tr><td class=\"col-md-1\">{id}</td><td class=\"col-md-4\"><a class=\"lbl\">{label}</a></td></tr>","checkedIndices":[0,1,2,500,998,999],"row0outerHTML":"<tr><td class=\"col-md-1\">1</td><td class=\"col-md-4\"><a class=\"lbl\">adorable pink desk</a></td></tr>","conforms":true},"row1Id":"2","row998Id":"999","row990Label":"clean orange cookie","first5":["adorable pink desk","unsightly purple sandwich","large brown sandwich","important brown house","mushy red desk"],"row1000":"important white pizza","firstRunFirstId":"1","firstRunLastId":"1000","updateMissedCount":0,"swap":{"before":{"id1":"2","id998":"999"},"after":{"id1":"999","id998":"2"}},"rowCountAfterClear":0,"secondRunRowCount":1000,"secondRunFirst5":["mushy blue mouse","expensive yellow keyboard","large blue car","large white pony","unsightly black house"],"secondRunRow1000":"odd pink pizza","secondRunFirstId":"1001","secondRunLastId":"2000"}
+
+  [rows/weight] run 1/3: 3904 B transferred to interactive across 3 requests (server wrote 3076 B of body)
+  [rows/weight] run 2/3: 3904 B transferred to interactive across 3 requests (server wrote 3076 B of body)
+  [rows/weight] run 3/3: 3904 B transferred to interactive across 3 requests (server wrote 3076 B of body)
+  [rows/create-cold] run 1/10: 5.90 ms to mutation (13.10 ms to paint)
+  [rows/create-cold] run 2/10: 7.20 ms to mutation (14.40 ms to paint)
+  [rows/create-cold] run 3/10: 5.50 ms to mutation (13.00 ms to paint)
+  [rows/create-cold] run 4/10: 7.20 ms to mutation (21.20 ms to paint)
+  [rows/create-cold] run 5/10: 5.80 ms to mutation (19.20 ms to paint)
+  [rows/create-cold] run 6/10: 6.20 ms to mutation (19.20 ms to paint)
+  [rows/create-cold] run 7/10: 6.40 ms to mutation (15.20 ms to paint)
+  [rows/create-cold] run 8/10: 6.10 ms to mutation (14.40 ms to paint)
+  [rows/create-cold] run 9/10: 6.20 ms to mutation (14.10 ms to paint)
+  [rows/create-cold] run 10/10: 6.30 ms to mutation (15.20 ms to paint)
+  [rows/create-warm] run 1/10: 3.60 ms to mutation (11.80 ms to paint)
+  [rows/create-warm] run 2/10: 3.90 ms to mutation (11.60 ms to paint)
+  [rows/create-warm] run 3/10: 3.70 ms to mutation (10.70 ms to paint)
+  [rows/create-warm] run 4/10: 1.80 ms to mutation (9.40 ms to paint)
+  [rows/create-warm] run 5/10: 4.30 ms to mutation (13.30 ms to paint)
+  [rows/create-warm] run 6/10: 4.30 ms to mutation (13.90 ms to paint)
+  [rows/create-warm] run 7/10: 3.70 ms to mutation (10.70 ms to paint)
+  [rows/create-warm] run 8/10: 2.20 ms to mutation (9.40 ms to paint)
+  [rows/create-warm] run 9/10: 2.20 ms to mutation (9.00 ms to paint)
+  [rows/create-warm] run 10/10: 2.90 ms to mutation (9.80 ms to paint)
+  [rows/update] run 1/10: 0.30 ms to mutation (1.60 ms to paint)
+  [rows/update] run 2/10: 0.30 ms to mutation (1.50 ms to paint)
+  [rows/update] run 3/10: 0.30 ms to mutation (1.90 ms to paint)
+  [rows/update] run 4/10: 0.30 ms to mutation (2.00 ms to paint)
+  [rows/update] run 5/10: 0.40 ms to mutation (2.00 ms to paint)
+  [rows/update] run 6/10: 0.40 ms to mutation (2.10 ms to paint)
+  [rows/update] run 7/10: 0.40 ms to mutation (2.60 ms to paint)
+  [rows/update] run 8/10: 0.20 ms to mutation (1.50 ms to paint)
+  [rows/update] run 9/10: 0.40 ms to mutation (1.70 ms to paint)
+  [rows/update] run 10/10: 0.20 ms to mutation (1.70 ms to paint)
+  [rows/swap] run 1/10: 0.40 ms to mutation (1.40 ms to paint)
+  [rows/swap] run 2/10: 0.30 ms to mutation (1.40 ms to paint)
+  [rows/swap] run 3/10: 0.30 ms to mutation (1.30 ms to paint)
+  [rows/swap] run 4/10: 0.40 ms to mutation (1.40 ms to paint)
+  [rows/swap] run 5/10: 0.50 ms to mutation (1.70 ms to paint)
+  [rows/swap] run 6/10: 0.40 ms to mutation (1.60 ms to paint)
+  [rows/swap] run 7/10: 0.40 ms to mutation (1.30 ms to paint)
+  [rows/swap] run 8/10: 0.40 ms to mutation (1.30 ms to paint)
+  [rows/swap] run 9/10: 0.50 ms to mutation (1.80 ms to paint)
+  [rows/swap] run 10/10: 0.40 ms to mutation (1.40 ms to paint)
+  [rows/clear] run 1/10: 1.70 ms to mutation (2.00 ms to paint)
+  [rows/clear] run 2/10: 1.70 ms to mutation (2.10 ms to paint)
+  [rows/clear] run 3/10: 1.90 ms to mutation (2.20 ms to paint)
+  [rows/clear] run 4/10: 1.20 ms to mutation (1.40 ms to paint)
+  [rows/clear] run 5/10: 1.70 ms to mutation (1.90 ms to paint)
+  [rows/clear] run 6/10: 1.90 ms to mutation (2.10 ms to paint)
+  [rows/clear] run 7/10: 1.90 ms to mutation (2.30 ms to paint)
+  [rows/clear] run 8/10: 2.00 ms to mutation (2.30 ms to paint)
+  [rows/clear] run 9/10: 1.30 ms to mutation (1.60 ms to paint)
+  [rows/clear] run 10/10: 1.20 ms to mutation (1.50 ms to paint)
+
+[bench] wrote /Users/phmatray/Repositories/dotnet/Filament/bench/results/phase1-clean/filament-rows.br.json
+[bench] transferred to interactive (median): 3904 bytes
+[bench] create-cold     median=6.2 ms  iqr=0.425 ms  (n=10, failures=0)  [cold, NOT the headline — includes runtime boot]   [toPaint median=14.8 ms iqr=4.025 ms — includes the harness's vsync wait]
+[bench] create-warm     median=3.65 ms  iqr=1.475 ms  (n=10, failures=0)  [warm]   [toPaint median=10.7 ms iqr=2.25 ms — includes the harness's vsync wait]
+[bench] update          median=0.3 ms  iqr=0.1 ms  (n=10, failures=0)  [warm]   [toPaint median=1.8 ms iqr=0.375 ms — includes the harness's vsync wait]
+[bench] swap            median=0.4 ms  iqr=0 ms  (n=10, failures=0)  [warm]   [toPaint median=1.4 ms iqr=0.225 ms — includes the harness's vsync wait]
+[bench] clear           median=1.7 ms  iqr=0.5 ms  (n=10, failures=0)  [warm]   [toPaint median=2.05 ms iqr=0.5 ms — includes the harness's vsync wait]
+[bench] 50/50 timed iterations recorded across 5 scenario(s), 0 failure(s)
+  ok
+
+=== matrix done: 12 run(s), 0 failure(s) ===

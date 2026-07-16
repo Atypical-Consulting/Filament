@@ -158,23 +158,29 @@ function deferred(fn) {
   };
 }
 
+/* Emits the contract's row EXACTLY:
+     <tr><td class="col-md-1">{id}</td><td class="col-md-4"><a class="lbl">{label}</a></td></tr>
+   This fixture previously emitted THREE unclassed cells (id, label, a literal "x"),
+   which is not the contract and not what the Blazor baseline renders. It passed
+   only because the old gate asked for cellsPerRow >= 2 and read textContent. The
+   strict markup gate refuses it now — correctly. A "reference implementation of the
+   shared DOM contract" that the contract check rejects was a reference to nothing. */
 function buildRows(count) {
   const frag = document.createDocumentFragment();
   for (let i = 0; i < count; i++) {
     const id = nextId++;
     const tr = document.createElement('tr');
     const idCell = document.createElement('td');
+    idCell.className = 'col-md-1';
     idCell.textContent = String(id);
     const labelCell = document.createElement('td');
+    labelCell.className = 'col-md-4';
     const a = document.createElement('a');
     a.className = 'lbl';
     a.textContent = nextLabel();
     labelCell.appendChild(a);
-    const actionCell = document.createElement('td');
-    actionCell.textContent = 'x';
     tr.appendChild(idCell);
     tr.appendChild(labelCell);
-    tr.appendChild(actionCell);
     frag.appendChild(tr);
   }
   return frag;
@@ -305,16 +311,15 @@ document.getElementById('clear').addEventListener('click', deferred(function () 
 const NO_LABEL_CELL_JS = mustReplace(
   ROWS_APP_JS,
   `    const labelCell = document.createElement('td');
+    labelCell.className = 'col-md-4';
     const a = document.createElement('a');
     a.className = 'lbl';
     a.textContent = nextLabel();
     labelCell.appendChild(a);
-    const actionCell = document.createElement('td');
-    actionCell.textContent = 'x';
     tr.appendChild(idCell);
-    tr.appendChild(labelCell);
-    tr.appendChild(actionCell);`,
-  `    tr.appendChild(idCell);`,
+    tr.appendChild(labelCell);`,
+  `    nextLabel(); /* keep the LCG in step; just never render the label */
+    tr.appendChild(idCell);`,
   'missing its label cell',
 );
 
@@ -513,6 +518,178 @@ setTimeout(function () { new Worker('fetchworker.js'); }, 150);
 
 const WORKER_PAYLOAD_BYTES = 256 * 1024;
 
+/**
+ * ---- Strict row-markup fixture ---------------------------------------------
+ *
+ * THE cheat the strict markup gate exists to refuse, and the reason the gate was
+ * written at all. This app is correct on every other axis — 1000 rows, the exact
+ * golden Park-Miller label stream, honest monotonic ids, real #update/#swaprows/
+ * #clear semantics — so every gate that existed before waves it through. What it
+ * does is render
+ *
+ *     <tr><td>1</td><td>adorable pink desk</td></tr>
+ *
+ * instead of the contract's
+ *
+ *     <tr><td class="col-md-1">1</td><td class="col-md-4"><a class="lbl">adorable pink desk</a></td></tr>
+ *
+ * skipping 1000 <a> elements and 2000 class attributes per #run — roughly 3000
+ * DOM operations Blazor performs and this app does not. The old gate asked only
+ * for `cellsPerRow >= 2` and read `td:nth-child(n).textContent`, both of which
+ * this satisfies perfectly. It would therefore have posted a large, entirely
+ * unearned create-warm win against Blazor and been reported as status "ok".
+ */
+const LOOSE_MARKUP_JS = mustReplace(
+  ROWS_APP_JS,
+  `    const idCell = document.createElement('td');
+    idCell.className = 'col-md-1';
+    idCell.textContent = String(id);
+    const labelCell = document.createElement('td');
+    labelCell.className = 'col-md-4';
+    const a = document.createElement('a');
+    a.className = 'lbl';
+    a.textContent = nextLabel();
+    labelCell.appendChild(a);`,
+  `    const idCell = document.createElement('td');
+    idCell.textContent = String(id);
+    const labelCell = document.createElement('td');
+    labelCell.textContent = nextLabel();`,
+  'simpler markup than the contract',
+);
+
+/**
+ * ---- C3 fixtures: GROUND TRUTH for the DOM-write instrument -----------------
+ *
+ * The warm clock was validated against a fixture with a known 400 ms boot rather
+ * than by asserting it looked right; the same precedent applies here. A DOM-write
+ * counter that has never been shown a known number of DOM writes is not an
+ * instrument, it is an opinion. Each fixture below performs an EXACTLY known
+ * number of writes per increment, by construction.
+ *
+ * All handlers are SYNCHRONOUS. The 60 ms async dispatch every other fixture uses
+ * would make the allocation probe (thousands of increments) take minutes, and C3
+ * is not a timing measurement — nothing here depends on the dispatch shape.
+ */
+
+/** The counter contract's DOM, minus any framework. */
+const C3_PRELUDE = `/* C3 fixture — vanilla JS, synchronous, known DOM-write count per increment. */
+let count = 0;
+const valueEl = document.getElementById('counter-value');
+`;
+
+/**
+ * EXACTLY 1 DOM write per increment: one characterData mutation, by patching the
+ * TEXT NODE's data in place. This is what Blazor itself does (measured: a single
+ * characterData record per increment), and it is what C3 demands.
+ *
+ * NOTE THE TRAP, which this fixture caught the hard way. The obvious spelling
+ *
+ *     valueEl.textContent = String(count);
+ *
+ * is TWO DOM writes, not one: setting textContent on an element that already has a
+ * text child REMOVES the old node and APPENDS a new one, which a MutationObserver
+ * reports as a childList record carrying removedNodes:1 + addedNodes:1. This
+ * fixture originally used exactly that spelling and asserted it was 1 write; the
+ * instrument said 2 and the instrument was right.
+ *
+ * The distinction is not pedantry — it is C3. A Filament that assigns .textContent
+ * FAILS "exactly 1 DOM write per increment" while Blazor, which patches the text
+ * node in place, PASSES. Same visible result, twice the DOM writes.
+ */
+const C3_ONE_WRITE_JS = `${C3_PRELUDE}
+document.getElementById('increment').addEventListener('click', function () {
+  count += 1;
+  /* 1 write: characterData on the EXISTING text node. Not .textContent = x, which
+     is a remove + an append and therefore two writes. */
+  valueEl.firstChild.data = String(count);
+});
+`;
+
+/**
+ * EXACTLY 3 DOM writes per increment, by construction — explicit ops rather than
+ * anything whose record count has to be guessed:
+ *   1. attributes  — setAttribute
+ *   2. childList   — removeChild (removedNodes: 1)
+ *   3. childList   — appendChild (addedNodes: 1)
+ * The instrument must report 3, not 1 and not 2. This is the fixture that proves
+ * the counter can FAIL something — a counter that only ever sees conforming apps
+ * has demonstrated nothing.
+ */
+const C3_THREE_WRITES_JS = `${C3_PRELUDE}
+document.getElementById('increment').addEventListener('click', function () {
+  count += 1;
+  var s = String(count);
+  valueEl.setAttribute('data-count', s);              /* write 1: attributes */
+  valueEl.removeChild(valueEl.firstChild);            /* write 2: childList, removed 1 */
+  valueEl.appendChild(document.createTextNode(s));    /* write 3: childList, added 1 */
+});
+`;
+
+/** 1 write, and a self-report that honestly says 1. The cross-check must AGREE. */
+const C3_TRUTHFUL_STATS_JS = `${C3_PRELUDE}
+const stats = { domWrites: 0 };
+window.__filament = { stats: stats };
+document.getElementById('increment').addEventListener('click', function () {
+  count += 1;
+  valueEl.firstChild.data = String(count);   /* 1 write — see C3_ONE_WRITE_JS */
+  stats.domWrites += 1;
+});
+`;
+
+/**
+ * THE fixture for cross-check (b). Does 3 real DOM writes and self-reports 1.
+ *
+ * This is not a strawman: it is the exact shape of an honest bug. A runtime that
+ * instruments its fast path and forgets its fallback path reports 1 while doing 3,
+ * and every C3 claim built on the self-report is then false while looking perfect.
+ * A harness that trusted __filament.stats — or worse, one that "reconciled" the
+ * disagreement by preferring either side — would report C3 as a PASS here. The
+ * instrument must catch it, and must refuse to resolve it.
+ */
+const C3_LYING_STATS_JS = `${C3_PRELUDE}
+const stats = { domWrites: 0 };
+window.__filament = { stats: stats };
+document.getElementById('increment').addEventListener('click', function () {
+  count += 1;
+  var s = String(count);
+  /* Three real writes... */
+  valueEl.setAttribute('data-count', s);
+  valueEl.removeChild(valueEl.firstChild);
+  valueEl.appendChild(document.createTextNode(s));
+  /* ...and a self-report that claims one. */
+  stats.domWrites += 1;
+});
+`;
+
+/**
+ * GROUND TRUTH for the allocation probe: allocates a known, dominant payload per
+ * increment on top of 1 DOM write.
+ *
+ * A packed double array is the most predictable thing to allocate in V8: 256
+ * doubles is a FixedDoubleArray of 256*8 B + header, ~2 KB, plus a small JSArray.
+ * It is retained in a sink so nothing can be optimised away, and the sink is
+ * overwritten each time so this is allocation THROUGHPUT (garbage), not growth —
+ * which is exactly the quantity C3 names and exactly what a heap-snapshot delta
+ * would miss.
+ *
+ * The assertion band is deliberately wide (see the test). A 1024 B sampling
+ * interval cannot deliver byte precision and pretending otherwise would be the
+ * fabrication this harness exists to avoid. Order-of-magnitude separation from
+ * the ~0 fixture is the real claim, and it is the claim C3 actually needs.
+ */
+const C3_ALLOC_PER_INCREMENT_DOUBLES = 256;
+const C3_ALLOC_JS = `${C3_PRELUDE}
+window.__sink = null;
+document.getElementById('increment').addEventListener('click', function () {
+  count += 1;
+  var a = new Array(${C3_ALLOC_PER_INCREMENT_DOUBLES});
+  for (var i = 0; i < ${C3_ALLOC_PER_INCREMENT_DOUBLES}; i++) { a[i] = i + 0.5; }
+  window.__sink = a;   /* retained until the next increment: real garbage, not DCE'd */
+  valueEl.firstChild.data = String(count);   /* 1 write, so this fixture differs from
+                                                c3one ONLY in what it allocates */
+});
+`;
+
 function rowsHtml(title) {
   return `<!doctype html>
 <html lang="en">
@@ -633,6 +810,9 @@ async function makeFixture(root) {
     cachedlabel: path.join(root, 'cachedlabel'),
     lazyupdate: path.join(root, 'lazyupdate'),
     halfswap: path.join(root, 'halfswap'),
+    // Correct labels, correct ids, correct semantics — but simpler markup than
+    // the contract, i.e. ~3000 fewer DOM ops per #run than Blazor.
+    loosemarkup: path.join(root, 'loosemarkup'),
     // Conforming, but synchronous — the vsync-quantization regression test.
     sync: path.join(root, 'sync'),
     // Conforming, but fetches from a Web Worker target (the WasmEnableThreads shape).
@@ -641,6 +821,14 @@ async function makeFixture(root) {
     // cold-vs-warm regression tests.
     bootcost: path.join(root, 'bootcost'),
     bootcounter: path.join(root, 'bootcounter'),
+    // C3 ground truth. Each does an EXACTLY known number of DOM writes per
+    // increment, so the instrument is validated against a known number rather
+    // than assumed to be right.
+    c3one: path.join(root, 'c3one'),
+    c3three: path.join(root, 'c3three'),
+    c3truthful: path.join(root, 'c3truthful'),
+    c3liar: path.join(root, 'c3liar'),
+    c3alloc: path.join(root, 'c3alloc'),
   };
   for (const d of Object.values(dirs)) await fsp.mkdir(d, { recursive: true });
 
@@ -653,6 +841,7 @@ async function makeFixture(root) {
     [dirs.cachedlabel, 'Cached-label fixture', CACHED_LABEL_JS],
     [dirs.lazyupdate, 'One-row-update fixture', LAZY_UPDATE_JS],
     [dirs.halfswap, 'One-directional-swap fixture', HALF_SWAP_JS],
+    [dirs.loosemarkup, 'Loose-markup rows fixture', LOOSE_MARKUP_JS],
     [dirs.sync, 'Synchronous rows fixture', SYNC_ROWS_JS],
     [dirs.worker, 'Web-Worker rows fixture', WORKER_ROWS_JS],
     [dirs.bootcost, 'Boot-cost rows fixture', BOOT_COST_ROWS_JS],
@@ -675,7 +864,16 @@ async function makeFixture(root) {
   );
   await fsp.writeFile(path.join(dirs.worker, 'worker-payload.data'), crypto.randomBytes(WORKER_PAYLOAD_BYTES));
 
-  for (const [dir, js] of [[dirs.counter, COUNTER_APP_JS], [dirs.bootcounter, BOOT_COST_COUNTER_JS]]) {
+  const counterApps = [
+    [dirs.counter, COUNTER_APP_JS],
+    [dirs.bootcounter, BOOT_COST_COUNTER_JS],
+    [dirs.c3one, C3_ONE_WRITE_JS],
+    [dirs.c3three, C3_THREE_WRITES_JS],
+    [dirs.c3truthful, C3_TRUTHFUL_STATS_JS],
+    [dirs.c3liar, C3_LYING_STATS_JS],
+    [dirs.c3alloc, C3_ALLOC_JS],
+  ];
+  for (const [dir, js] of counterApps) {
     // eslint-disable-next-line no-await-in-loop
     await writeCommonAssets(dir);
     // eslint-disable-next-line no-await-in-loop
@@ -1332,9 +1530,211 @@ async function testContractPreflight(fixture, outDir) {
   const r = JSON.parse(await fsp.readFile(path.join(outDir, 'selftest-rows.json'), 'utf8'));
   eq(r.contractCheck.problems.length, 0, 'the conforming fixture passes the contract preflight');
   eq(r.contractCheck.observed.rowCount, 1000, 'preflight observed 1000 rows');
-  eq(r.contractCheck.observed.cellsPerRow, 3, 'preflight observed the row cell shape');
+  // Was 3 — the fixture used to emit an unclassed id cell, an unclassed label cell
+  // and a literal "x" action cell, which is NOT the contract and NOT what Blazor
+  // renders. It survived only because the old gate asked for `cellsPerRow >= 2`.
+  eq(r.contractCheck.observed.cellsPerRow, 2, 'preflight observed the contract row cell shape');
   ok(r.contractCheck.observed.row1Id !== r.contractCheck.observed.row998Id,
     'preflight confirmed row 1 and row 998 ids differ (swap predicate is non-vacuous)');
+}
+
+/**
+ * The strict row-markup gate. The old check (`cellsPerRow >= 2` + textContent) let
+ * a framework emit simpler DOM than its rival and bank the difference as speed.
+ *
+ * The load-bearing assertion in this section is the LAST one: the strict check must
+ * pass against the real, unmodified Blazor app. A gate that only rejects things has
+ * not been shown to be right — it has been shown to be strict. Blazor's published
+ * rows are byte-identical to the contract (verified directly: exactly two <td>, the
+ * col-md-1/col-md-4 classes, the nested <a class="lbl">, and no stray text nodes),
+ * so if this ever fails on Blazor the check is wrong, not Blazor.
+ */
+async function testStrictRowMarkup(fixture, outDir) {
+  section('16. Row markup is asserted EXACTLY, not "at least 2 cells"');
+
+  const out = path.join(outDir, 'selftest-loosemarkup.json');
+  const { code, stderr } = await runBenchCapturingStderr([
+    '--dir', fixture.loosemarkup,
+    '--app', 'rows',
+    '--label', 'selftest-fixture-loosemarkup',
+    '--runs', '1',
+    '--weight-runs', '1',
+    '--timeout', '4000',
+    '--out', out,
+  ]);
+  eq(code, 3, 'an app with simpler-than-contract row markup is refused (exit 3)');
+  eq(await fsp.readFile(out, 'utf8').catch(() => null), null,
+    'no results file is written for a markup violation');
+  ok(/col-md-1/.test(stderr),
+    'the failure names the missing col-md-1 class rather than failing opaquely');
+  ok(/a class="lbl"|<a>/.test(stderr),
+    'the failure names the missing nested <a class="lbl">');
+  ok(/comparison is void|byte-equivalent/.test(stderr),
+    'the failure explains WHY markup parity decides whether the timings mean anything');
+
+  // The conforming fixture must still pass, and must record what it was held to.
+  const r = JSON.parse(await fsp.readFile(path.join(outDir, 'selftest-rows.json'), 'utf8'));
+  eq(r.contractCheck.observed.rowMarkup.conforms, true,
+    'the conforming fixture passes the strict markup gate');
+  eq(r.contractCheck.observed.rowMarkup.row0outerHTML,
+    '<tr><td class="col-md-1">1</td><td class="col-md-4"><a class="lbl">adorable pink desk</a></td></tr>',
+    'the emitted row is byte-identical to the contract — and to what Blazor renders');
+  ok(r.contractCheck.observed.rowMarkup.checkedIndices.length >= 5,
+    'the markup gate samples several rows, not just row 0 (a correct first row + 999 cheap ones is the cheat)');
+}
+
+/**
+ * C3's instruments, each validated against a fixture whose answer is known by
+ * construction. This is the precedent the 400 ms boot fixture set for the warm
+ * clock: an instrument is only worth its output once it has been shown a number
+ * it cannot get wrong by accident.
+ */
+async function testC3Instruments(fixture, outDir) {
+  section('17. C3: the DOM-write instrument is validated against known ground truth');
+
+  const runC3 = async (dir, label, extra = []) => {
+    const out = path.join(outDir, `selftest-${label}.json`);
+    const { code } = await runBenchCapturingStderr([
+      '--dir', dir,
+      '--app', 'counter',
+      '--label', `selftest-${label}`,
+      '--runs', '1',
+      '--weight-runs', '1',
+      '--timeout', '4000',
+      '--c3',
+      '--c3-increments', '4',
+      '--out', out,
+      ...extra,
+    ]);
+    const json = JSON.parse(await fsp.readFile(out, 'utf8'));
+    return { code, json };
+  };
+
+  // ---- ground truth: exactly 1 write ---------------------------------------
+  const one = await runC3(fixture.c3one, 'c3-one-write');
+  eq(one.code, 0, 'the 1-write fixture runs clean');
+  eq(JSON.stringify(one.json.c3.domWrites.writesPerIncrement), '[1,1,1,1]',
+    'GROUND TRUTH: a fixture doing exactly 1 DOM write reads as exactly 1, on every increment');
+  eq(one.json.c3.domWrites.byType.characterData, 1,
+    'the 1 write is correctly classified as characterData');
+  eq(one.json.c3.domWrites.byType.childList, 0, 'no childList mutation is miscounted');
+  ok(/Exactly 1 DOM write/.test(one.json.c3.domWrites.verdict),
+    'the verdict states the C3 criterion is met');
+
+  // ---- ground truth: exactly 3 writes --------------------------------------
+  // The instrument must be able to FAIL something. Without this, "it said 1" is
+  // consistent with a counter that always says 1.
+  const three = await runC3(fixture.c3three, 'c3-three-writes');
+  eq(three.code, 0, 'the 3-write fixture runs clean (C3 is reported, not enforced by exit code)');
+  eq(JSON.stringify(three.json.c3.domWrites.writesPerIncrement), '[3,3,3,3]',
+    'GROUND TRUTH: a fixture doing exactly 3 DOM writes reads as exactly 3 — the counter is not stuck on 1');
+  eq(three.json.c3.domWrites.byType.attributes, 1, 'the setAttribute write is counted as attributes');
+  eq(three.json.c3.domWrites.byType.childList, 2, 'the removeChild + appendChild writes are counted as childList');
+  ok(/NOT exactly 1 DOM write/.test(three.json.c3.domWrites.verdict),
+    'the verdict reports a C3 violation rather than rounding it away');
+
+  // ---- records vs writes are distinguished ---------------------------------
+  eq(JSON.stringify(three.json.c3.domWrites.recordsPerIncrement), '[3,3,3,3]',
+    'MutationRecords are reported alongside writes (one record can carry many nodes)');
+
+  // ---- cross-check (b): agreement ------------------------------------------
+  const truthful = await runC3(fixture.c3truthful, 'c3-truthful-stats');
+  eq(truthful.json.c3.statsCrossCheck.present, true,
+    '__filament.stats is detected when the runtime exposes it');
+  eq(truthful.json.c3.statsCrossCheck.agrees, true,
+    'an honest self-report agrees with the independent MutationObserver count');
+
+  // ---- cross-check (b): DISAGREEMENT is a finding, not a reconciliation ----
+  const liar = await runC3(fixture.c3liar, 'c3-lying-stats');
+  eq(liar.json.c3.statsCrossCheck.present, true, 'the lying runtime\'s stats object is detected');
+  eq(liar.json.c3.statsCrossCheck.agrees, false,
+    'GROUND TRUTH: a runtime reporting 1 write while making 3 is CAUGHT');
+  eq(JSON.stringify(liar.json.c3.statsCrossCheck.selfReportedDomWritesPerIncrement), '[1,1,1,1]',
+    'the self-report is recorded verbatim (it claims 1)');
+  eq(JSON.stringify(liar.json.c3.statsCrossCheck.observedDomWritesPerIncrement), '[3,3,3,3]',
+    'the independent count is recorded verbatim (it observed 3)');
+  ok(/DISAGREEMENT/.test(liar.json.c3.statsCrossCheck.finding),
+    'the disagreement is reported loudly as a finding');
+  ok(!/reconcil(ed|ing) (to|as)/.test(liar.json.c3.statsCrossCheck.finding)
+     && /NOT reconciled/.test(liar.json.c3.statsCrossCheck.finding),
+    'the harness refuses to silently pick a winner between the two instruments');
+  // The self-report, taken alone, would have declared C3 met. This is the whole point.
+  eq(liar.json.c3.statsCrossCheck.selfReportedDomWritesPerIncrement[0], 1,
+    'the self-report ALONE would have reported C3 as met — which is why it cannot be the instrument');
+
+  // ---- the observe root cannot be narrowed to hide writes ------------------
+  eq(one.json.c3.domWrites.observeRoot, 'body',
+    'the default observe root is body — the widest available, so writes cannot be hidden by root choice');
+}
+
+/**
+ * The allocation probe, against a fixture that allocates a KNOWN payload per
+ * increment and one that allocates ~nothing.
+ *
+ * The assertions are bands, not byte equalities, and deliberately so: a 1024 B
+ * sampling profiler cannot deliver byte precision, and asserting a precise figure
+ * would be asserting noise. What the probe must demonstrate is that it separates a
+ * known allocator from a known non-allocator by an order of magnitude and lands in
+ * the right neighbourhood — which is exactly the claim C3 rests on.
+ */
+async function testC3AllocationProbe(fixture, outDir) {
+  section('18. C3: the allocation probe separates a known allocator from a known non-allocator');
+
+  const runAlloc = async (dir, label) => {
+    const out = path.join(outDir, `selftest-${label}.json`);
+    const { code } = await runBenchCapturingStderr([
+      '--dir', dir,
+      '--app', 'counter',
+      '--label', `selftest-${label}`,
+      '--runs', '1',
+      '--weight-runs', '1',
+      '--timeout', '4000',
+      '--c3-alloc',
+      '--c3-increments', '2',
+      // Small and fast: the probe's correctness does not depend on N, only its
+      // resolution does, and these fixtures allocate ~2 KB/increment — far above
+      // what this span can miss.
+      '--c3-alloc-n-low', '100',
+      '--c3-alloc-n-high', '500',
+      '--c3-alloc-repeats', '2',
+      '--out', out,
+    ]);
+    const json = JSON.parse(await fsp.readFile(out, 'utf8'));
+    return { code, json };
+  };
+
+  const allocRun = await runAlloc(fixture.c3alloc, 'c3-alloc');
+  eq(allocRun.code, 0, 'the known-allocator fixture runs clean');
+  const allocBytes = allocRun.json.c3.allocation.bytesPerIncrement.median;
+
+  const zeroRun = await runAlloc(fixture.c3one, 'c3-alloc-zero');
+  eq(zeroRun.code, 0, 'the near-zero-allocator fixture runs clean');
+  const zeroBytes = zeroRun.json.c3.allocation.bytesPerIncrement.median;
+
+  // 256 packed doubles => FixedDoubleArray 256*8 + header ~= 2064 B, plus a small
+  // JSArray. The band is wide because the instrument is a SAMPLER.
+  ok(allocBytes > 1024 && allocBytes < 8192,
+    `GROUND TRUTH: a fixture allocating ~2 KB/increment reads in the right neighbourhood (got ${allocBytes} B)`,
+    `expected 1024..8192 B, got ${allocBytes}`);
+  ok(zeroBytes < 512,
+    `GROUND TRUTH: a fixture allocating ~nothing reads near zero (got ${zeroBytes} B)`,
+    `expected < 512 B, got ${zeroBytes}`);
+  ok(allocBytes > zeroBytes * 4,
+    `the probe separates the two by a wide margin (${allocBytes} B vs ${zeroBytes} B)`,
+    `expected allocator >> non-allocator, got ${allocBytes} vs ${zeroBytes}`);
+
+  // Method and scope must travel WITH the number, in the artifact — not in a
+  // report someone has to remember to attach.
+  eq(allocRun.json.c3.allocation.scope, 'javascript-heap-only',
+    'the probe records its scope in the result, next to the number');
+  ok(/WASM linear memory|linear memory/.test(allocRun.json.c3.allocation.caveat),
+    'the caveat states that Blazor\'s .NET render tree lives outside the JS heap and is NOT measured');
+  ok(/UNDER-REPORTS Blazor/.test(allocRun.json.c3.allocation.caveat),
+    'the caveat states the direction of the error rather than merely admitting uncertainty');
+  ok(/snapshot delta/i.test(allocRun.json.c3.allocation.whyNotHeapSnapshotDelta),
+    'the result explains why allocation throughput, not retained-heap growth, is the quantity C3 names');
+  ok(Array.isArray(allocRun.json.c3.allocation.topSites) && allocRun.json.c3.allocation.topSites.length > 0,
+    'allocation sites are reported, so the scope caveat can be checked rather than believed');
 }
 
 /**
@@ -1935,6 +2335,9 @@ try {
   await testSubFrameWorkIsVisible(fixture, outDir);
   await testWorkerTargetVisibility(fixture, outDir);
   await testWarmVariantsExcludeSetupCost(fixture, outDir);
+  await testStrictRowMarkup(fixture, outDir);
+  await testC3Instruments(fixture, outDir);
+  await testC3AllocationProbe(fixture, outDir);
 } finally {
   if (!keep) {
     await fsp.rm(scratch, { recursive: true, force: true }).catch(() => {});

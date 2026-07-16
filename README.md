@@ -1,19 +1,34 @@
-# Filament — Phase 0 baseline
+# Filament — Phase 0 baseline + Phase 1 runtime
 
-This repository holds the **Phase 0 Blazor WebAssembly baseline**: the measured numbers that the
-Filament criteria **C2** (weight) and **C4** (speed) will later be judged against.
+This repository holds the **Phase 0 Blazor WebAssembly baseline** and the **Phase 1 hand-written
+`filament-runtime`** measured against it: the numbers that the Filament criteria **C1** (bundle
+weight), **C2** (weight vs Blazor) and **C4** (speed) are judged on.
 
-Nothing here is a Filament implementation yet. What is here is a baseline, the harness that measured
-it, the raw evidence, and enough instruction to let a stranger reproduce all of it cold.
+**There IS a Filament runtime here now** — `src/filament-runtime/`, a signals runtime, plus the
+hand-written sample apps it drives. **But there is still NO generator**:
+`src/Filament.Generator/`, `src/Filament.Core/` and `src/Filament.Analyzer/` are **empty
+directories**. The measured JS is the hand-written **answer key** a future C# generator must emit —
+so **every Phase 1 number is an optimistic lower bound, not "Filament's performance"**. Read
+`BENCH.md` entry #4's scope warning before quoting anything.
 
 | File | What it is |
 |---|---|
-| `BENCH.md` | **Append-only** measurement register. **Entry #2 holds the numbers that count**; entry #1 is superseded but kept. Never edit an entry; rectify with a new one. |
-| `DECISIONS.md` | Why each number was produced the way it was. Read this before disputing a result. |
-| `bench/publish-baseline.sh` | Regenerates the four publish outputs. The only on-disk definition of the four configs. |
-| `bench/harness/bench.mjs` | Framework-agnostic Playwright/CDP measurement driver. |
+| `BENCH.md` | **Append-only** measurement register. **Entry #4 holds the C1/C4 numbers that count** (both frameworks, one harness, corrected runtime); entries #1–#3 are superseded but kept. **Entry #3's C4 ratios are superseded as quantities**; its C3 numbers still stand (C3 was not re-measured). Never edit an entry; rectify with a new one. |
+| `DECISIONS.md` | Why each number was produced the way it was, and every arbitrage. Read this before disputing a result. |
+| `src/filament-runtime/` | The signals runtime (`signal`/`computed`/`effect`/`list`). `npm run verify` = build + typecheck + tests + **2 048 B size gate**. |
+| `samples/` | Hand-written apps (**the answer key**, not generator output). |
+| `bench/publish-baseline.sh` | Regenerates the four **Blazor** publish outputs. The only on-disk definition of those configs. |
+| `bench/build-filament.sh` | Builds the four **Filament** labels (2 production + 2 `-stats`). Static root is `<label>/` — **no `wwwroot/`**, unlike Blazor. |
+| `bench/harness/bench.mjs` | Framework-agnostic Playwright/CDP measurement driver. Emits a **content hash** identifying the harness into every result. |
 | `bench/harness/server.mjs` | Production-like static server with per-request content negotiation. |
 | `bench/results/*.json` | **The measured evidence.** Tracked in git on purpose. |
+
+> **The harness identifies itself by CONTENT HASH, not by a version string.** `HARNESS_VERSION` was
+> hand-maintained and stayed `1.2.0` across a 701-line diff, so two materially different harnesses
+> both claimed to be the same one and **nothing could detect it**. `computeHarnessIdentity()` now
+> hashes `bench.mjs` + `server.mjs` + `expected-labels.json` at runtime into `environment.harness`,
+> and **throws rather than degrade**. A cross-config comparison is **refused** unless all configs
+> share one hash. The version string is kept as a **label, not evidence**. See DECISIONS.md #43.
 
 ---
 
@@ -84,7 +99,16 @@ Things worth knowing before you run it:
 
 ## Step 2 — Measure
 
-The static root is **`bench/publish/<label>/wwwroot`**, never `bench/publish/<label>`.
+**The static root differs by framework, and this is a documented footgun:**
+
+| Framework | Static root |
+|---|---|
+| **Blazor** (`blazor-*`) | `bench/publish/<label>/wwwroot` — **never** `bench/publish/<label>` |
+| **Filament** (`filament-*`) | `bench/publish/<label>` — **no `wwwroot/`** |
+
+`dotnet publish` interposes a `wwwroot/`; esbuild has no reason to invent one. Pointing `bench.mjs`
+at `filament-counter/wwwroot` yields **ENOENT, not a wrong number**, so this cannot silently corrupt
+a result — but it will waste your afternoon. `build-filament.sh` prints the exact `--dir` to use.
 
 `bench.mjs` starts the server itself; you do not run `server.mjs` by hand.
 
@@ -150,6 +174,7 @@ cd bench/harness && npm run selftest    # 440 passed, 0 failed at entry #2
 |---|---|
 | `bench/results/<label>.json` | Per-config protocol result: weight, per-scenario median/IQR, environment, config, contract check. **Tracked in git.** |
 | `bench/results/brotli-weight-reference.json` | Hand-assembled brotli-vs-gzip summary. Derived from brotli runs, not emitted directly by `bench.mjs`. |
+| `bench/results/phase1-clean/` | **Entry #4's evidence**: 12 per-config JSONs (both frameworks, one harness), `summary.json`, `run.log`. **Tracked in git.** |
 | `bench/publish/<label>/` | Publish output. Gitignored; regenerate with the script. |
 
 `--out` is the only thing that decides where a result is written; nothing is auto-discovered.
@@ -159,8 +184,22 @@ cd bench/harness && npm run selftest    # 440 passed, 0 failed at entry #2
 ## Interpreting the results
 
 **Read `BENCH.md` and `DECISIONS.md` before quoting any number.** Both carry reserves that change
-what the numbers mean. **`BENCH.md` entry #2 holds the numbers that count**; entry #1 is the archive of
-what was measured that morning, and its headline figures are superseded. Five things in particular:
+what the numbers mean. **`BENCH.md` entry #4 holds the C1/C4 numbers that count** — both frameworks
+re-measured on **one** harness, on the **bug-fixed** runtime. Entry #2 holds the **Blazor baseline**
+(its weight figures reproduce byte-exactly in entry #4 and are **not** superseded). Entries #1 and #3
+are kept as archive; **entry #3's C4 ratios are superseded as quantities** — every Blazor timing moved
+on the clean harness, and the old ratios **understated** Filament. **Entry #3's C3 numbers still
+stand**: C3 was **not** re-measured in entry #4.
+
+**Two things in particular, before you quote a speed number:**
+
+- **`increment-warm` is FLOOR-LIMITED. Never quote it as a speedup.** 3/10 samples read exactly
+  0.0 ms — below the ~0.1 ms `performance.now()` quantum. **"At least ~11x" is defensible; "11x" and
+  the gzip-implied "20x" divide by a quantization artifact and are not measurements.**
+- **`update` and `swap` are resolved but COARSE** (3–4 quanta ⇒ ~±17% / ±13% on the *ratio*).
+  Verdicts are safe; **do not cite these ratios to 3 significant figures.**
+
+Five more things:
 
 - **The warm numbers are the headline; the cold ones are context.** `create-cold` is the first click on
   a freshly loaded page, so it carries Blazor's boot. `create-warm` is a second timed `#run` in the same
