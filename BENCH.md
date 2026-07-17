@@ -2415,3 +2415,93 @@ est **étroit** — la §3 (async, LINQ, génériques, héritage, DI, routing, f
 ---
 
 *Fin de l'entrée n°7. Ne pas modifier — ajouter une entrée n°8 pour toute rectification.*
+
+---
+
+## Entrée n°8 — 2026-07-17 — **RECTIFICATION de l'entrée n°7** + résultat de l'audit adverse
+
+L'audit adverse à 4 lentilles que la n°7 déclarait **dû** a tourné sur l'arbre commité `312118e`
+(worktrees isolés). **Résultat : 4/4 lentilles `trustworthy`, ZÉRO bloqueur.** Le contenu mesuré de la
+n°7 **survit à tout** : les deux lentilles de vérification ont recalculé **chaque** nombre C1/C4 depuis
+les JSON — ratios 432×/397× (Rows), 631× (Counter), toutes les médianes/IQR C4, `gen ≤ AOT` sur les
+quatre scénarios — **exacts**. La lentille « JS silencieusement faux » a **énuméré les 8 sites** où du C#
+utilisateur atteint le JS émis et **n'a trouvé AUCUN 5ᵉ trou** de la n°41 (le correctif jumeau
+`EmitAttribute` est **confirmé indépendamment**). **Première phase du projet où cette lentille revient
+vide.** L'audit a néanmoins trouvé **4 défauts MAJEURS, tous dans la RÉDACTION de la n°7, aucun un nombre
+faux.** Ils sont rectifiés ici.
+
+### RECT-1 (majeur) — le hash d'identité du harness N'A PAS été perdu ; la réserve de la n°7 était FAUSSE
+
+La n°7 nommait comme réserve : *« `schemaVersion:3` ne porte PLUS le hash d'identité du harness (n°43) »*.
+**C'est faux, et vérifié depuis l'artefact** : les **19** fichiers portent tous
+`environment.harness.sha256 = 47e7e46f372f8573e9a574713cee9cd6c125d55361fdb5d4b47755ac7d4536f8`,
+**cardinalité 1** sur tout le run, **byte-identique** au hash que la n°43 nomme pour les entrées n°4/5. Le
+per-fichier (`bench.mjs`, `server.mjs`, `expected-labels.json`) **matche le harness commité à `312118e`**.
+**« Seul le composant change » est donc machine-prouvable — et l'évidence est la PLUS FORTE du projet**,
+l'exact contraire de ce que la n°7 admettait. **C'était mon erreur, du type précis que le dépôt refuse :
+affirmer depuis la croyance, pas depuis l'artefact — ma sonde cherchait une clé contenant « hash », le
+champ s'appelle `environment.harness`.** L'audit m'a pris en flagrant délit du même défaut que la n°78
+reproche à l'agent de mesure. Rien « à rétablir ».
+
+### RECT-2 (majeur) — la CHARGE MACHINE, omise par la n°7, penchait dans le sens flatteur (n°47/48)
+
+La n°7 ne divulguait **pas** l'état de charge, en rupture avec l'en-tête append-only de ce fichier (« son
+environnement complet et ses réserves connues ») et avec les entrées n°1/2 qui portent toutes deux une
+section « Charge machine ». **La machine n'était PAS au repos**, échantillonné juste avant le
+chronométrage (2026-07-17 12:23:51+0200) :
+
+| | |
+|---|---|
+| Load average | **3,10 / 3,60 / 4,96** sur 18 cœurs (6 P + 12 E) ; instantané ~1,5 cœur occupé (~92 % idle) |
+| Rider **résident** | `rider` 2,6 Gio RSS, `Rider.Backend` (ReSharperHost) 1,47 Gio + 4 workers `dotnet` + un `VBCSCompiler` — **idle-résident** (0 % instantané), mais un rebuild ReSharper déclenché en cours de run tomberait dans une fenêtre chronométrée |
+| Autres consommateurs (aucun à nous) | OrbStack Helper ~32 % CPU / 4,1-4,8 Gio, `logioptionsplus` ~25-33 %, WindowServer ~11 % — somme ~1,3-2,2 cœurs de 18 |
+| Swap | **1 010 Mio utilisés / 2 048 Mio** — un défaut de page dans une fenêtre chronométrée gonfle l'IQR (n°19, verbatim) |
+
+**Les verdicts survivent** — C1 est déterministe (octets, IQR 0) et insensible à la charge ; les marges
+C4 sont 2,5-11× **sans recouvrement d'échantillons** ; l'entrelacement décorrèle l'identité de framework
+de la dérive **monotone**. **Mais l'omission est un vrai trou de divulgation** dans un fichier dont
+l'en-tête est entièrement la divulgation honnête, et il penchait vers Filament — c'est nommé, pas lissé.
+
+### RECT-3 (majeur) — le §8 : « condition de viabilité satisfaite pour DEUX apps », pas « RADICAL est viable »
+
+La n°7 (et surtout le message de commit `312118e`, en capitales) affirme **« la variante RADICALE est
+VIABLE »** comme un verdict autoportant. **C'est plus que la donnée n'autorise.** RADICAL est une
+assertion d'architecture sur un **framework entier** ; la preuve est **deux apps** exerçant un
+sous-ensemble **§5 étroit** — les non-objectifs §3 (async, LINQ, génériques, héritage, DI, routing,
+formulaires, `EventCallback`, `RenderFragment`, paramètres cascadés) sont **entièrement non exercés**. Le
+verbe porteur correct, au standard n°34/50, est : **« la CONDITION de viabilité de la §8 (sortie du
+générateur < 10 ko aux temps C4) est satisfaite et MESURÉE pour `Counter` et `Rows` »** — pas « le
+framework est viable ». La thèse n'est **pas falsifiée** et RADICAL n'est **pas éliminée** ; elle n'est
+pas **établie** comme architecture.
+
+### RECT-4 (majeur) — le risque paquet-EOL (n°52) manquait au point de décision §8
+
+La n°52 dit explicitement que le gel de `Microsoft.AspNetCore.Razor.Language` **6.0.36** (dernière version
+publiée, hors support, .NET 10 a fermé l'API) **« pèse sur la §8 » et frappe RADICALE plus fort** — RADICAL
+est *défini* comme un compilateur autonome sur ce paquet mort. Le verdict §8 de la n°7 et sa liste « ce que
+cette entrée n'établit PAS » **l'omettaient**. **Il fait partie du prix de RADICAL et se lit ici** : opter
+RADICAL, c'est bâtir sur un parser Razor gelé en 2021.
+
+### Rectifications mineures
+
+- **19 fichiers, pas 20.** La n°7 et la n°78 disent « les 20 fichiers existent » ; il y en a **19** (8
+  poids Blazor + 8 Filament + 3 c3). Aucun nombre mesuré ne change ; le fait est corrigé.
+- **`scenariosComplete:true` ne vaut que pour les 16 fichiers de timing.** Les 3 fichiers c3 sont des
+  sondes mono-run (`runs=1`, `scenariosComplete:false`) — c'est correct pour C3 (5 incréments comptés),
+  mais le « complet » de la n°7 ne les couvre pas.
+- **README** : son verdict §8 (« Counter seul », `@code` manuel, « n°34 ouverte ») était **périmé** —
+  la Phase 3 l'a dépassé ; mis à jour.
+- **Deux familles de sur-refus non divulguées** (lentille n°41) : un initialiseur d'auto-propriété de
+  record refuse un littéral **négatif** `= -1` (Blazor le compile) ; un champ de type record est admis mais
+  **inutilisable** (aucun initialiseur de champ n'est dans le sous-ensemble). « Erreur claire », non
+  silencieuse — mais des faux positifs, consignés pour la Phase 3+.
+
+**Ce que l'audit N'A PAS pu casser** (déclaré parce que c'est le résultat) : la ratio d'allocation
+interdite (n°30) — absente ; le plancher d'appareil (n°32) — les échantillons Blazor ne s'empilent pas au
+minimum, le « pas plus lent » tient ; C1 sur bundle **production**, C3 sur bundle **-stats**, jamais
+mélangés ; l'oracle de labels — **MATCH byte-exact**, pas de hoisting/interning ; la porte Counter
+**verte**, la porte Rows **rouge** pour les 3 raisons nommées. **La mesure de la Phase 3 est solide.**
+
+---
+
+*Fin de l'entrée n°8. Ne pas modifier — ajouter une entrée n°9 pour toute rectification.*

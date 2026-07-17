@@ -374,13 +374,19 @@ bookkeeping for locating a raw-markup range later. Filament has no render tree a
 it emits none; that is defensible, and **it is still a free create-time advantage**. `DECISIONS.md` #20's
 debt is now **quantified for `Counter` (2 of 7 nodes)** and **still open**.
 
-**RADICAL vs PRUDENT (spec §8) is NOT settled by this.** `DECISIONS.md` #34 left the architecture
-choice waiting on exactly this number. What it licenses, precisely: **RADICAL's viability condition is
-met FOR `Counter`, and for `Counter` alone.** **Nothing here counts against RADICAL — and one app
-with no control flow does not settle a framework's architecture.** `Counter` has no `@if`, no
-`@foreach`, no `@key`, no composition, no dynamic attribute, **and its logic is hand-written JS**. The
-generator's per-node cost across 1,000 rows is **unknown**, and that is where the DOM-heavy work and
-**all of C4's headline target** live. **#34 stays open.**
+**RADICAL vs PRUDENT (spec §8) — updated by Phase 3 (`BENCH.md` entries n°7/8).** Phase 2's verdict
+below ("Counter alone, logic hand-written") is **superseded**. Phase 3 compiles **both** apps from pure
+`.razor`, `@code` included, and measures C1/C4 on that output: **C1 PASS** (counter-gen 2,987 B /
+rows-gen 4,373 B gzip) and **C4 PASS** (rows-gen beats the faster Blazor/AOT on all four scenarios —
+create-warm 3.10 vs 7.90 ms, update/swap/clear likewise). So the §8 **viability condition is met and
+measured for `Counter` AND `Rows`** — including all of C4's 1,000-row target and the DOM-heavy work.
+**That is the honest ceiling of the claim, and no more:** RADICAL is an architecture claim about a whole
+framework, and two demo apps over a **narrow §5 subset** (the §3 non-goals — async, LINQ, generics,
+inheritance, DI, routing, forms, `EventCallback`, `RenderFragment` — are entirely unexercised) do not
+establish it. The thesis is **not falsified** and RADICAL is **not eliminated**; it is **not established
+as an architecture** either. The EOL-package risk (#52: Razor `6.0.36` is frozen, out of support) bears
+asymmetrically on RADICAL and is part of its price. The adversarial audit (`DECISIONS.md` #79) ran:
+**0 blockers**, measurement confirmed, no fifth recurrence of the #41 splice bug.
 
 **Two things in particular, before you quote a speed number:**
 

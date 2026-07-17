@@ -2546,3 +2546,33 @@ adverse de la Phase 3 reste DÛ** — il tourne sur l'arbre commité dès que la
 l'ordre corrigé (commit puis audit, n°34-era) qui évite les faux positifs du Verify-avant-Report. Réserve
 technique jumelle consignée : `schemaVersion:3` **a laissé tomber le hash d'identité du harness** (n°43) ;
 « seul le composant change » n'est plus prouvable depuis ce champ et doit être rétabli.
+
+> **⚠️ RECTIFIÉ PAR LA n°79 (audit adverse).** Les deux faits factuels ci-dessus sont **FAUX** : le hash
+> d'identité `47e7e46f…` **est présent** dans les 19 fichiers (cardinalité 1, byte-identique aux n°4/5) —
+> rien à rétablir — et il y a **19** fichiers, pas 20. La substance de la n°78 (mesure récupérée contre un
+> faux négatif de l'agent) tient ; ces deux affirmations non.
+
+## 79. L'audit adverse de la Phase 3 : **0 bloqueur**, et il m'a pris en défaut sur la n°78
+
+**Décision.** L'audit adverse à 4 lentilles (que la n°78 déclarait dû) a tourné sur `312118e` en worktrees
+isolés. **4/4 `trustworthy`, ZÉRO bloqueur.** La mesure de la Phase 3 (C1/C3/C4 PASS) est **confirmée** :
+chaque nombre recalculé depuis l'artefact, l'oracle de labels byte-exact, l'entrelacement réel, le run
+cohérent. La lentille « JS silencieusement faux » a énuméré les **8 sites** de splice C#→JS et **n'a trouvé
+aucun 5ᵉ trou** de la n°41 — **première fois** dans le projet. Les 4 défauts majeurs trouvés sont **tous
+dans la rédaction, aucun un nombre faux** ; rectifiés dans `BENCH.md` **entrée n°8** (RECT-1..4).
+
+**La rectification qui compte le plus est contre MOI (RECT-1).** La n°78 et l'entrée n°7 nommaient comme
+réserve « `schemaVersion:3` a laissé tomber le hash d'identité du harness (n°43) ». **C'est FAUX.** Les 19
+fichiers portent tous `environment.harness.sha256 = 47e7e46f…`, cardinalité 1, byte-identique aux entrées
+n°4/5. « Seul le composant change » est machine-prouvable et l'évidence est la **plus forte** du projet.
+**J'ai écrit une réserve fausse depuis une sonde qui cherchait la mauvaise clé — le défaut exact (« affirmer
+depuis la croyance, pas depuis l'artefact ») que la n°78 elle-même reproche à l'agent de mesure.** Le réflexe
+du dépôt a fini par jouer, mais c'est l'audit qui l'a attrapé, pas moi. Corrigé aussi : **19 fichiers, pas
+20** (n°78 et n°7 disaient 20).
+
+**Ce que la n°79 verrouille.** La n°78 reste vraie sur le fond — la mesure a bien été récupérée contre un
+faux négatif de l'agent — mais ses deux erreurs factuelles (hash « perdu », « 20 fichiers ») sont **mortes**,
+remplacées ici. Les autres majeurs (charge machine omise, RADICAL sur-affirmé, risque EOL n°52 absent du
+point §8) sont des trous de **divulgation**, pas des nombres faux, et sont comblés en entrée n°8. **Le verdict
+net ne bouge pas : C1 ET C4 passent sur la sortie du générateur ; la condition de viabilité §8 est satisfaite
+et mesurée pour les deux apps ; RADICAL n'est pas éliminée et n'est pas établie comme architecture.**
