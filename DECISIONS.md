@@ -2700,3 +2700,57 @@ l'imbrication et le contrôle de flux à la racine restent refusés. Suite : **1
 (était 162/0, n°80). `node tools/canon.mjs` sur une régénération fraîche de `samples/If/If.razor` contre
 `samples/If/if.js` → **ALPHA-ÉQUIVALENT**, `exit 0` ; `cd src/filament-runtime && npm run verify` → vert,
 **1 943 o / 2 048 o**.
+
+## 82. `@else`/`@else if` entrent dans le sous-ensemble — UNE `list()` à N branches, la CLÉ EST l'index de branche
+
+**Décision.** `@else` et `@else if` quittent le camp des refus (`else-not-yet-implemented`, n°81) et deviennent
+le prolongement de `@if` : le rendu conditionnel MULTI-BRANCHES entre dans le sous-ensemble compilé. `IfOp`
+passe d'une seule branche à une **liste d'`IfBranch(Cond?, Body)`** (le `@else` final est une branche à
+condition `null`) ; `If()` parcourt la chaîne `else` de Roslyn, `EmitIf` émet une fonction de corps par
+branche. Le générateur compile `samples/IfElse/IfElse.razor` (un `if / else if / else` sur un `int n`) en un
+module que `canon` rapporte **ALPHA-ÉQUIVALENT** à la clé écrite à la main `samples/IfElse/ifelse.js` — **304
+jetons, 754 o minifiés des DEUX côtés, `exit 0`, du PREMIER coup**. Le contrat DOM est lu du `BuildRenderTree`
+généré par Blazor lui-même (composant jetable `IfElseRef.razor`, méthode n°64), **avant** de regarder la sortie
+du générateur — la divergence est *semée*, pas rétro-ajustée (note du reviewer n°81).
+
+**L'ABAISSEMENT EST UNE SEULE `list()` DONT L'ITEM UNIQUE PORTE L'INDEX DE BRANCHE — AUCUNE PRIMITIVE
+NOUVELLE.** `if (c0){B0} else if (c1){B1} else {B2}` s'abaisse en
+`list(parent, () => c0 ? [0] : c1 ? [1] : [2], (i) => i, (i) => i===0 ? b0() : i===1 ? b1() : b2(), ancre)` :
+la source est une chaîne de ternaires qui rend l'index de la branche active dans un tableau à un élément, la
+**clé EST cet index**, et `create` aiguille dessus. Basculer une condition change la clé → `reconcile` démonte
+l'ancienne branche et monte la nouvelle : un échange de branche avec la machinerie exacte de `@foreach`/`@if`.
+Une chaîne **sans `@else` final** rend `[]` quand rien ne matche — le cas `@if` simple (`? [0] : []`) se
+généralise sans chemin dédié. Runtime (`src/filament-runtime/src/`) **byte-inchangé**, porte de taille tenue à
+**1 943 o / 2 048 o**, un test d'invariant (fermeture du runtime) l'épingle.
+
+**LE `@if` SIMPLE RESTE BYTE-POUR-BYTE INCHANGÉ.** `EmitIf` teste `Branches.Count == 1` et reproduit
+l'émission n°81 à l'octet (`() => (cond) ? [0] : [], () => 0, ifBody`) — la clé `samples/If/if.js`, le snapshot
+`If.approved.js` et `IfTests` ne bougent pas. Le chemin multi-branches nomme ses fonctions avec l'`id` de l'op
+(`ifBody{id}_{i}`) pour que deux `@if` dans un module ne collisionnent jamais ; `canon` ignore les noms, donc
+la porte n'en dépend pas.
+
+**L'ANCRAGE-COMMENTAIRE ET LES LECTURES DE CONDITION SE GÉNÉRALISENT.** L'ancre `document.createComment('')`
+est reconduite — divergence de +1 nœud **divulguée** (catégorie n°20), à retirer un jour par ancrage au frère
+suivant. `MarkConditionReads` **couvrait déjà toute la chaîne** : il parcourt `DescendantNodes().OfType<
+IfStatementSyntax>()` du corps de méthode, ce qui inclut chaque `else if` imbriqué — donc un champ lu
+UNIQUEMENT dans `else if (b)` est bien lifté en signal (test dédié `EveryBranchCondition_LiftsItsField`), aucune
+seconde passe ajoutée. Findings du `BuildRenderTree` : **aucun `OpenRegion`/`CloseRegion`** (ce Razor émet du
+`if/else if/else` C# nu avec un `AddMarkupContent` par branche), **aucun nœud texte de blanc** (les balises
+sources sont adjacentes) — la clé n'en reproduit aucun.
+
+**LES VARIANTES ENCORE DIFFÉRÉES, chacune un diagnostic LOCALISÉ, mutation-testé.** Le garde `unsupported-if-
+body` est factorisé dans `BranchBody`, donc il s'applique **PAR BRANCHE** : un corps de branche multi-nœud
+(`Unsupported/IfElseMultiBody.razor`, `@else { <b/><c/> }` refusé en `(6,1)`), l'imbrication dans une branche
+(`IfNested`), le corps multi-nœud du `@if` (`IfMultiBody`), et le `@if`/`@else` à la racine (`IfAtRoot`,
+`template-code-at-root`) restent refusés. Le garde a été neutralisé puis restauré (`if (false && …)`) : les 5
+cas de refus de corps de branche tombent en rouge, confirmant qu'il porte — mutation-testé, parce qu'un
+backstop non testé est une revendication (n°61). `Unsupported/IfElse.razor` (un `if/else` simple à corps mono-
+élément) **quitte** la suite de refus et est supprimé, comme `If.razor` l'avait fait en n°81.
+
+**LE PLAFOND HONNÊTE NE BOUGE TOUJOURS PAS.** Une famille de constructs ne déplace pas le verdict §8 : RADICAL
+reste « ni éliminée ni établie », le sous-ensemble §5 reste étroit — `@else`/`@else if` s'y ajoutent, mais
+l'imbrication, le corps multi-nœud et le contrôle de flux à la racine restent refusés. Suite : **178 passent /
+0 échoue** (était 172/0, n°81). `node tools/canon.mjs` sur une régénération fraîche de `samples/IfElse/
+IfElse.razor` contre `samples/IfElse/ifelse.js` → **ALPHA-ÉQUIVALENT**, `exit 0` ; `samples/If/If.razor` contre
+`samples/If/if.js` → toujours **ALPHA-ÉQUIVALENT** (`@if` non régressé) ; `cd src/filament-runtime && npm run
+verify` → vert, **1 943 o / 2 048 o**.

@@ -36,20 +36,21 @@ via `src/Filament.Generator/`, a console app. Read the scope statement before qu
 > (division, component composition, root-level control flow); (3) decision #20's node-count debt. The
 > "measurements unchanged" term is verified on the generator's output (#7, #44).
 >
-> **🟢 `@if` NOW COMPILES — the subset's second control-flow construct, alongside `@foreach`.** A plain
-> `@if (cond) { … }` no longer refuses (`[control-flow-not-yet-implemented]`); it lowers to a **reused**
-> `list()` call — `list(parent, () => (cond) ? [0] : [], () => 0, bodyFn, commentAnchor)`, the same
-> primitive `@foreach` already uses, keyed 0/1 on the condition. **Zero new runtime primitive**:
+> **🟢 `@if` / `@else` / `@else if` NOW COMPILE — the subset's second control-flow construct, alongside `@foreach`.**
+> A plain `@if (cond) { … }` lowers to a **reused** `list()` call — `list(parent, () => (cond) ? [0] : [], () => 0,
+> bodyFn, commentAnchor)`, the same primitive `@foreach` uses, keyed 0/1 on the condition. Multi-branch
+> `@if / @else if / @else` extends this to **ONE `list()` whose single item's value IS the active branch
+> index** — `list(parent, () => c0 ? [0] : c1 ? [1] : [2], (i) => i, dispatch, commentAnchor)` — so flipping
+> any condition changes the key and `reconcile` swaps the branch. **Zero new runtime primitive**:
 > `src/filament-runtime` is byte-untouched and the size gate still holds **1,943 B / 2,048 B**. The
 > `document.createComment('')` anchor that positions the conditional among its siblings is a **disclosed
 > +1-node divergence from Blazor** — same category as decision #20's `<!--!-->` markers — to be
-> re-measured if `@if` ever enters a measured app (`Counter`, `Rows`). `canon` reports
-> `samples/If/If.razor`'s generated output **ALPHA-EQUIVALENT** to the hand-written, Blazor-faithful
-> `samples/If/if.js` (196 tokens, 719 B canon, 500 B minified, both sides), and the suite is **172 pass /
-> 0 fail** (was 162/0). Deferred variants — `@else`/`@else if`, nesting, a multi-node body, and `@if` at
-> the template root — each raise a located, mutation-tested diagnostic; none compile. DECISIONS.md **#81**.
-> One construct does not move the §8 verdict: RADICAL stays **not eliminated, not established**, and the
-> §5 subset is still narrow.
+> re-measured if it ever enters a measured app (`Counter`, `Rows`). `canon` reports both `samples/If/If.razor`
+> and `samples/IfElse/IfElse.razor` generated output **ALPHA-EQUIVALENT** to their hand-written, Blazor-faithful
+> answer keys (both sides byte-identical minified), and the suite is **178 pass / 0 fail** (was 172/0).
+> Deferred variants — a multi-node branch body, nesting, and `@if`/`@else` at the template root — each raise a
+> located, mutation-tested diagnostic; none compile. DECISIONS.md **#81/#82**. One construct family does not
+> move the §8 verdict: RADICAL stays **not eliminated, not established**, and the §5 subset is still narrow.
 >
 > **⚠️ THE TWO ANSWER KEYS DISAGREE about the handler mapping**, and it is an OWNER's call before the
 > `Rows` step: `counter.js` **inlines** a single-use handler body, `rows.js` emits `function update()`
@@ -68,7 +69,7 @@ via `src/Filament.Generator/`, a console app. Read the scope statement before qu
 | `DECISIONS.md` | Why each number was produced the way it was, and every arbitrage. Read this before disputing a result. |
 | `src/filament-runtime/` | The signals runtime (`signal`/`computed`/`effect`/`list`). `npm run verify` = build + typecheck + tests + **2 048 B size gate**. |
 | `src/Filament.Generator/` | **The generator.** A console app (`dotnet run -- <in.razor> <out.js>`), **not** an `ISourceGenerator` and not an MSBuild target — spec §4.3 excludes Roslyn source generators, since they cannot emit non-C# (DECISIONS.md #58). `TemplateCompiler` compiles the template (Razor IR); `CSharpFrontEnd` compiles `@code` (Roslyn) and does the **state lifting**. |
-| `tests/Filament.Generator.Tests/` | The generator's suite, **including the Phase 2 gate** (now GREEN on `Counter`), the `Rows` gate (GREEN, DECISIONS.md #80), and the `@if` gate (GREEN, DECISIONS.md #81) — plus Phase 3's out-of-subset suite: **27 cases — 26 out-of-subset constructs covering the 20 the gate names, + 1 disclosed non-C# case** — each **refused, located, no file written** (`GateSubsetTests`), against **negative controls** that must compile CLEAN (`NegativeControls`). **172 pass, 0 fail** (was 162/0 before `@if`, DECISIONS.md #81). |
+| `tests/Filament.Generator.Tests/` | The generator's suite, **including the Phase 2 gate** (now GREEN on `Counter`), the `Rows` gate (GREEN, DECISIONS.md #80), and the `@if`/`@else` gates (GREEN, DECISIONS.md #81/#82) — plus Phase 3's out-of-subset suite: **27 cases — 26 out-of-subset constructs covering the 20 the gate names, + 1 disclosed non-C# case** — each **refused, located, no file written** (`GateSubsetTests`), against **negative controls** that must compile CLEAN (`NegativeControls`). **178 pass, 0 fail** (was 172/0 before `@else`, DECISIONS.md #82). |
 | `tools/canon.mjs` | The alpha-equivalence comparator that **decides** the gate (DECISIONS.md #51/#56). `node tools/canon.test.mjs` → 23 tests. Its limitations are in its own header. |
 | `samples/Counter/Counter.razor` | The generator's **input**, now **pure `.razor`**. Its markup AND its `@code` are `baseline/Counter.Blazor/App.razor`'s, **verbatim** — both pinned by tests. The `@code` is **C#**, compiled by Roslyn (Phase 3). |
 | `samples/Counter/counter.js` | The Phase 1 **answer key** — the hand-written reference the generator is judged against. **Never edited to make the gate pass** (DECISIONS.md #21/#51). |
@@ -174,9 +175,9 @@ dotnet run --project src/Filament.Generator -- \
 # nonsense this repo refuses. Verified by running both forms.
 dotnet run --project src/Filament.Generator -- --dump-ir samples/Counter/Counter.razor
 
-# The suite, INCLUDING all three gates (Counter, Rows, @if). Expect 172 passed, 0 failed --
-# Rows' equivalence gate was RED for a phase and is now GREEN (DECISIONS.md #76, #80); @if's
-# gate is new (DECISIONS.md #81). Anything failing is a regression.
+# The suite, INCLUDING all gates (Counter, Rows, @if, @else). Expect 178 passed, 0 failed --
+# Rows' equivalence gate was RED for a phase and is now GREEN (DECISIONS.md #76, #80); the
+# @if/@else gates are the newest (DECISIONS.md #81/#82). Anything failing is a regression.
 dotnet test tests/Filament.Generator.Tests/Filament.Generator.Tests.csproj
 
 # The comparator that decides the gate, and its own tests.
@@ -207,11 +208,10 @@ Things worth knowing before you run it:
   (spec §10). The codes are **the spec's**: **`FIL0001`** out-of-subset C#, **`FIL0002`** out-of-subset
   type, **`FIL0003`** out-of-subset Razor — each with a `[reason]` tag; tool failures carry
   `FIL-WIRING`, which cannot be mistaken for a spec code (#61). Try it:
-  `dotnet run --project src/Filament.Generator -- tests/Filament.Generator.Tests/Unsupported/IfElse.razor samples/Counter/x.js`
-  → **`IfElse.razor(5,1): FIL0001: [else-not-yet-implemented]`, exit 1, and NO file is written**. (Plain
-  `@if` with no `else` is no longer an example here — it now COMPILES, DECISIONS.md #81; `@else`,
-  nesting, a multi-node body, and `@if` at the template root remain deferred, each its own located
-  diagnostic.)
+  `dotnet run --project src/Filament.Generator -- tests/Filament.Generator.Tests/Unsupported/IfElseMultiBody.razor samples/Counter/x.js`
+  → **`IfElseMultiBody.razor(6,1): FIL0001: [unsupported-if-body]`, exit 1, and NO file is written**. (Plain
+  `@if`, `@else`, and `@else if` now COMPILE, DECISIONS.md #81/#82; a multi-node branch body, nesting, and
+  `@if`/`@else` at the template root remain deferred, each its own located diagnostic.)
   (The output path must be **inside the repo**: the generator computes the runtime's import specifier
   as a real relative path and refuses with `FIL-WIRING` if it cannot find it — which is the tool being
   misused, not your Razor being unsupported, and it says so.)
