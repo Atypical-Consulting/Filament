@@ -286,22 +286,29 @@ bash demo/build.sh \
 
 Expected: per-app `OK` lines and the closing NOTE, then `BUILT_OK`.
 
-- [ ] **Step 5: Assert the bundles are DEV bundles (unminified, stats defined out)**
+- [ ] **Step 5: Assert the bundles are DEV bundles (unminified, stats OFF, not weighed)**
 
 Run:
 
 ```bash
-# Unminified: an unminified IIFE bundle has many newlines. Minified esbuild output is ~1 line.
+# (a) Unminified: an unminified IIFE bundle has many newlines. Minified esbuild output is ~1 line.
 for a in counter rows if; do
   lines=$(wc -l < demo/dist/$a/app.js | tr -d ' ')
   [[ "$lines" -gt 20 ]] && echo "$a unminified ($lines lines)" || echo "$a LOOKS MINIFIED ($lines lines)"
 done
-# Stats defined out: the marker string and the raw identifier must both be absent.
-grep -l 'filament:stats' demo/dist/*/app.js && echo "STATS LEAKED" || echo "no stats marker (good)"
-grep -l '__FILAMENT_STATS__' demo/dist/*/app.js && echo "DEFINE NOT SUBSTITUTED" || echo "define substituted (good)"
+# (b) Stats OFF at runtime: the --define must have substituted the identifier, so the
+#     stats gate compiles to `if (false)` and never executes. NOTE: because a dev build
+#     is deliberately NOT minified, esbuild does not strip the dead `if (false)` branch,
+#     so the literal string "filament:stats" LEGITIMATELY remains as dead text. Its
+#     absence is a PRODUCTION-only invariant (build-filament.sh, --minify) and must NOT
+#     be asserted here. What matters is that the raw identifier is gone.
+grep -l '__FILAMENT_STATS__' demo/dist/*/app.js && echo "DEFINE NOT SUBSTITUTED" || echo "define substituted, stats off (good)"
+# (c) Not a measurement: build.sh emits NO gzip/br siblings (build-filament.sh does).
+sib=$(find demo/dist \( -name '*.gz' -o -name '*.br' \) | wc -l | tr -d ' ')
+[[ "$sib" -eq 0 ]] && echo "no compressed siblings (good)" || echo "SIBLINGS PRESENT ($sib)"
 ```
 
-Expected: three `… unminified` lines, `no stats marker (good)`, `define substituted (good)`.
+Expected: three `… unminified` lines, `define substituted, stats off (good)`, `no compressed siblings (good)`.
 
 - [ ] **Step 6: Commit**
 
