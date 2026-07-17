@@ -1,0 +1,9 @@
+<div id="wrap"><button id="t" @onclick="Toggle">t</button>@if (show)
+{
+    <span id="msg">hi</span>
+}</div>
+
+@code {
+    private bool show = true;
+    void Toggle() { show = !show; }
+}

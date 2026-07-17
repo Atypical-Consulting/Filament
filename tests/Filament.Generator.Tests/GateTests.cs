@@ -256,6 +256,8 @@ public static class Generate
 
     public static string CounterToTemp() => ToTemp(RepoPaths.CounterRazor, "Counter");
 
+    public static string IfToTemp() => ToTemp(RepoPaths.IfRazor, "If");
+
     static string ToTemp(string razor, string sampleDir)
     {
         var inRepo = Path.Combine(RepoPaths.Root, "samples", sampleDir, $".gen-{Guid.NewGuid():N}.js");
