@@ -41,3 +41,4 @@ tests/Filament.Generator.Tests/Snapshots/*.received.js
 # Editor/tooling scratch, never committed.
 .idea/
 .claude/
+.superpowers/

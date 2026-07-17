@@ -63,7 +63,7 @@ public class IfTests
 
             @code {
                 private bool show = true;
-                void Toggle() => show = !show;
+                void Toggle() { show = !show; }
             }
             """);
 
@@ -341,7 +341,7 @@ Create `baseline/Counter.Blazor/IfRef.razor`:
 
 @code {
     private bool show = true;
-    void Toggle() => show = !show;
+    void Toggle() { show = !show; }
 }
 ```
 
@@ -398,7 +398,7 @@ Expected: FAIL — `samples/If/If.razor` and `samples/If/if.js` do not exist yet
 
 @code {
     private bool show = true;
-    void Toggle() => show = !show;
+    void Toggle() { show = !show; }
 }
 ```
 
@@ -547,7 +547,7 @@ else
     <span id="b">b</span>
 }</div>
 
-@code { private bool show = true; void T() => show = !show; }
+@code { private bool show = true; void T() { show = !show; } }
 ```
 
 `Unsupported/IfNested.razor`:
@@ -567,7 +567,7 @@ else
     <span id="a">a</span><span id="b">b</span>
 }</div>
 
-@code { private bool show = true; void T() => show = !show; }
+@code { private bool show = true; void T() { show = !show; } }
 ```
 
 `Unsupported/IfAtRoot.razor`:
@@ -577,7 +577,7 @@ else
     <span id="a">a</span>
 }
 
-@code { private bool show = true; void T() => show = !show; }
+@code { private bool show = true; void T() { show = !show; } }
 ```
 
 - [ ] **Step 3: Verify exact locations and finalize InlineData**
