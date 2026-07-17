@@ -1,27 +1,45 @@
-# Filament — Phase 0 baseline + Phase 1 runtime + Phase 2 template generator
+# Filament — Phase 0 baseline + Phase 1 runtime + Phase 2/3 generator
 
 This repository holds the **Phase 0 Blazor WebAssembly baseline**, the **Phase 1 hand-written
-`filament-runtime`** measured against it, and the **Phase 2 Razor-template generator**: the numbers
+`filament-runtime`** measured against it, and the **Razor → JS generator**: the numbers
 that the Filament criteria **C1** (bundle weight), **C2** (weight vs Blazor), **C3** (DOM writes) and
 **C4** (speed) are judged on.
 
-**There IS a generator now** — `src/Filament.Generator/`, a console app that compiles a Razor
-template to direct DOM calls. **`BENCH.md` entry #5 is the first entry in this project's history
-whose numbers describe JS that a MACHINE emitted.** Read its scope warning before quoting anything;
-the two sentences that matter most are these:
+**`Counter` now compiles from PURE `.razor`** — template *and* `@code`, C# and all —
+via `src/Filament.Generator/`, a console app. Read the scope statement before quoting anything:
 
-> **🔴 PHASE 2 IS NOT PASSED.** Its gate is a conjunction — *"the JS emitted for `Counter` **and**
-> `Rows` is equivalent to the hand-written JS, **and** the measurements are unchanged"*. **Two of the
-> three terms fail.** `Rows` was **not done** (out of Phase 2's declared scope — `@foreach` is raw C#
-> in the IR; DECISIONS.md #54), and **equivalence on `Counter` FAILS** at canonical token #42. **The
-> gate test is committed RED and `dotnet test` fails: that is the result, not a debt.** Neither
-> failure is a generator defect — see #55 (Phase 2's scope contradicts Phase 2's own gate) and #62.
+> **🟢 THE PHASE 2 GATE ON `Counter` NOW PASSES, AND THE STATE LIFTING IS IN THE BYTES.** Phase 3
+> compiles `@code` with Roslyn: `private int currentCount = 0` is **lifted by the compiler** to
+> `const currentCount = signal(0)`, and `currentCount++` maps to `currentCount.value++`. The `@code`
+> block of `samples/Counter/Counter.razor` is now **byte-identical to the baseline's**, and the
+> generator compiles **`baseline/Counter.Blazor/App.razor` itself** — the file Blazor compiles — to a
+> module **alpha-equivalent** to the Phase 1 answer key (670 B minified / 234 tokens, both sides).
+> DECISIONS.md #71 records the control that proves the gate can still FAIL: neutralise the inlining
+> and it goes NOT EQUIVALENT at token #39, which is #55's divergence reproduced.
 >
-> **🔴 ONLY THE TEMPLATE IS GENERATED.** The `@code` block of `samples/Counter/Counter.razor` is
-> **hand-written JavaScript**, spliced verbatim — that is Phase 2's declared scope ("la logique
-> `@code` reste écrite en JS à la main"). The state lifting (`private int` → `Signal<int>`) a real
-> generator must do **is not in these bytes**. The measured **+18 B** is a **LOWER BOUND** on the
-> generator's eventual cost, not its final cost (DECISIONS.md #57).
+> **🔴 PHASE 3 IS NOT PASSED.** Its gate is a conjunction — *"**both apps** compile from pure `.razor`,
+> the measurements are unchanged, and 20 out-of-subset cases produce 20 correct diagnostics."*
+> **`Rows` now COMPILES from pure `.razor`** — from `baseline/Rows.Blazor/RowsApp.razor`, the file
+> Blazor compiles — and it runs: byte-exact label stream against the golden C# oracle, `#update` at
+> **100 `characterData` writes and zero reconcile**, `#swap` at **exactly 2 moves** (DECISIONS.md #72,
+> #76). But its **equivalence gate is RED**: three shape divergences from `samples/Rows/rows.js`
+> remain, none of them a translation bug, and **all three are the owner's call** — the handler mapping
+> (#68, the two keys disagree), `+=` on a signal, and four whitespace Text nodes **the answer key omits
+> and BLAZOR SHIPS**. Neutralising exactly those three gives ALPHA-EQUIVALENT at 2 200 B / 887 tokens,
+> dead on the key. The out-of-subset suite has **27** cases, all refused and all located — and auditing
+> it found that its "cascading parameters" case had been passing **for the wrong reason** while the same
+> non-goal on a *field* compiled at exit 0, plus that `private int x = "a string";` emitted a module
+> (DECISIONS.md **#77**). Both are fixed and mutation-tested; **three §5 false positives stay OPEN and
+> disclosed**. The "measurements unchanged" term still belongs to the Measure phase (#44).
+>
+> **⚠️ THE TWO ANSWER KEYS DISAGREE about the handler mapping**, and it is an OWNER's call before the
+> `Rows` step: `counter.js` **inlines** a single-use handler body, `rows.js` emits `function update()`
+> and references it though it is named by exactly one `@onclick`. No single rule reproduces both.
+> DECISIONS.md #68.
+>
+> **⚠️ DECISION #20's DEBT IS STILL OPEN AND NOT BANKED.** Filament builds **5** child nodes where
+> Blazor builds **7**. The 2 extra are `<!--!-->` markers — Blazor's own bookkeeping — but 5 < 7 is a
+> real, free create-time advantage.
 
 `src/Filament.Core/` and `src/Filament.Analyzer/` are still **empty directories**.
 
@@ -30,10 +48,10 @@ the two sentences that matter most are these:
 | `BENCH.md` | **Append-only** measurement register. **Entry #5 measures the GENERATOR's output** (C1/C3/C4, hand vs generated vs Blazor, one run). **Entry #4 holds the Phase 1 C1/C4 numbers** and is **not** superseded by #5 — #5 adds a label, it does not re-measure `Rows` or `create/update/swap/clear`. Entries #1–#3 are kept as archive. Never edit an entry; rectify with a new one. |
 | `DECISIONS.md` | Why each number was produced the way it was, and every arbitrage. Read this before disputing a result. |
 | `src/filament-runtime/` | The signals runtime (`signal`/`computed`/`effect`/`list`). `npm run verify` = build + typecheck + tests + **2 048 B size gate**. |
-| `src/Filament.Generator/` | **The Phase 2 generator.** A console app (`dotnet run -- <in.razor> <out.js>`), **not** an `ISourceGenerator` and not an MSBuild target — spec §4.3 excludes Roslyn source generators, since they cannot emit non-C# (DECISIONS.md #58). |
-| `tests/Filament.Generator.Tests/` | The generator's suite, **including the Phase 2 gate**. **1 test fails on purpose** (the gate). |
+| `src/Filament.Generator/` | **The generator.** A console app (`dotnet run -- <in.razor> <out.js>`), **not** an `ISourceGenerator` and not an MSBuild target — spec §4.3 excludes Roslyn source generators, since they cannot emit non-C# (DECISIONS.md #58). `TemplateCompiler` compiles the template (Razor IR); `CSharpFrontEnd` compiles `@code` (Roslyn) and does the **state lifting**. |
+| `tests/Filament.Generator.Tests/` | The generator's suite, **including the Phase 2 gate** (now GREEN on `Counter`) and Phase 3's out-of-subset suite: **27 cases — 26 out-of-subset constructs covering the 20 the gate names, + 1 disclosed non-C# case** — each **refused, located, no file written** (`GateSubsetTests`), against **negative controls** that must compile CLEAN (`NegativeControls`). **161 pass, 1 fails**, and the failure is **`Rows`' equivalence gate** (DECISIONS.md #76), committed RED on purpose. |
 | `tools/canon.mjs` | The alpha-equivalence comparator that **decides** the gate (DECISIONS.md #51/#56). `node tools/canon.test.mjs` → 23 tests. Its limitations are in its own header. |
-| `samples/Counter/Counter.razor` | The generator's **input**. Its markup is `baseline/Counter.Blazor/App.razor`'s, **verbatim, blank lines included** — the shared DOM contract. Its `@code` is **hand-written JS**. |
+| `samples/Counter/Counter.razor` | The generator's **input**, now **pure `.razor`**. Its markup AND its `@code` are `baseline/Counter.Blazor/App.razor`'s, **verbatim** — both pinned by tests. The `@code` is **C#**, compiled by Roslyn (Phase 3). |
 | `samples/Counter/counter.js` | The Phase 1 **answer key** — the hand-written reference the generator is judged against. **Never edited to make the gate pass** (DECISIONS.md #21/#51). |
 | `bench/publish-baseline.sh` | Regenerates the four **Blazor** publish outputs. The only on-disk definition of those configs. |
 | `bench/build-filament.sh` | Builds the six **Filament** labels (3 production + 3 `-stats`), and **invokes the generator** for the `-gen` labels. Static root is `<label>/` — **no `wwwroot/`**, unlike Blazor. |
@@ -116,7 +134,7 @@ Things worth knowing before you run it:
 
 ---
 
-## Step 1b — The generator (Phase 2)
+## Step 1b — The generator (Phase 2 template + Phase 3 `@code`)
 
 ```bash
 # Compile a Razor template to direct DOM calls. This is exactly what build-filament.sh
@@ -137,7 +155,8 @@ dotnet run --project src/Filament.Generator -- \
 # nonsense this repo refuses. Verified by running both forms.
 dotnet run --project src/Filament.Generator -- --dump-ir samples/Counter/Counter.razor
 
-# The suite, INCLUDING the gate. Expect 41 passed, 1 FAILED.
+# The suite, INCLUDING both gates. Expect 161 passed, 1 failed -- the failure is Rows'
+# equivalence gate, RED on purpose (DECISIONS.md #76). Anything else failing is a regression.
 dotnet test tests/Filament.Generator.Tests/Filament.Generator.Tests.csproj
 
 # The comparator that decides the gate, and its own tests.
@@ -145,21 +164,35 @@ node tools/canon.mjs <generated.js> samples/Counter/counter.js   # exit 0 = alph
 node tools/canon.test.mjs                                        # 23 passed
 ```
 
-**`dotnet test` FAILS, on purpose, and it must stay failing until the gate is genuinely met.** The one
-red test is `Gate_GeneratedCounter_IsAlphaEquivalentToAnswerKey`. **A red gate IS the result**
-(`DECISIONS.md` #55/#62). Do not "fix" it by editing `samples/Counter/counter.js`: the answer key is
-the **reference**, the generator is what is **judged**, and a disagreement is a **report, not an
-edit** (#21/#51).
+**The gate on `Counter` is GREEN, and it was closed by doing the work, not by moving the threshold.**
+`Gate_GeneratedCounter_IsAlphaEquivalentToAnswerKey` was committed RED for a phase because the answer
+key **inlines** `Increment`'s body, which requires translating `@code` — Phase 2's scope excluded that,
+so the phase's scope contradicted its own gate (`DECISIONS.md` #55/#62). **Phase 3 translates `@code`,
+so the divergence became reachable and is closed.** `samples/Counter/counter.js` was **NOT** edited: the
+answer key is the **reference** and the generator is what is **judged** (#21/#51). The control that
+proves the gate can still fail: neutralise the inlining and it reports NOT EQUIVALENT at token #39 —
+#55's divergence, reproduced (#71).
+
+**`Rows` compiles and runs; its equivalence gate is RED on three OWNER-level shape calls, so the
+PHASE 3 gate — a conjunction — is NOT passed** (#76).
 
 Things worth knowing before you run it:
 
 - **Out-of-subset constructs raise a LOCATED diagnostic and write NO file** — never silently wrong JS
-  (spec §10). Phase 2 emits exactly one code, **`FIL0003`**, plus a `[reason]` tag; tool failures
-  carry `FIL-WIRING`. Try it:
-  `dotnet run --project src/Filament.Generator -- baseline/Rows.Blazor/RowsApp.razor samples/filament-counter-gen/Counter.g.js`
-  → **6 located diagnostics, exit 1, and NO file is written** (`DECISIONS.md` #54).
-- **`Rows` is refused on purpose.** `@foreach` is **raw C# text** in Razor's IR — unbalanced braces,
-  and the element is a **sibling** of the loop header. Translating it is **Phase 3** work (#54).
+  (spec §10). The codes are **the spec's**: **`FIL0001`** out-of-subset C#, **`FIL0002`** out-of-subset
+  type, **`FIL0003`** out-of-subset Razor — each with a `[reason]` tag; tool failures carry
+  `FIL-WIRING`, which cannot be mistaken for a spec code (#61). Try it:
+  `dotnet run --project src/Filament.Generator -- tests/Filament.Generator.Tests/Unsupported/If.razor samples/Counter/x.js`
+  → **`If.razor(2,2): FIL0001: [control-flow-not-yet-implemented]`, exit 1, and NO file is written**.
+  (The output path must be **inside the repo**: the generator computes the runtime's import specifier
+  as a real relative path and refuses with `FIL-WIRING` if it cannot find it — which is the tool being
+  misused, not your Razor being unsupported, and it says so.)
+- **`@foreach` is RAW C# TEXT in Razor's IR** — unbalanced braces, and the element is a **sibling** of
+  the loop header (#54). Razor emits no loop node because Blazor never needs one: it re-parses that
+  text with Roslyn and calls `RenderTreeBuilder` at runtime. Filament emits JS, so it **RE-ASSEMBLES
+  the spans and RE-PARSES them**, putting the markup back as a marker call inside the same class as
+  `@code` — so `Row`, `_rows` and the loop local `row` all resolve to real symbols and nothing is ever
+  spliced (#72). `--dump-ir` shows the shape it starts from.
 - **The generator is a console app, not an `ISourceGenerator`.** Spec §4.3 says Roslyn cannot emit
   non-C# into a compilation, and JS is non-C#; the source-generator route is excluded **by the spec**,
   not by us. An MSBuild target is a **packaging** concern that changes no emitted byte (#58).
@@ -297,20 +330,49 @@ entry #4, and entry #5 measures C3 on `Counter` only.
 | **Generator's cost vs the answer key** | 🟢 **+18 B gzip (+0.60%) · +19 B brotli (+0.73%)** — 0.18% of the budget. **IQR 0 both sides: resolved, not noise.** |
 | **C3** | ✅ Generated output does **exactly 1 DOM write per increment** (`characterData`). **So does Blazor** — this is a correctness bar, **not** a win. |
 | **C4** | Generated vs hand-written is **indistinguishable AT THE INSTRUMENT'S FLOOR**. **That is not a measurement of parity.** |
-| **Phase 2 gate** | 🔴 **FAIL** — `Rows` not done, equivalence on `Counter` fails at token #42. |
+| **Phase 2 gate** | 🔴 **FAIL** *at the time of entry #5* — `Rows` not done, equivalence on `Counter` failed at token #42. **Phase 3 has since CLOSED the `Counter` half: it is now ALPHA-EQUIVALENT** (DECISIONS.md #71). `Rows` remains not done. |
 
 **The +18 B is fully attributed, constructively.** Neutralising the two divergences of DECISIONS.md
-#55 one at a time reproduces the answer key's bundle **to the byte** (2,986 B raw / 1,265 B gzip both
-sides). **The template compilation costs ZERO bytes** over hand-written JS; the entire delta is those
-two named divergences (whitespace nodes **11 B**, handler indirection **7 B**).
+#55 one at a time reproduces the answer key's bundle **byte-for-byte in SIZE — 2,986 B raw and 1,265 B
+gzip on both sides — and `canon` rules the two ALPHA-EQUIVALENT.** The bundles are **not identical
+byte-for-byte**, and the difference is exactly what alpha-equivalence exists to ignore: **12 of the
+2,986 bytes differ (0.40%), every one of them a single-letter identifier esbuild's minifier assigned
+differently** (`b`↔`h`, `_`↔`b`). No token, no string, no call differs. **The template compilation
+costs ZERO bytes** over hand-written JS; the entire delta is those two named divergences (whitespace
+nodes **11 B**, handler indirection **7 B**). *(Earlier wording here read "to the byte", which claimed
+byte-identity the artifacts do not have. Corrected; see DECISIONS.md #66 and `BENCH.md` entry #6, which
+rectifies entry #5. The measured claim is unchanged — only the word for it was too strong.)*
 
-**Read the sign of that delta carefully — it is not a regression.** 11 of the 18 bytes are two
-`"\n\n"` text nodes **that Blazor also ships**. Measured in-browser: `#app.childNodes` is **Blazor 7,
-generated 5, answer key 3**. **The generator builds a DOM strictly CLOSER to Blazor's than the answer
-key does** — it is **the answer key that diverges from the baseline**, which nobody had noticed for
-`Counter`. Stripping them would silently bank the "~25% fewer DOM nodes, free" advantage
-`DECISIONS.md` #20 lists as an **open debt to pin before any comparison**. That debt is now
-**quantified for `Counter` (4 of 7 nodes)** and **still open**.
+**Read the sign of that delta carefully — it was never a regression, and the answer key has since been
+CORRECTED.** 11 of the 18 bytes were two `"\n\n"` text nodes **that Blazor also ships**. Measured
+in-browser, `#app.childNodes` was **Blazor 7, generated 5, answer key 3**: the generator built a DOM
+strictly CLOSER to Blazor's than the answer key did — **it was the answer key that diverged from the
+baseline**, which nobody had noticed for `Counter`. The owner ruled the answer key **corrected**
+(DECISIONS.md **#64**), because a DOM contract that is not actually shared invalidates every C4
+comparison built on it. Re-measured in-browser after the correction: **Blazor 7, generated 5, answer
+key 5**.
+
+> ⚠️ **The +18 B row above is therefore SUPERSEDED and awaits re-measurement.** It was measured against
+> the *old* 3-node answer key. Both sides now ship the two text nodes, so the whitespace component of
+> the delta is gone and only the handler indirection remains. Build-time bundle preview (**not** the
+> wire measurement that decides C1 — see DECISIONS.md #44): answer key **1,265 → 1,276 B gzip**,
+> generated **1,283 B**, i.e. a delta of **+7 B gzip**, which is exactly the handler cost entry #5 had
+> already isolated. **No published wire figure is hand-edited here; the Measure phase re-measures.**
+>
+> ⚠️ **SUPERSEDED AGAIN BY PHASE 3, AND THE DELTA IS NOW ZERO.** Phase 3 inlines the single-use handler
+> body the way the answer key does, which removes the last of the two divergences. Build-time bundle
+> preview (**not** the wire measurement — DECISIONS.md #44): `filament-counter` **3,056 raw / 1,276
+> gzip** and `filament-counter-gen` **3,056 raw / 1,276 gzip** — **identical sizes, delta 0 B**. `cmp`
+> still differs in **12 of 3,056 characters, every one a minified identifier letter** (`_`↔`h`, `b`↔`_`),
+> so the claim is **equal size + alpha-equivalence, NOT byte-identity** (#66 rectified exactly that
+> over-claim). **This now measures a generator that also lifts the state**, which the +18 B never did.
+> **It still needs a real re-measurement on the wire.**
+
+**The residual is still open, and is not banked.** Even corrected, Filament builds **5 nodes to Blazor's
+7**. The 2 extra are `<!--!-->` **comment markers** — one per `AddMarkupContent` call, Blazor's own
+bookkeeping for locating a raw-markup range later. Filament has no render tree and nothing to locate, so
+it emits none; that is defensible, and **it is still a free create-time advantage**. `DECISIONS.md` #20's
+debt is now **quantified for `Counter` (2 of 7 nodes)** and **still open**.
 
 **RADICAL vs PRUDENT (spec §8) is NOT settled by this.** `DECISIONS.md` #34 left the architecture
 choice waiting on exactly this number. What it licenses, precisely: **RADICAL's viability condition is

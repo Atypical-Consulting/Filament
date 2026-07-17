@@ -1,0 +1,5 @@
+<button id="increment" @onclick="async () => { await Task.Delay(1); count++; }">Click me</button>
+
+@code {
+    private int currentCount = 0;
+}

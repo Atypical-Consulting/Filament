@@ -172,9 +172,11 @@ ALL_LABELS=(
   filament-counter
   filament-rows
   filament-counter-gen
+  filament-rows-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
+  filament-rows-gen-stats
 )
 
 project_for() {
@@ -182,6 +184,7 @@ project_for() {
     filament-counter|filament-counter-stats)         echo "samples/filament-counter" ;;
     filament-rows|filament-rows-stats)               echo "samples/filament-rows" ;;
     filament-counter-gen|filament-counter-gen-stats) echo "samples/filament-counter-gen" ;;
+    filament-rows-gen|filament-rows-gen-stats)       echo "samples/filament-rows-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -190,7 +193,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -199,9 +202,33 @@ mode_for() {
 # hand-written labels. Non-empty is what makes a label a generator label: it is
 # the single switch that decides whether the generator runs, so a label cannot
 # accidentally be half-generated.
+#
+# NOTE WHICH FILE THE ROWS LABEL NAMES: baseline/Rows.Blazor/RowsApp.razor is the
+# file BLAZOR ITSELF COMPILES, not a copy kept in sync with it. There is no Rows
+# analogue of samples/Counter/Counter.razor and there must not be one -- a copy is
+# a thing that drifts, and "the generator compiles the same component Blazor does"
+# would then be a claim about somebody's diligence instead of a fact about the
+# bytes. Counter has a separate file only because its header documents the Phase 3
+# mapping; a test (PureRazor_CounterRazor_IsTheBaselinesComponent) pins its markup
+# and @code to the baseline's for exactly this reason.
 razor_for() {
   case "$1" in
     filament-counter-gen|filament-counter-gen-stats) echo "$REPO_ROOT/samples/Counter/Counter.razor" ;;
+    filament-rows-gen|filament-rows-gen-stats)       echo "$REPO_ROOT/baseline/Rows.Blazor/RowsApp.razor" ;;
+    *) echo "" ;;
+  esac
+}
+
+# The file the generator writes, which main.js imports. Per-label rather than
+# hardcoded: this was 'Counter.g.js' for every label, which would have had the
+# Rows generator emit a file called Counter.g.js that samples/filament-rows-gen/
+# main.js does not import -- esbuild would then resolve the import to whatever
+# stale Rows.g.js happened to exist, or fail. The rm-then-emit below only proves
+# freshness for the file it actually names.
+generated_js_for() {
+  case "$1" in
+    filament-counter-gen|filament-counter-gen-stats) echo "Counter.g.js" ;;
+    filament-rows-gen|filament-rows-gen-stats)       echo "Rows.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -211,6 +238,7 @@ title_for() {
     filament-counter|filament-counter-stats)         echo "Counter" ;;
     filament-rows|filament-rows-stats)               echo "Rows" ;;
     filament-counter-gen|filament-counter-gen-stats) echo "Counter" ;;
+    filament-rows-gen|filament-rows-gen-stats)       echo "Rows" ;;
     *) return 1 ;;
   esac
 }
@@ -223,6 +251,7 @@ blazor_label_for() {
     filament-counter|filament-counter-stats)         echo "blazor-counter-nojit" ;;
     filament-rows|filament-rows-stats)               echo "blazor-rows-nojit" ;;
     filament-counter-gen|filament-counter-gen-stats) echo "blazor-counter-nojit" ;;
+    filament-rows-gen|filament-rows-gen-stats)       echo "blazor-rows-nojit" ;;
     *) return 1 ;;
   esac
 }
@@ -243,6 +272,7 @@ css_for() {
     filament-counter|filament-counter-stats)         echo "$REPO_ROOT/baseline/Counter.Blazor/wwwroot/css/app.css" ;;
     filament-rows|filament-rows-stats)               echo "$REPO_ROOT/baseline/Rows.Blazor/wwwroot/css/app.css" ;;
     filament-counter-gen|filament-counter-gen-stats) echo "$REPO_ROOT/baseline/Counter.Blazor/wwwroot/css/app.css" ;;
+    filament-rows-gen|filament-rows-gen-stats)       echo "$REPO_ROOT/baseline/Rows.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }
@@ -578,8 +608,18 @@ for label in "${REQUESTED[@]}"; do
     [[ -f "$razor_src" ]] || die "'$label' is a generator label but its Razor source
      is missing: $razor_src"
 
-    generated_js="$project_dir/Counter.g.js"
+    generated_basename="$(generated_js_for "$label")"
+    [[ -n "$generated_basename" ]] || die "'$label' has a Razor source but no entry in
+     generated_js_for(). Every generator label must name the file it emits, or the
+     rm-then-emit below proves freshness for a file nothing imports."
+    generated_js="$project_dir/$generated_basename"
     rm -f "$generated_js"
+
+    # The emitted file must be the one main.js imports, or esbuild silently bundles
+    # a stale/absent module and the label's name asserts something the bytes do not.
+    grep -qF "./$generated_basename" "$entry" || die "'$label' emits $generated_basename
+     but $entry does not import './$generated_basename'. The label would be weighed on
+     JS this run's generator did not produce."
 
     printf '    dotnet run --project src/Filament.Generator -- %s %s\n' \
       "${razor_src#"$REPO_ROOT"/}" "${generated_js#"$REPO_ROOT"/}"

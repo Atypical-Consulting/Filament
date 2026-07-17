@@ -1,30 +1,42 @@
-@* Counter — the Filament generator's INPUT. Phase 2.
+@* Counter — the Filament generator's INPUT. Phase 3.
 
-   THE TEMPLATE BELOW IS baseline/Counter.Blazor/App.razor's MARKUP, VERBATIM,
-   BLANK LINES INCLUDED. It is the SHARED DOM CONTRACT and must not be altered --
-   including the blank lines between the siblings, which Blazor's own compiler turns
-   into real "\n\n" text nodes (verified from its generated BuildRenderTree, which
-   emits AddMarkupContent(0, "<h1 id=\"title\">Counter</h1>\n\n")). They are part of
-   the contract precisely BECAUSE they are easy to drop without noticing.
+   THIS FILE IS NOW PURE .razor. Both halves of it are COMPILED: the template by
+   TemplateCompiler, the @code block by CSharpFrontEnd via Roslyn. Nothing in it is
+   spliced verbatim into the output any more, and nothing in it is JavaScript.
 
-   THE @code BLOCK IS HAND-WRITTEN JAVASCRIPT, not C#. Phase 2 compiles the template
-   only -- "la logique @code reste ecrite en JS a la main" (spec 6).
+   THE TEMPLATE AND THE @code BELOW ARE baseline/Counter.Blazor/App.razor's, VERBATIM.
+   Not "equivalent to" -- the same text, and a test proves it rather than a comment
+   claiming it: PureRazor_CounterRazor_IsTheBaselinesComponent compares this file's
+   markup and @code against the baseline's, and the generator is separately run against
+   baseline/Counter.Blazor/App.razor ITSELF -- the very file Blazor compiles -- and must
+   emit an alpha-equivalent module. If the two sources ever drift, that is a failing test
+   and not a footnote.
 
-   WHY JS SURVIVES IN @code, VERIFIED AND NOT ASSUMED.
-   Razor lexes @code as C# but does not parse or type-check it: the whole block
-   arrives in the IR as ONE opaque CSharpCodeIntermediateNode token holding the body
-   verbatim, with ZERO Razor diagnostics. `--dump-ir` shows it, and
-   GeneratorTests.CodeBlock_IsOpaque_AndCarriesJsVerbatim pins it, byte for byte,
-   so that a Razor version that starts parsing this block FAILS A TEST instead of
-   silently mangling the app's state. The generator splices this text, untouched,
-   into the top of mount().
+   THE BLANK LINES ARE PART OF THE SHARED DOM CONTRACT and must not be removed. Blazor's
+   own compiler turns them into real "\n\n" text nodes (verified from its generated
+   BuildRenderTree, which emits AddMarkupContent(0, "<h1 id=\"title\">Counter</h1>\n\n")).
+   They are part of the contract precisely BECAUSE they are easy to drop without noticing
+   -- which is what happened to the answer key, and cost a phase to find (decision 64).
 
-   State is declared as a signal here because that lifting is Phase 3's job (a C#
-   `private int currentCount` would be lifted to Signal<int> by the compiler); with a
-   JS seam, the author does it by hand. That is what makes the template's
-   @currentCount compile to `currentCount.value` -- a read of a signal, per decision
-   22's property-access protocol -- and not to a bare `currentCount`, which would
-   setText an object and print "[object Object]". *@
+   WHAT PHASE 3 CHANGED HERE, AND WHY THE OLD SHAPE WAS A MEASUREMENT PROBLEM.
+   In Phase 2 this @code block held hand-written JAVASCRIPT: `const currentCount =
+   signal(0)`. The template was compiled, but the STATE LIFTING -- deciding that a
+   private int the template reads is reactive and must become a Signal -- was done by
+   the author, in the input, by hand. So the one thing Phase 3 exists to prove was
+   sitting OUTSIDE the measured bytes, doing its work before the compiler ever ran.
+   It is inside them now: `private int currentCount = 0` below is lifted to
+   `const currentCount = signal(0)` BY the compiler, and `currentCount++` inside
+   Increment() is mapped to `currentCount.value++` -- one node in, one node out, no
+   syntactic desugaring (samples/Counter/counter.js's header states that mapping).
+
+   WHY currentCount IS REACTIVE, AND WHY THE RULE IS NOT "IT IS A FIELD".
+   A field is lifted to a Signal iff the TEMPLATE READS IT and something ASSIGNS IT
+   outside its construction site. currentCount is read by @currentCount below and
+   assigned by Increment(), so it is lifted. A field the template reads but nobody
+   assigns compiles to a plain create-time write with no signal and no effect; a field
+   that is assigned but no binding reads stays a plain `let`. See CSharpFrontEnd's
+   header for why only the conjunction reproduces both answer keys, and why that rule
+   is also what closes decision 57's disclosed hole. *@
 
 <h1 id="title">Counter</h1>
 
@@ -33,9 +45,10 @@
 <button id="increment" @onclick="Increment">Click me</button>
 
 @code {
-    const currentCount = signal(0);
+    private int currentCount = 0;
 
-    const Increment = () => {
-        currentCount.value++;
-    };
+    private void Increment()
+    {
+        currentCount++;
+    }
 }

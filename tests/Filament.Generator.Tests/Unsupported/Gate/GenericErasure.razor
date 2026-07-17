@@ -1,0 +1,16 @@
+<p><span id="counter-value">@currentCount</span></p>
+<button id="increment" @onclick="Increment">Click me</button>
+
+@code {
+    private int currentCount = 0;
+
+    private void Noop<T>()
+    {
+    }
+
+    private void Increment()
+    {
+        Noop<System.DateTime>();
+        currentCount++;
+    }
+}

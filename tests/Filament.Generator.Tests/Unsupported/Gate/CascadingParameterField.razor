@@ -1,0 +1,17 @@
+@* THE SAME SPEC 3 NON-GOAL AS Gate/CascadingParameter.razor, ONE FRAME OVER.
+
+   That fixture declares the cascading parameter as a PROPERTY, so Member()'s default arm
+   refuses it for being a property -- a verdict that has nothing to do with cascading. This
+   one declares it as a FIELD, which FieldDecl accepted: it checked the modifiers, the type
+   and the initialiser, and never looked at the attribute.
+
+   MEASURED, before the guard existed: exit 0, module written, `const depth = 0;` -- the
+   cascading parameter silently gone. Decision 41's pattern for the sixth time. *@
+<p><span id="counter-value">@currentCount</span></p>
+
+@code {
+    private int currentCount = 0;
+
+    [Microsoft.AspNetCore.Components.CascadingParameter]
+    public int Depth = 0;
+}

@@ -1,0 +1,17 @@
+@* NOT OUT-OF-SUBSET C#. NOT C# AT ALL -- and it compiled.
+
+   Every subset rule here is individually right and none of them composes: CheckType says
+   `int` is in section 5, Expr says a string literal is in section 5, and nothing asked
+   whether the pair type-checks. Compile() checked Roslyn's SYNTAX diagnostics and never
+   its SEMANTIC ones.
+
+   MEASURED, before CheckSemantics existed: exit 0, module written,
+       const currentCount = 'this is a string, not an int';
+   i.e. the span renders the string where the source says int, from a file Blazor refuses
+   to build (CS0029). Section 10's forbidden mode, reached without a single out-of-subset
+   construct in the file. *@
+<p><span id="counter-value">@currentCount</span></p>
+
+@code {
+    private int currentCount = "this is a string, not an int";
+}

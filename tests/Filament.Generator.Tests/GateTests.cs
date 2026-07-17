@@ -23,9 +23,16 @@ namespace Filament.Generator.Tests;
 /// THE GATE TEST IS CURRENTLY RED, AND THAT IS THE RESULT, NOT A TODO.
 /// It is committed asserting equivalence, and it fails. Decision 21/51: the answer
 /// key is the REFERENCE and the generator is what is JUDGED, so a disagreement gets
-/// REPORTED, never negotiated away by editing counter.js or by softening this
-/// assertion. See the failure message for the two divergences and why each one is a
-/// finding about the spec rather than a bug in the generator.
+/// REPORTED, never negotiated away by softening this assertion. See the failure
+/// message for the remaining divergence and why it is a finding about the spec
+/// rather than a bug in the generator.
+///
+/// IT USED TO FAIL ON TWO DIVERGENCES AND NOW FAILS ON ONE. The second -- the answer
+/// key building 3 child nodes where Blazor builds 7 -- was the ANSWER KEY diverging
+/// from the shared DOM contract, and the owner ruled it CORRECTED (decision 64). That
+/// is not decision 21/51 being bent: 21/51 makes the answer key the reference for the
+/// GENERATOR, and this was the reference being corrected against the BASELINE, which
+/// outranks it. The gate narrowed as a side effect and STILL FAILS.
 /// </summary>
 public class GateTests
 {
@@ -42,27 +49,84 @@ public class GateTests
             "(samples/Counter/counter.js), under decision 51's definition.\n\n" +
             "The comparison:\n" + Indent(stdout) + "\n" +
             (stderr.Length > 0 ? "stderr:\n" + Indent(stderr) + "\n" : "") +
-            "\nTHE TWO DIVERGENCES, both isolated and both findings about the SPEC:\n\n" +
-            "  1. THE HANDLER. The answer key emits\n" +
-            "         listen(button, 'click', () => { currentCount.value++; })\n" +
-            "     i.e. it INLINES the body of `private void Increment()`. Inlining a\n" +
-            "     handler's body requires reading that body, and in Phase 2 the body is\n" +
-            "     hand-written JS that this phase's own scope says stays hand-written\n" +
-            "     (\"la logique @code reste ecrite en JS a la main\"). Compiling the EVENT\n" +
-            "     -- which IS in scope -- yields `listen(el, 'click', Increment)`. The\n" +
-            "     answer key's shape presupposes Phase 3's C#->JS translation, so Phase\n" +
-            "     2's scope and Phase 2's gate contradict each other on Counter. This is\n" +
-            "     decision 54's finding, reached at the @code seam instead of at @foreach.\n\n" +
-            "  2. THE WHITESPACE TEXT NODES. The generator emits the two \"\\n\\n\" Text\n" +
-            "     nodes between <h1>/<p>/<button>. Blazor emits them too -- verified from\n" +
-            "     its generated BuildRenderTree, which calls\n" +
-            "         AddMarkupContent(0, \"<h1 id=\\\"title\\\">Counter</h1>\\n\\n\")\n" +
-            "     The answer key creates neither. Stripping them to match would silently\n" +
-            "     bank the free DOM advantage decision 20 lists as an OPEN debt to be\n" +
-            "     pinned before any comparison.\n\n" +
-            "VERIFIED: with ONLY those two neutralised, the streams are alpha-equivalent.\n" +
-            "The template compilation itself is exact; nothing else differs.\n\n" +
-            "DO NOT EDIT samples/Counter/counter.js TO MAKE THIS PASS.\n");
+            "\nTHE ONE REMAINING DIVERGENCE -- a finding about the SPEC, not a bug:\n\n" +
+            "  THE HANDLER. The answer key emits\n" +
+            "      listen(button, 'click', () => { currentCount.value++; })\n" +
+            "  i.e. it INLINES the body of `private void Increment()`. Inlining a\n" +
+            "  handler's body requires reading that body, and in Phase 2 the body is\n" +
+            "  hand-written JS that this phase's own scope says stays hand-written\n" +
+            "  (\"la logique @code reste ecrite en JS a la main\"). Compiling the EVENT\n" +
+            "  -- which IS in scope -- yields `listen(el, 'click', Increment)`. The\n" +
+            "  answer key's shape presupposes Phase 3's C#->JS translation, so Phase 2's\n" +
+            "  scope and Phase 2's gate contradict each other on Counter. This is\n" +
+            "  decision 54's finding, reached at the @code seam instead of at @foreach.\n" +
+            "  It is the OWNER's call to resolve (decision 62c), not an implementer's.\n\n" +
+            "VERIFIED CONSTRUCTIVELY: neutralise ONLY the handler indirection on the\n" +
+            "generated side and canon reports ALPHA-EQUIVALENT. Nothing else differs;\n" +
+            "the template compilation itself is exact to the token.\n\n" +
+            "THERE USED TO BE A SECOND DIVERGENCE, AND IT IS GONE -- READ WHY.\n" +
+            "The generator emits the two \"\\n\\n\" Text nodes between <h1>/<p>/<button>;\n" +
+            "the answer key created neither, so it built 3 child nodes where Blazor\n" +
+            "builds 7 and the generator builds 5 (all three measured in-browser). The\n" +
+            "GENERATOR was right and the ANSWER KEY diverged from the shared DOM\n" +
+            "contract. The owner ruled that the answer key be CORRECTED -- decision 64 --\n" +
+            "because a contract that is not actually shared invalidates every C4\n" +
+            "comparison, and a reference rendering fewer nodes than the baseline hands\n" +
+            "Filament a free create-time advantage. THE MOTIVE WAS THE CONTRACT; the\n" +
+            "gate narrowing is a SIDE EFFECT, and note that it did NOT make the gate\n" +
+            "pass -- this test is still RED on the handler.\n\n" +
+            "DO NOT EDIT samples/Counter/counter.js TO MAKE THIS PASS. Decision 21/51\n" +
+            "stands: the answer key is the REFERENCE and the generator is what is JUDGED.\n" +
+            "The whitespace correction was NOT an exception to that rule -- it was the\n" +
+            "reference being corrected against the BASELINE (Blazor), which is the only\n" +
+            "authority above it, on the owner's explicit decision and with the residual\n" +
+            "(5 nodes vs Blazor's 7) disclosed rather than banked.\n");
+    }
+
+    /// <summary>
+    /// PHASE 3's GATE, IN ITS STRONGEST FORM: "les deux apps compilent depuis du .razor
+    /// PUR." Not a Filament-flavoured .razor -- THE BASELINE'S OWN App.razor, the exact
+    /// file Blazor compiles, byte for byte, comment header and all.
+    ///
+    /// Why this exists when CounterRazor_CodeBlockIsTheBaselinesCsharp_Verbatim already
+    /// compares the two sources: that test compares TEXT, and text comparison is only as
+    /// good as the window it compares (it strips the header comment and normalises
+    /// indentation). This one removes the sample from the loop entirely. If the generator
+    /// can compile baseline/Counter.Blazor/App.razor into the answer key, then "Filament
+    /// compiles the same source Blazor compiles" is a fact about an artifact rather than
+    /// an argument about two files that are supposed to match.
+    ///
+    /// It also closes the loophole the other test cannot: someone "fixing" a drift by
+    /// editing BOTH files still fails here, because Blazor's file is the input.
+    /// </summary>
+    [Fact]
+    public void PureRazor_TheBaselinesOwnAppRazor_CompilesToTheAnswerKey()
+    {
+        var appRazor = Path.Combine(RepoPaths.Root, "baseline", "Counter.Blazor", "App.razor");
+
+        // Emitted next to the answer key so the relative runtime specifier resolves, then
+        // moved out of the repo -- Generate.CounterToTemp's reasoning.
+        var inRepo = Path.Combine(RepoPaths.Root, "samples", "Counter", $".base-{Guid.NewGuid():N}.js");
+        var outside = Path.Combine(Path.GetTempPath(), $"filament-base-{Guid.NewGuid():N}.js");
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(appRazor, inRepo);
+            Assert.True(exit == 0,
+                "the generator could not compile the BASELINE's own App.razor -- the file Blazor " +
+                $"compiles. 'Compiles from pure .razor' is exactly this claim.\n{stderr}");
+
+            File.WriteAllText(outside, File.ReadAllText(inRepo));
+
+            var (canonExit, stdout, canonErr) = Run.Node(RepoPaths.Canon, outside, RepoPaths.AnswerKey);
+            Assert.True(canonExit == 0,
+                "Blazor's own App.razor compiled, but not to the answer key:\n" +
+                Indent(stdout) + (canonErr.Length > 0 ? "\nstderr:\n" + Indent(canonErr) : ""));
+        }
+        finally
+        {
+            if (File.Exists(inRepo)) File.Delete(inRepo);
+            if (File.Exists(outside)) File.Delete(outside);
+        }
     }
 
     [Fact]
@@ -188,12 +252,16 @@ public static class Generate
     /// deliberate: a generated file left in samples/ is a file someone will eventually
     /// edit by hand, next to an answer key that must never be edited at all.
     /// </summary>
-    public static string CounterToTemp()
+    public static string RowsToTemp() => ToTemp(RepoPaths.RowsRazor, "Rows");
+
+    public static string CounterToTemp() => ToTemp(RepoPaths.CounterRazor, "Counter");
+
+    static string ToTemp(string razor, string sampleDir)
     {
-        var inRepo = Path.Combine(RepoPaths.Root, "samples", "Counter", $".gen-{Guid.NewGuid():N}.js");
+        var inRepo = Path.Combine(RepoPaths.Root, "samples", sampleDir, $".gen-{Guid.NewGuid():N}.js");
         try
         {
-            var (exit, _, stderr) = Run.Generator(RepoPaths.CounterRazor, inRepo);
+            var (exit, _, stderr) = Run.Generator(razor, inRepo);
             Assert.True(exit == 0, $"the generator refused to emit:\n{stderr}");
 
             var outside = Path.Combine(Path.GetTempPath(), $"filament-gen-{Guid.NewGuid():N}.js");

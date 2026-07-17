@@ -7,7 +7,15 @@ public static class RepoPaths
 
     public static string CounterRazor => Path.Combine(Root, "samples", "Counter", "Counter.razor");
     public static string AnswerKey => Path.Combine(Root, "samples", "Counter", "counter.js");
+
+    /// <summary>
+    /// THE FILE BLAZOR COMPILES. Rows has no Filament-flavoured stand-in and must not get one:
+    /// "les deux apps compilent depuis du .razor PUR" is a claim about THIS file.
+    /// </summary>
     public static string RowsRazor => Path.Combine(Root, "baseline", "Rows.Blazor", "RowsApp.razor");
+
+    /// <summary>The Rows SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string RowsAnswerKey => Path.Combine(Root, "samples", "Rows", "rows.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

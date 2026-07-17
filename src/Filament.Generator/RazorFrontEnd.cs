@@ -66,7 +66,7 @@ public static class RazorFrontEnd
     /// </summary>
     static RazorProjectEngine CreateEngine(string dir, DirectiveSpyPass spy)
     {
-        var refs = LoadReferenceAssemblies();
+        var refs = ReferenceAssemblies.All();
         var fs = RazorProjectFileSystem.Create(dir);
 
         return RazorProjectEngine.Create(RazorConfiguration.Default, fs, b =>
@@ -116,55 +116,9 @@ public static class RazorFrontEnd
         return new ParseResult(ir, document, spy.Directives, descriptors.Count, full);
     }
 
-    /// <summary>
-    /// Locate the reference assemblies the tag helper discovery needs. Discovered from
-    /// the running runtime rather than hardcoded, so this survives a machine that is
-    /// not the author's -- but it is still a filesystem probe, and it FAILS LOUDLY
-    /// rather than returning an empty list, because an empty list is exactly the
-    /// silent mis-parse of decision 53.
-    /// </summary>
-    static List<MetadataReference> LoadReferenceAssemblies()
-    {
-        // .../shared/Microsoft.NETCore.App/10.0.9/  ->  .../
-        var runtimeDir = System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory();
-        var dotnetRoot = Path.GetFullPath(Path.Combine(runtimeDir, "..", "..", ".."));
-        var packs = Path.Combine(dotnetRoot, "packs");
-
-        if (!Directory.Exists(packs))
-            throw new GeneratorException(
-                $"FIL-WIRING: no reference packs under '{packs}'. Tag helper discovery cannot run, and " +
-                "without it @onclick mis-parses in silence (decision 53). Refusing to emit.");
-
-        var netRef = NewestRefDir(Path.Combine(packs, "Microsoft.NETCore.App.Ref"));
-        var aspRef = NewestRefDir(Path.Combine(packs, "Microsoft.AspNetCore.App.Ref"));
-
-        var files = Directory.GetFiles(netRef, "*.dll").Concat(Directory.GetFiles(aspRef, "*.dll"));
-        var refs = files.Select(p => (MetadataReference)MetadataReference.CreateFromFile(p)).ToList();
-
-        if (refs.Count == 0)
-            throw new GeneratorException("FIL-WIRING: reference packs resolved to zero assemblies. Refusing to emit.");
-        return refs;
-    }
-
-    static string NewestRefDir(string packRoot)
-    {
-        if (!Directory.Exists(packRoot))
-            throw new GeneratorException($"FIL-WIRING: reference pack '{packRoot}' not found. Refusing to emit.");
-
-        var best = Directory.GetDirectories(packRoot)
-            .Select(d => (dir: d, ver: ParseVersion(Path.GetFileName(d))))
-            .Where(x => x.ver is not null)
-            .OrderByDescending(x => x.ver)
-            .Select(x => x.dir)
-            .FirstOrDefault()
-            ?? throw new GeneratorException($"FIL-WIRING: no versioned directory under '{packRoot}'.");
-
-        var refDir = Directory.GetDirectories(Path.Combine(best, "ref")).OrderByDescending(x => x).FirstOrDefault()
-            ?? throw new GeneratorException($"FIL-WIRING: no ref/<tfm> directory under '{best}'.");
-        return refDir;
-    }
-
-    static Version? ParseVersion(string s) => Version.TryParse(s.Split('-')[0], out var v) ? v : null;
+    // The reference-assembly probe lives in ReferenceAssemblies: the C# front end needs
+    // the same set to resolve the types in @code, and decision 53's lesson is that the
+    // wiring gets described ONCE or the two copies drift.
 }
 
 /// <summary>What one parse produced, all of it read off the engine that did the parsing.</summary>

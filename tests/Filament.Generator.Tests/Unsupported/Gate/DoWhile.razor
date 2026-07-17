@@ -1,0 +1,10 @@
+<p><span id="counter-value">@currentCount</span></p>
+
+@code {
+    private int currentCount = 0;
+
+    private void Increment()
+    {
+        do { currentCount++; } while (currentCount < 10);
+    }
+}

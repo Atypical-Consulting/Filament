@@ -19,11 +19,25 @@ bench/publish/
 # does NOT work, because git cannot re-include a file whose parent directory is
 # excluded -- it silently dropped every file under bench/results/final-warm/.
 
-# Generator output. bench/build-filament.sh deletes and re-emits this from
-# samples/Counter/Counter.razor on every build of the -gen labels, so it is
-# regenerable by definition. NOT committed, and the reason is not tidiness: a
-# generated file that lives in the tree is one somebody eventually hand-edits,
-# and C1 would then be measured on a bundle the generator did not emit while the
-# label still claimed it did. tests/Filament.Generator.Tests moves its own
-# generator output out of the repo for the same reason.
+# Generator output. bench/build-filament.sh deletes and re-emits these from
+# samples/Counter/Counter.razor and baseline/Rows.Blazor/RowsApp.razor on every
+# build of the -gen labels, so they are regenerable by definition. NOT committed,
+# and the reason is not tidiness: a generated file that lives in the tree is one
+# somebody eventually hand-edits, and C1 would then be measured on a bundle the
+# generator did not emit while the label still claimed it did.
+# tests/Filament.Generator.Tests moves its own generator output out of the repo
+# for the same reason.
 samples/filament-counter-gen/Counter.g.js
+samples/filament-rows-gen/Rows.g.js
+
+# Approval-test output. `*.received.js` is what the generator ACTUALLY emitted when a
+# snapshot went red -- a debugging artifact written by the failing test itself, next to
+# the approved file it disagrees with. Committing one would put a REJECTED module in the
+# tree beside the accepted one, named almost identically. Section 10 makes the snapshot
+# the only wall against silent generator regressions; the wall is the .approved.js, and
+# it is committed.
+tests/Filament.Generator.Tests/Snapshots/*.received.js
+
+# Editor/tooling scratch, never committed.
+.idea/
+.claude/

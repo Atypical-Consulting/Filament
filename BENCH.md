@@ -2192,3 +2192,226 @@ Divulgué au titre des n°11/n°19.
 ---
 
 *Fin de l'entrée n°5. Ne pas modifier — ajouter une entrée n°6 pour toute rectification.*
+
+---
+
+## Entrée n°6 — 2026-07-16 — **RECTIFICATION de l'entrée n°5 : « À L'OCTET » est un SUR-CLAIM**
+
+**Cette entrée ne mesure rien de neuf. Elle rectifie UN MOT de l'entrée n°5.** L'entrée n°5 est
+**append-only et n'a pas été touchée** : ses chiffres sont **justes** et ont été **re-mesurés
+indépendamment ici** ; c'est la **phrase** qui les résume qui affirme plus que ce qu'ils montrent.
+Précédent appliqué : n°48 / les corrections de l'entrée n°4, où un rapport amont a été rectifié
+**contre son propre intérêt**.
+
+### Ce que l'entrée n°5 dit, et ce qui est faux dedans
+
+> « **Neutraliser exactement ces deux points reproduit le bundle de l'answer key À L'OCTET.** »
+> — entrée n°5, § « Le delta est ATTRIBUÉ CONSTRUCTIVEMENT ». Repris par `DECISIONS.md` n°59
+> (« reproduit celui de l'answer key **À L'OCTET** ») et par `README.md`
+> (« reproduces the answer key's bundle **to the byte** »).
+
+**Les bundles ne sont PAS identiques à l'octet.** Relevé **depuis les artefacts**, esbuild **0.28.1**
+(celui que `build-filament.sh` épingle), **mêmes flags** que le build de production
+(`--bundle --format=iife --target=es2022 --define:__FILAMENT_STATS__=false --minify --drop:console
+--legal-comments=none`) :
+
+| variante | brut (o) | gzip (o) | sha256 (16) |
+|---|---:|---:|---|
+| généré tel quel | 3 060 | 1 283 | `2e900506e86fd359` |
+| **neutralisé** (les 2 écarts de la n°55) | **2 986** | **1 265** | `bf71940860a97014` |
+| **ANSWER KEY** | **2 986** | **1 265** | `277427fd57caa5f7` |
+
+**`cmp` : les deux fichiers diffèrent dès le caractère 19.** Les sha256 **ne concordent pas**.
+
+### Ce qui EST vrai, énoncé précisément — et c'est presque tout
+
+- **Taille identique, brut ET gzip** : **2 986 / 1 265 des deux côtés**. Pas « proche » : **égal**.
+- **`canon` dit ALPHA-ÉQUIVALENT** (n°51/n°56).
+- **La divergence est de 12 octets sur 2 986 (0,40 %)**, et **les 12 sont des lettres d'identifiants
+  que le minifieur a distribuées autrement** (`b`↔`h`, `_`↔`b`). **Aucun jeton, aucune chaîne, aucun
+  appel ne diffère.** C'est **exactement** ce que l'alpha-équivalence existe pour ignorer — et c'est
+  **exactement** ce que « à l'octet » prétendait en plus.
+- **Les chiffres de l'entrée n°5 se reproduisent tous** : 3 060/1 283, 2 986/1 265, 2 986/1 265.
+  **La table de l'entrée n°5 est juste. Sa phrase de conclusion ne l'est pas.**
+
+**La revendication porteuse SURVIT INTACTE : la compilation du template coûte ZÉRO octet.** Elle ne
+reposait pas sur l'identité octet-pour-octet — elle repose sur l'égalité de **taille** et sur
+l'**alpha-équivalence**, toutes deux **vérifiées ici de façon indépendante**. **On ne sur-corrige pas
+dans l'autre sens** : le résultat tient, seul le mot était trop fort.
+
+### Pourquoi le mot comptait quand même
+
+« À l'octet » est **falsifiable en une commande** (`cmp`), et il était **faux**. Ce dépôt a déjà
+rectifié la même classe de faute **chez un rapport amont** : la n°18 relève qu'un rapport parlait de
+« *byte-exact* » **alors qu'il comparait des TAILLES** — **exactement la faute commise ici, par nous,
+sept entrées plus tard**. Un lecteur qui lance `cmp`, le voit échouer, et n'a aucun moyen de savoir
+que le reste de l'entrée est solide, **a raison de douter du reste** (n°47). Le coût d'un mot trop
+fort n'est pas le mot : c'est **le crédit de tout ce qui l'entoure**.
+
+**Piège d'appareil, consigné parce qu'il a failli produire une seconde fausse mesure.** Un premier
+relevé donnait **1 280 contre 1 278 gzip** — soit deux bundles de tailles **différentes**, ce qui
+aurait contredit l'entrée n°5 sur ses **chiffres** et non sur son **mot**. Cause : `gzip -9 -c`
+**inscrit le nom du fichier dans l'en-tête**, et `neutralised.js`/`answerkey.js` n'ont pas la même
+longueur de nom. `zlib.gzipSync` (ce qu'emploie `build-filament.sh`) n'inscrit rien : la mesure
+correcte est `gzip -9 **-n**`, et elle rend **1 265 = 1 265**. **L'entrée n°5 avait raison ; c'est le
+contrôle qui était faux.** Consigné au titre de la règle n°43 — vérifier depuis l'artefact, et se
+méfier d'un contrôle dont on n'a pas établi qu'il mesure ce qu'on croit.
+
+### Portée
+
+**Aucun verdict ne bouge.** C1 **PASS** inchangé, gate Phase 2 **FAIL** inchangé, +18 o inchangé et
+toujours **entièrement attribué**. **Rectifié dans les trois documents** : `README.md`,
+`DECISIONS.md` n°59 (formulation d'origine **conservée** en regard, n°60), et la présente entrée pour
+`BENCH.md`.
+
+---
+
+*Fin de l'entrée n°6. Ne pas modifier — ajouter une entrée n°7 pour toute rectification.*
+
+---
+
+## Entrée n°7 — 2026-07-17 — Phase 3 : C1/C3/C4 sur du JS compilé depuis du `.razor` **PUR** (template **ET** `@code`)
+
+### 🟢 CE QUI REND CETTE ENTRÉE DÉCISIVE
+
+**C'est la PREMIÈRE entrée dont les chiffres décrivent les DEUX apps compilées depuis du `.razor` pur —
+template ET `@code`.** L'entrée n°5 mesurait `filament-counter-gen` avec un `@code` **écrit à la main** en
+JS ; le lifting d'état (`private int` → `Signal<int>`), la chose sur laquelle la thèse repose, se faisait
+donc dans l'**entrée** du compilateur, à la main. Cette moitié est fermée ici : `Counter.razor` et
+`RowsApp.razor` sont compilés **entièrement**, `@code` compris. **La proposition que les n°34/50 ont
+refusé de déclarer testée — « un générateur C# émet ceci, sous 10 ko, à ces temps » — est testée ici, en
+entier, pour les deux apps.**
+
+### ⚠️ PROVENANCE DE CETTE ENTRÉE — À LIRE AVANT LES CHIFFRES
+
+**Ces chiffres ont été RÉCUPÉRÉS DE L'ARTEFACT, pas d'un rapport d'agent.** L'agent qui a exécuté la
+mesure a rapporté « **NON MESURÉ — `bench/results/phase3-pure/` contient ZÉRO fichier json — run coupé au
+config 1 sur 8** ». **C'était un FAUX NÉGATIF.** Les 20 fichiers existent, horodatés `10:28→10:52 UTC`
+(24 min), `ok:true` sur les 20, `n=10` sur chaque scénario chronométré, `scenariosComplete:true`,
+`timedIterationFailures:0`. La mesure a été **complète**. L'entrée est donc écrite **depuis les fichiers
+directement**, chaque nombre recalculé (médiane vraie, IQR = p75−p25 par interpolation), jamais depuis la
+prose de l'agent — dans les deux sens : ni son PASS, ni son FAIL ne sont repris tels quels. C'est
+l'inverse du biais de la n°48 : ici l'omission de l'agent penchait **CONTRE** Filament (rapporter « aucun
+résultat » quand le résultat est un succès net). **Consigné en `DECISIONS.md` n°78.**
+
+### Environnement
+
+| | |
+|---|---|
+| Machine | Mac17,6 — Apple M5 Max, 18 cœurs, arm64, 64 Gio |
+| OS | darwin 25.5.0 (`productVersion` 26.5.1) |
+| Chrome | 150.0.7871.127, **headless** |
+| Node | v26.5.0 · Playwright 1.61.1 · .NET SDK 10.0.301 · esbuild 0.28.1 |
+| Date | **2026-07-17**, run 10:28 → 10:52 UTC (~24 min) |
+
+### Intégrité vérifiée depuis l'artefact
+
+- **Protocole (§7) tenu** : Release, gzip ET brotli, cache vide (BrowserContext frais + `setCacheDisabled` +
+  `no-store`), octets **DU FIL** via CDP `encodedDataLength`, **10 runs**, **médiane + IQR, jamais la
+  moyenne**.
+- **Entrelacement réel** (contre le confond thermique n°47), lu depuis les `startedAt` : bloc gzip
+  `nojit → hand → gen → aot`, bloc brotli **en miroir** `aot → gen → hand → nojit`. L'identité de framework
+  ne peut pas corréler avec la dérive.
+- **Oracle de labels : MATCH.** `filament-rows-gen` produit le flux Park-Miller **exact**
+  (`first5 = [adorable pink desk, unsightly purple sandwich, large brown sandwich, …]`, `row1000 = important
+  white pizza`), `contractCheck.conforms:true` sur 1000 lignes au contrat DOM exact. **Le générateur fait
+  le vrai travail par ligne — 3 tirages + concat — sans hisser ni interner un label.** C'est l'anti-triche
+  central de `Rows`, et il passe.
+- **RÉSERVE nommée** : `schemaVersion:3` **ne porte PLUS le hash d'identité du harness** (n°43) que les
+  entrées n°4/5 portaient. « Seul le composant change » n'est donc **pas prouvable depuis ce champ** ; il
+  reste étayé plus faiblement (même fenêtre de 24 min, même schéma, même `config`, harness commité et
+  inchangé). À rétablir avant que cet axe ne soit re-mesuré.
+- **RÉSERVE nommée** : cette entrée **n'a PAS été auditée de façon adverse** (la limite de session a tué la
+  phase d'audit). Les nombres sont vérifiés par le mainteneur depuis l'artefact, **pas** par le panel à 4
+  lentilles qui a trouvé un bloqueur à chaque phase précédente. L'audit reste **dû**.
+
+### C1 — poids transféré (octets du fil, cache vide)
+
+| label | gzip | brotli | vs seuil 10 000 |
+|---|---|---|---|
+| `filament-counter-gen` (généré) | **2 987** | 2 615 | **PASS** — 3,35× sous |
+| `filament-rows-gen` (généré) | **4 373** | 3 911 | **PASS** — 2,29× sous |
+| `blazor-counter-nojit` | 1 885 613 | 1 551 670 | — |
+| `blazor-rows-nojit` | 1 888 029 | 1 553 388 | — |
+
+**C1 : PASS pour les deux apps générées.** `filament-rows-gen` bat `blazor-rows-nojit` par **432× (gzip) /
+397× (brotli)**. La cible C2 la plus dure (50×) passe très au large. Le coût du générateur vs l'answer key
+est **+8 o gzip** sur `Rows` (4 373 vs 4 365) et **0 o** sur `Counter` (2 987 vs 2 987).
+
+### C4 — temps `Rows`, médiane (IQR), n=10, gzip
+
+| scénario | `blazor-rows-nojit` | `blazor-rows-aot` | `filament-rows` (main) | **`filament-rows-gen`** |
+|---|---|---|---|---|
+| create-cold | 47,95 (1,05) | 25,00 (9,88) | 6,45 (0,53) | **6,65 (0,80)** |
+| create-warm | 16,15 (3,98) | 7,90 (2,80) | 3,40 (0,27) | **3,10 (0,10)** |
+| update | 14,70 (2,20) | 4,35 (0,25) | 0,40 (0,08) | **0,40 (0,07)** |
+| swap | 14,60 (0,37) | 3,90 (0,97) | 0,50 (0,10) | **0,50 (0,07)** |
+| clear | 4,10 (0,25) | 3,25 (0,53) | 1,80 (0,07) | **1,80 (0,07)** |
+
+**C4 : PASS sur les quatre scénarios de la spec.** `filament-rows-gen` n'est « pas plus lent » que le
+**plus rapide** des deux Blazor (l'AOT) sur chacun — et le bat largement : create-warm (la tête, n°13/15)
+**3,10 vs 7,90 ≈ 2,5×**, update **≈ 11×**, swap **≈ 8×**, clear **1,8×**, create-cold **3,8×**.
+
+> **RÉSERVE n°32 (plancher de l'appareil).** `update`/`swap` à 0,40/0,50 ms sont 4-5 quanta du plancher
+> `performance.now()` (0,1 ms). Les IQR (0,07) le confirment. Le VERDICT « pas plus lent » tient — Blazor
+> est à 4,35/3,90 ms, loin du plancher — mais on ne cite **pas de ratio fin** sur ces deux lignes.
+
+### C3 — 1 écriture DOM par incrément (compteur généré)
+
+`filament-counter-gen` : `writesPerIncrement = [1,1,1,1,1]`, `medianWrites=1`, une seule écriture
+`characterData` sur `#text in <span#counter-value>` — **identique** à `filament-counter` (main) et à
+`blazor-counter-nojit`. Instrument : `MutationObserver` sur `body`, code **agnostique** identique sur les
+deux frameworks. **PASS.** Rappel n°30 : Blazor franchit cette barre **exactement aussi bien** ; C3 est une
+**barre de correction** que la sortie du générateur franchit, **pas un avantage** qu'elle marque. La sonde
+d'allocation reste **complète pour Filament, aveugle à Blazor** — aucun ratio d'allocation inter-framework
+n'est cité.
+
+### « Les mesures sont inchangées » — VÉRIFIÉ
+
+Sortie du générateur vs answer key écrite à la main, **même run**, même harness : `Rows` create-warm
+3,10 vs 3,40, update 0,40 vs 0,40, swap 0,50 vs 0,50, clear 1,80 vs 1,80 ; `Counter` increment cold/warm
+0,50/0,10 des **deux** côtés, poids **identique** au fil. **Le générateur n'est pas plus lent ni plus lourd
+que le JS écrit à la main.** L'axe « inchangé » de la porte de la Phase 3 tient.
+
+### Verdict de la porte Phase 3 (§6) — CONJONCTION DE TROIS TERMES
+
+| terme | verdict |
+|---|---|
+| (a) les deux apps compilent depuis du `.razor` **pur** | **Counter : oui, porte VERTE** (alpha-équivalent à l'answer key ; la Phase 3 a fermé le trou n°55 en traduisant `@code`). **Rows : compile, porte ROUGE** — divergence à 3 points **nommés, aucun un bug de traduction** (voir ci-dessous). |
+| (b) les mesures sont inchangées | **oui** (section ci-dessus). |
+| (c) 20 cas hors sous-ensemble → 20 diagnostics corrects | **oui — 27/27**, chaque code dans `{FIL0001,FIL0002,FIL0003}`, chaque `(ligne,col)` sur le jeton fautif, `exit 1`, aucun fichier écrit. **3 familles de faux positifs PRÉ-EXISTANTES divulguées** (division `double/double`, composition de composant, `@if/@foreach` à la racine) — « erreur claire », non bloquantes, **appel du mainteneur**. |
+
+**Les 3 divergences de la porte `Rows`**, toutes reportées par le test lui-même, aucune un bug :
+1. **Le handler** — `rows.js` référence `run`/`update`/… ; la n°68 inline. Les deux answer keys spécifient
+   des mappings de handler **différents**, disclosé d'avance.
+2. **`+=` sur un signal** — `rows.js` développe `x.value = x.value + y` à la main (évalue `_rows[i]`
+   **deux fois**) ; le générateur suit la règle « no syntactic desugaring » de `counter.js` et évalue
+   **une** fois — sans doute le plus correct des deux.
+3. **Les nœuds blancs** — `rows.js` ne construit aucun des quatre nœuds texte `\n    ` entre les boutons ;
+   **Blazor les livre tous les quatre** (vérifié depuis son `BuildRenderTree`). **L'answer key diverge de la
+   BASELINE**, exactement la situation de la n°64. Émettre ces nœuds rend Filament **plus gros** (+152 o) —
+   la divergence **coûte** à Filament, ce qui prouve que le motif n'est pas de gonfler la porte.
+
+> **Neutraliser exactement ces 3 points côté généré → `canon` rapporte ALPHA-ÉQUIVALENT à l'octet.** Tout
+> le reste — le réassemblage du `@foreach` (accolades déséquilibrées de l'IR, n°54), record → objet,
+> l'analyse d'échappement au site de construction, tableau + signal de version, `list()`, `@key`, le LCG,
+> `batch`, l'ordre des méthodes, le hoisting — est **exact au jeton**. **La porte `Rows` est ROUGE parce
+> que l'answer key et le générateur divergent, PAS parce que la traduction échoue.** Corriger `rows.js`
+> comme la n°64 a corrigé `counter.js` est **l'appel du mainteneur** — le diff EST le résultat (n°21/51).
+
+### §8 — LA PORTE DE DÉCISION FINALE
+
+**C1 ET C4 passent sur la sortie du générateur, pour les deux apps.** C'est **exactement** la donnée que
+les n°34/50 ont dit ne pas exister encore. **Elle existe : la variante RADICALE est VIABLE.** Le prix
+nommé par la spec reste **la rupture totale avec l'écosystème de composants Blazor**, et deux apps démo ne
+prouvent pas qu'un framework entier tient — mais la **condition de viabilité** de la §8 (« sortie du
+générateur sous 10 ko aux temps C4 ») est **satisfaite et mesurée**, plus supposée.
+
+**Ce que cette entrée N'établit PAS** (standard n°50) : la porte `Rows` reste rouge (appel `rows.js`
+pendant) ; l'audit adverse n'a pas tourné ; le hash de harness manque au schéma 3 ; le sous-ensemble §5
+est **étroit** — la §3 (async, LINQ, génériques, héritage, DI, routing, formulaires, `EventCallback`,
+`RenderFragment`, paramètres cascadés) est **le prix** de ces chiffres et n'est pas près d'être payé.
+
+---
+
+*Fin de l'entrée n°7. Ne pas modifier — ajouter une entrée n°8 pour toute rectification.*

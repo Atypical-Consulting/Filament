@@ -1564,9 +1564,15 @@ sortie**. Même motif que le test de porte, qui déplace sa propre sortie **hors
 **Le chiffre, et son signe.** **+18 o gzip (+0,60 %) · +19 o brotli (+0,73 %)** sur les octets **du fil**
 (n°44) ; **0,18 % du budget de 10 000 o** ; **IQR 0 des deux côtés — le delta est RÉSOLU, pas du bruit**.
 **Attribué CONSTRUCTIVEMENT** : en neutralisant les deux écarts de la n°55 **un à la fois**, le bundle
-reproduit celui de l'answer key **À L'OCTET** (2 986 brut / 1 265 gzip des deux côtés). **La compilation du
-template coûte ZÉRO octet** ; **la totalité du +18 o est les deux écarts nommés** (nœuds blancs **11 o**,
-indirection du handler **7 o**). **Provenance re-vérifiée après la mesure** : reconstruire depuis la source
+reproduit celui de l'answer key **EN TAILLE — 2 986 brut et 1 265 gzip des deux côtés — et `canon` les
+dit ALPHA-ÉQUIVALENTS**. **La compilation du template coûte ZÉRO octet** ; **la totalité du +18 o est les
+deux écarts nommés** (nœuds blancs **11 o**, indirection du handler **7 o**).
+> **[RECTIFIÉ — voir n°66.]** Ce paragraphe disait « reproduit celui de l'answer key **À L'OCTET** ».
+> **C'est faux** : les deux bundles sont **identiques en TAILLE** (brut *et* gzip) et **alpha-équivalents**,
+> mais **12 de leurs 2 986 octets diffèrent (0,40 %)** — tous des lettres d'identifiants choisies par le
+> minifieur. La formulation d'origine est **conservée ici** (n°60 : effacer une erreur après coup effacerait
+> la seule preuve que ce dépôt en produit) ; le corps est corrigé pour ne plus **affirmer** le faux.
+> **Le chiffre, lui, tient : re-mesuré indépendamment, 2 986/1 265 des deux côtés, `canon` ALPHA-ÉQUIVALENT.** **Provenance re-vérifiée après la mesure** : reconstruire depuis la source
 reproduit les octets mesurés **bit pour bit** (`app.js` md5 `edbca7c9…`, `Counter.g.js` md5 `be5c37bc…`).
 **Le générateur est déterministe.**
 
@@ -1756,3 +1762,787 @@ conclusion a été généralisée à « **aucun** JSON de résultat ». **Un gre
 exactement à un grep qui prouve une absence** — c'est le piège que ce dépôt s'est déjà infligé (n°43 : vérifier
 depuis l'**artefact**, jamais depuis le drapeau qu'on croit avoir passé). **La vérification a été refaite sur
 l'arbre entier avant écriture, et c'est ce qui a attrapé l'erreur.**
+
+---
+
+# Phase 2 — arbitrages de la passe de correction (2026-07-16)
+
+## 64. L'answer key **DIVERGEAIT DU CONTRAT DOM** — corrigée, et le motif est le CONTRAT, pas la porte
+
+**Décision.** `samples/Counter/counter.js` **construit désormais les deux nœuds texte `"\n\n"`** entre
+`<h1>`/`<p>`/`<button>`. Elle en construisait **zéro**. **C'est l'arbitrage du propriétaire, pas de
+l'implémenteur** — la n°62(c) le lui avait explicitement renvoyé.
+
+**Ceci est EXACTEMENT le geste que les n°21/n°51 interdisent** (« **ne JAMAIS éditer l'answer key pour
+faire passer la porte** »), donc la justification doit tenir toute seule, et elle est la suivante.
+
+**Le fait, VÉRIFIÉ DANS UN NAVIGATEUR AVANT DE TOUCHER AU FICHIER, depuis les artefacts servis** — pas
+sur la foi de l'audit, ni sur celle du propriétaire :
+
+| label servi | `#app.childNodes` | nœuds |
+|---|---|---:|
+| `blazor-counter-nojit` | `["<!--!-->", "<h1#title>", "\n\n", "<p>", "<!--!-->", "\n\n", "<button#increment>"]` | **7** |
+| `filament-counter-gen` (**généré**) | `["<h1#title>", "\n\n", "<p>", "\n\n", "<button#increment>"]` | **5** |
+| `filament-counter` (**answer key, AVANT**) | `["<h1#title>", "<p>", "<button#increment>"]` | **3** |
+
+Corroboré par la source : `baseline/Counter.Blazor/App.razor` a bien des **lignes vides** aux lignes
+10–14, et l'en-tête de `counter.js` **transcrivait la source SANS elles** — c'est très probablement par
+là qu'elles ont été perdues. **Le GÉNÉRATEUR avait raison ; l'ANSWER KEY était l'artefact divergent.**
+
+**Pourquoi on corrige, et le raisonnement est le contrat.** Un **contrat DOM qui n'est pas réellement
+partagé invalide TOUTE comparaison C4** bâtie dessus : le banc affirme que les deux frameworks font
+**le même travail** (n°5), et une référence qui rend **MOINS de nœuds que la baseline** offre à Filament
+un **avantage gratuit au create-time que Blazor, lui, paie**. C'était déjà la politique de la Phase 1,
+appliquée **à `Rows` et pas à `Counter`** : `RowsApp.razor` garde son balisage de ligne **sur UNE SEULE
+LIGNE** précisément pour qu'aucun nœud texte parasite n'apparaisse, et **son commentaire le dit** — en
+nommant même le marqueur `<!--!-->` de Blazor. **La règle existait ; `Counter` n'en avait pas bénéficié.**
+*(Vérifié plutôt que supposé : le balisage de `Rows` est bien sur une ligne — `rows.js` n'est PAS touché.)*
+
+**Le test d'honnêteté, et il est passé.** **On ferait ce changement même s'il rendait le générateur PIRE.**
+Preuve **opérationnelle** qu'il n'a pas été fait pour la porte : **la porte ÉCHOUE TOUJOURS.** Elle
+échoue **au même jeton canonique #42**, sur **l'écart n°1** (l'indirection du handler, la contradiction
+de spec de la n°55), qui est **intact**. Le rétrécissement de la porte est un **EFFET DE BORD**, et il
+est **chiffré** ci-dessous.
+
+**Ce que la correction a fait, prouvé CONSTRUCTIVEMENT** (n°55/n°59 : neutraliser un écart à la fois) :
+
+| neutralisation | contre l'answer key **AVANT** | contre l'answer key **APRÈS** |
+|---|---|---|
+| **le handler SEUL** | **NON ÉQUIVALENT** — divergence au jeton **#200** (les nœuds blancs) | **ALPHA-ÉQUIVALENT** |
+| rien | FAIL au jeton #42 | FAIL au jeton #42 |
+
+**La correction a supprimé l'écart n°2 exactement, et RIEN d'autre.** La porte passe de **DEUX** écarts
+à **UN**. **Elle reste ROUGE.**
+
+**Coût en octets — mesuré, pas estimé, et aucun chiffre publié n'est édité à la main.** Bundle
+`filament-counter` (esbuild 0.28.1, flags de production, `gzip -9 -n`) : **2 986 → 3 056 brut**,
+**1 265 → 1 276 gzip** — soit **+70 o brut / +11 o gzip**, exactement les « nœuds blancs = 11 o » que la
+n°59 avait attribués. **Conséquence arithmétique élégante et attendue** : le delta générateur-vs-answer-key
+tombe de **+18 o à +7 o gzip**, et **7 o est précisément le coût de l'indirection du handler** que la n°59
+avait isolé. **Les deux moitiés du +18 o de la n°59 se re-vérifient d'elles-mêmes ici.** C1 reste **PASS**
+avec une marge massive. **La phase Mesure re-mesure les octets DU FIL** (n°44) ; rien n'est reporté à la main.
+
+**LE RÉSIDU EST DIVULGUÉ, PAS ENCAISSÉ — et c'est le point qui compte le plus.** **Même corrigée,
+Filament construit 5 nœuds contre 7 pour Blazor.** Les **2 nœuds en trop sont des marqueurs COMMENTAIRE
+`<!--!-->`** (`nodeType 8`, `data "!"`) — **un par appel `AddMarkupContent`**, vérifié depuis le DOM servi :
+`innerHTML` = `<!--!--><h1 id="title">Counter</h1>\n\n<p>…</p><!--!-->\n\n<button…>`. C'est la
+**comptabilité interne du renderer de Blazor** (retrouver plus tard une plage de markup brut), **pas du
+contenu que la source déclare**. **Filament POURRAIT les émettre** — ce sont de simples nœuds commentaire —
+**et il ne devrait pas** : il n'a ni arbre de rendu, ni diffing, ni rien à retrouver plus tard, donc
+expédier deux commentaires dont l'unique fonction est de servir la machinerie que ce POC existe pour
+**ne pas avoir** serait absurde. **Mais 5 < 7 reste un avantage réel et gratuit au create-time.** **Cela
+demeure la dette OUVERTE de la n°20** (« balisage exact des lignes … ~25 % de nœuds DOM en moins,
+**gratuitement** »), désormais **chiffrée pour `Counter` : 2 nœuds sur 7**. **Elle n'est PAS soldée ici.**
+
+## 65. Le générateur **ÉPISSAIT LES HANDLERS VERBATIM** — la n°41 pour la TROISIÈME fois, et le bouton était mort
+
+**Décision.** **UNE SEULE méthode**, `NamedByTemplate()`, est désormais le **seul chemin** par lequel un
+nom écrit par le template atteint le module émis. **Le chemin de LECTURE et le chemin d'ÉVÉNEMENT
+l'appellent tous les deux.**
+
+**Le fait, reproduit contre l'arbre commité avant toute correction.** `TemplateCompiler.cs:503`
+(`EmitBinding`, **lecture**) **gardait** `^[A-Za-z_$][A-Za-z0-9_$]*$`. `TemplateCompiler.cs:459`
+(`EmitAttribute`, **événement**) émettait `listen({v}, {domEvent}, {handler});` avec **ZÉRO contrôle** sur
+`handler`. Mesuré, les quatre :
+
+```
+@onclick="() => currentCount++"                       -> exit 0, 0 diagnostic, FICHIER ÉCRIT
+@onclick="@(e => Console.WriteLine(e.ClientX))"       -> exit 0, 0 diagnostic, FICHIER ÉCRIT
+@onclick="async () => { await Task.Delay(1); c++; }"  -> exit 0, 0 diagnostic, FICHIER ÉCRIT
+@onclick="NoSuchMethodAnywhere"                       -> exit 0, 0 diagnostic, FICHIER ÉCRIT
+```
+
+**Piloté dans CHROME, pas en jsdom, depuis un bundle servi** (`let currentCount = signal(0)` + le splice) :
+**esbuild ACCEPTE**, build **vert** ; le module **charge**, `mount()` **retourne**, la page rend **« 0 »**,
+`#title` est là, la page **est parfaite** — et après **3 clics** elle rend **toujours « 0 »**, avec
+**ZÉRO erreur** (`window.onerror` vide, `console.error` vide). **Les deux moitiés de la §10 violées d'un
+coup : aucun diagnostic ET du JS silencieusement faux.**
+
+**Nuance relevée en le lançant, et qui CORRIGE le rapport d'audit amont.** Avec `const currentCount`
+(la forme qu'emploie réellement `Counter.razor`), **esbuild REFUSE** le splice (« Cannot assign to
+"currentCount" because it is a constant ») : ce cas précis meurt **bruyamment au build**. C'est **fortuit
+et non portant** — cela tient à ce que l'auteur ait écrit `const` plutôt que `let`, et à un contrôle
+statique d'esbuild. **Ce n'est PAS une garde du générateur**, et avec `let` le splice traverse **toute la
+chaîne en silence** (prouvé ci-dessus). **Le défaut est que le GÉNÉRATEUR ne disait rien** ; ce qu'un
+outil en aval attrape par accident ne le rachète pas.
+
+**La garde est posée sur l'INVARIANT, pas sur la ligne du repro** — c'est la règle de la n°36, et c'est
+**tout l'enjeu** : la n°41 documente ce motif (« garde réparée sur un chemin, trou identique **un cadre
+plus loin** »), et **c'est sa TROISIÈME occurrence dans ce dépôt** (n°41 `runEffect`, n°60 le leurre de
+test, ici). Réparer `EmitAttribute` seul aurait laissé le prochain chemin d'émission libre d'épisser.
+
+**Trois conditions, et la MUTATION a dicté leur rôle réel plutôt que l'intuition :**
+1. **identifiant nu** — sinon `compound-expression` ;
+2. **résolution** contre ce que `@code` lie — sinon `unresolved-name` ;
+3. **c'est une FONCTION** (handlers uniquement) — sinon `handler-is-not-a-method`.
+
+**Ce que la mutation a établi et qu'aucun raisonnement n'avait vu.** Désactiver (1) laisse les fixtures
+lambda **REFUSÉES quand même**, par (2) : rien dans `_declared` n'est autre chose qu'un identifiant nu,
+donc **(2) SUBSUME (1)**. **(1) n'est donc pas la garde de sûreté — c'est la garde du MESSAGE**, et elle
+est conservée pour cela (et parce qu'en Phase 3, quand un vrai front-end C# remplacera ce scrape, **c'est
+(1) qui voudra encore dire quelque chose**). **Consigné parce que l'inverse était l'hypothèse de départ.**
+
+**La condition (3) N'ÉTAIT PAS DEMANDÉE — elle a été trouvée en mutant le correctif.** `@onclick="currentCount"`
+**nomme de l'ÉTAT** : identifiant nu ✔, résolu ✔ ⇒ **`listen(el,'click',currentCount)` était émis à exit 0**.
+Vérifié en jsdom contre le vrai runtime : **`addEventListener` accepte un objet non-appelable SANS
+BRONCHER**, `dispatchEvent` **ne lève pas**, **le listener n'est JAMAIS appelé**. **Le bouton mort, encore,
+par un autre chemin.** La §5 dit « calls to **methods** declared in the same component » : c'était **déjà**
+hors sous-ensemble, **seule la garde manquait**. **Corriger les 4 cas demandés et laisser celui-là aurait
+été la n°41 une QUATRIÈME fois, dans la passe même qui prétend la clore.**
+
+**Limites NOMMÉES, parce qu'une garde partielle qui se lit comme complète EST le motif de la n°41.**
+Le scrape de `@code` **n'est pas un parseur JS** (la n°57 dit que cette phase n'en a pas) :
+- `const a = 1, b = 2;` ne lie que `a` aux yeux du scrape ⇒ un handler valide nommant `b` est **REFUSÉ**.
+  **Sens sûr** : une erreur claire, ce que la §10 autorise explicitement.
+- `const Foo` **dans un commentaire** est vu comme une liaison ⇒ **sur-acceptation**. Elle **dégrade vers
+  `listen(el,'click',Foo)` ⇒ ReferenceError à `mount()`, donc du BRUYANT** — jamais vers un bouton mort,
+  car la forme silencieuse (un lambda épissé) est tuée par (1) **avant** que la résolution soit consultée.
+- `const x = (a + b);` se lit comme appelable ⇒ (3) **RÉTRÉCIT** l'ensemble dangereux sans le **fermer**.
+
+**`@code` contenant du VRAI C# est diagnostiqué, et la garde est DÉLIBÉRÉMENT PARTIELLE parce qu'elle est
+PROUVABLE.** Avant : `@code { private int currentCount = 0; }` ⇒ **exit 0, aucun diagnostic, C# épissé dans
+le module**. Le discriminant retenu est `private`/`protected`/`public` **en tête d'instruction** : ce sont
+des **mots réservés du mode strict** en ECMAScript, et `@code` est épissé dans un **module ES** (toujours
+strict) — donc **aucun d'eux ne peut commencer une instruction dans un JS valide**. **Faux positif :
+impossible, par preuve, pas par plausibilité.** `internal` est **écarté volontairement** : c'est un
+identifiant JS parfaitement légal (`internal instanceof Foo` parse), l'inclure échangerait une preuve
+contre une devinette. **NON attrapé, et divulgué** : le C# sans modificateur (`int x = 0;`), les
+génériques. **Tous restent épissés, tous meurent d'une SyntaxError au chargement** — **bruyant, jamais
+silencieux**. La réponse complète est la Phase 3, où `@code` devient du C# et reçoit un vrai front-end.
+
+**`FIL000` squattait l'espace réservé de la spec.** `Program.cs:118` frappait un `FIL000` nu pour « je ne
+trouve pas le runtime » — une défaillance de l'**OUTIL**, qui se lit comme le `FIL0001` réservé au premier
+coup d'œil, et **c'est la seule ligne que le nettoyage de la n°61 avait manquée**. **Cause : zéro
+couverture de test.** Devenu **`FIL-WIRING`**, et le test **asserte que `FIL\d` n'apparaît JAMAIS** sur ce
+chemin — **une garde sur la CLASSE, pas sur la chaîne**.
+
+**Tout est MUTATION-TESTÉ — « un test qu'on n'a pas vu échouer n'est pas un test ».** Les 5 mutants, tous
+**ROUGES sur exactement les tests attendus**, tous **restaurés à l'octet** (`diff` vide) :
+
+| mutant | rouge |
+|---|---|
+| (1) identifiant nu désactivé | les **3** lignes lambda |
+| (2) résolution désactivée | `HandlerUnresolved`, `BindingUnresolved` |
+| (3) test « est une fonction » désactivé | `HandlerIsState` (**dont `ARefusalWritesNoFile` ⇒ le fichier ÉTAIT écrit**) |
+| (4) détecteur C#-dans-`@code` no-opé | `CodeSeamIsCsharp` |
+| (5) `FIL-WIRING` re-devenu `FIL000` | `WiringFailure` |
+
+**Coût sur le chemin supporté : ZÉRO octet.** `Counter.razor` compile **byte-identique au snapshot
+approuvé** — vérifié par `diff`, pas par confiance. **61 tests, 60 verts, 1 rouge : la porte, et le rouge
+EST le résultat** (n°62).
+
+**Erreur de méthode commise dans cette passe, consignée parce qu'elle est instructive.** Après le mutant
+(1), la source a été restaurée et **le binaire ne l'a PAS été** : un contrôle manuel a alors tourné contre
+un **artefact MUTANT** et a rapporté le mauvais tag de diagnostic. **C'est exactement le piège de la
+n°43/n°10** — « vérifier depuis l'ARTEFACT, jamais depuis le drapeau qu'on croit avoir passé » — subi ici
+sous sa forme la plus bête : *la source est propre* n'est pas *le binaire est propre*. Attrapé parce que
+le tag ne correspondait pas au test ; `dotnet test` recompilait, lui, donc **aucun verdict de suite n'était
+touché**. **Le `diff` de restauration ne prouve que la source ; seul un rebuild prouve l'artefact.**
+
+## 66. « **À L'OCTET** » était un SUR-CLAIM — rectifié dans les trois documents, contre notre propre intérêt
+
+**Décision.** La phrase « **neutraliser ces deux points reproduit le bundle de l'answer key À L'OCTET** »
+(n°59, `BENCH.md` entrée n°5, et « *to the byte* » dans `README.md`) est **FAUSSE** et est **rectifiée**.
+Les bundles sont **identiques en TAILLE** et **alpha-équivalents** — **pas identiques à l'octet**.
+
+**Le fait, re-mesuré depuis les artefacts, esbuild 0.28.1, flags de production, `gzip -9 -n` :**
+
+| variante | brut | gzip | sha256 (16) |
+|---|---:|---:|---|
+| neutralisé | **2 986** | **1 265** | `bf71940860a97014` |
+| answer key | **2 986** | **1 265** | `277427fd57caa5f7` |
+
+**`cmp` diverge au caractère 19. Les sha256 ne concordent pas.** La divergence vaut **12 octets sur
+2 986 (0,40 %)**, et **les 12 sont des lettres d'identifiants** que le minifieur a distribuées autrement
+(`b`↔`h`, `_`↔`b`). **Aucun jeton, aucune chaîne, aucun appel ne diffère** — c'est **précisément** ce que
+l'alpha-équivalence existe pour ignorer, et **précisément** ce que « à l'octet » revendiquait en plus.
+
+**La revendication porteuse SURVIT : la compilation du template coûte ZÉRO octet.** Elle ne reposait pas
+sur l'identité octet-pour-octet mais sur l'**égalité de taille** + l'**alpha-équivalence**, toutes deux
+**re-vérifiées indépendamment**. **Tous les chiffres de la n°59 se reproduisent** (3 060/1 283,
+2 986/1 265, 2 986/1 265). **On ne sur-corrige PAS** : le résultat tient, seul le mot était trop fort.
+
+**Pourquoi cela vaut une entrée alors que le verdict ne bouge pas.** « À l'octet » est **falsifiable en
+une commande** (`cmp`), et il était faux. **Ce dépôt a déjà rectifié cette classe exacte chez autrui** :
+la n°18 reproche à un rapport amont de dire « *byte-exact* » **alors qu'il comparait des TAILLES**. **Sept
+entrées plus tard, nous avons commis la même faute** — d'où la rectification, **au même standard**
+(n°46/n°48 : les erreurs se publient, surtout quand elles nous arrangent). Un lecteur qui lance `cmp`, le
+voit échouer, et ne peut pas savoir que le reste est solide **a raison de douter du reste** (n°47).
+
+**Où c'est rectifié.** `README.md` **corrigé sur place** · `DECISIONS.md` n°59 **corrigée avec la
+formulation d'origine CONSERVÉE en regard** (n°60 : effacer une erreur après coup effacerait la seule
+preuve que ce dépôt en produit) · `BENCH.md` **entrée n°6 appendue**, l'entrée n°5 **intacte** (append-only :
+ses chiffres sont justes, c'est sa phrase de conclusion qui ne l'était pas).
+
+**Piège d'appareil consigné, parce qu'il a failli produire une SECONDE fausse mesure.** Un premier
+contrôle rendait **1 280 contre 1 278 gzip** — deux bundles de tailles **différentes**, ce qui aurait
+contredit la n°59 sur ses **chiffres** et pas seulement sur son **mot**. Cause : **`gzip -9 -c` inscrit le
+NOM DU FICHIER dans l'en-tête**, et `neutralised.js`/`answerkey.js` n'ont pas la même longueur de nom.
+`zlib.gzipSync` (ce qu'emploie `build-filament.sh`) n'inscrit rien : la mesure juste est `gzip -9 **-n**`,
+qui rend **1 265 = 1 265**. **La n°59 avait raison ; c'est le CONTRÔLE qui était faux.** Règle n°43 : un
+contrôle dont on n'a pas établi qu'il mesure ce qu'on croit **n'est pas une vérification**.
+
+---
+
+# Phase 3 — arbitrages du sous-ensemble C# vers JS, run `Counter` (2026-07-17)
+
+## 67. La règle de réactivité est la **CONJONCTION** des deux answer keys — aucune des deux ne suffit
+
+**Décision.** Un champ est lifté en `Signal` **ssi le template le LIT** **ET** **qu'il est assigné
+ailleurs qu'à son site de construction**. Les deux conditions, ensemble.
+
+**Raison — les deux answer keys énoncent des règles DIFFÉRENTES, et chacune SEULE est fausse.**
+
+| source | règle énoncée |
+|---|---|
+| `counter.js` | « A private field **READ by the template** is reactive state; the compiler lifts it to a Signal » |
+| `rows.js` (2) | « a property is reactive **iff it is assigned** anywhere other than its object's construction site » |
+
+Confrontées aux **six** déclarations d'état que les deux fichiers contiennent, **seule la conjonction**
+les reproduit toutes :
+
+| état | lu ? | assigné ? | answer key | conjonction |
+|---|---|---|---|---|
+| `currentCount` | oui | oui | `signal(0)` | signal ✓ |
+| `Row.Label` | oui | oui | `signal(...)` | signal ✓ |
+| `Row.Id` | oui | **non** | champ nu | plain ✓ |
+| `_rows` | oui | oui | array + version | (Rows) |
+| `_nextId` | **non** | oui | `let _nextId = 1` | plain ✓ |
+| `_seed` | **non** | oui | `let _seed = 42.0` | plain ✓ |
+
+La condition de LECTURE seule lifterait `_nextId` et `_seed` — `rows.js` les garde en `let` nu. La
+condition d'ÉCRITURE seule lifterait `Row.Id` — et `rows.js` dit que le garder nu est **FORCÉ** (une
+lecture de signal dans le `keyOf` de `list()` abonnerait la liste aux 1000 ids). **Chaque condition est
+nécessaire, aucune n'est suffisante.** Vérifié sur les trois quadrants, en exécutant le générateur
+(`DecisionFiftySeven_...` dans `CodeTests`), pas en relisant les en-têtes.
+
+**Ceci FERME le trou divulgué par la n°57**, et par CONSTRUCTION, pas par une vérification ajoutée.
+La n°57 : « *un `@x` sur un `let x = 5` ordinaire émettrait `x.value` — faux. Le détecter exigerait
+d'analyser le JS de `@code`, ce que cette phase ne fait pas.* » Le trou n'était pas un test manquant,
+c'était un **front end manquant** : avec une couture JS opaque, « suppose que tout binding lu est un
+signal » était la seule règle disponible, et c'est cette supposition qui était fausse. La Phase 3 ne
+suppose plus : elle **décide** le lifting, donc le site de lecture interroge **la table que le compilateur
+a lui-même remplie** (`CSharpFrontEnd.IsSignal`). Un champ non lifté se lit tel quel et compile en une
+écriture de texte au create-time, sans effet — exactement le traitement de `@row.Id` dans `rows.js`.
+
+**Mutation-testé, et le mutant EST le défaut historique** : `IsSignal => _fields.ContainsKey(name)` est
+mot pour mot la règle de la Phase 2 (« tout champ lu est un signal ») → **ROUGE**. Retirer la moitié
+LECTURE de la conjonction → **ROUGE** sur le quadrant `_nextId`.
+
+## 68. **INLINER** le corps du handler — l'arbitrage, et la contradiction entre les deux answer keys
+
+**Décision.** Une méthode dont **le seul usage** est **un** gestionnaire d'événement est **inlinée** dans
+ce gestionnaire. Une méthode appelée aussi depuis `@code` garde sa `function` et le handler l'**appelle**.
+Le handler est **toujours une flèche**, jamais une référence nue.
+
+**Raison — la référence, c'est la spec.** L'answer key **inline** (`listen(button,'click',() => {
+currentCount.value++; })`) et n'émet **aucun** binding `Increment`. Les n°21/n°51 en font **LA RÉFÉRENCE**.
+La n°55 avait constaté que cette forme **présuppose la Phase 3** (lire un CORPS = traduire `@code`) et
+avait laissé la porte **ROUGE** plutôt que de déplacer le seuil. **La Phase 3 fait le travail : la
+contradiction se résout en la faisant, pas en la négociant.**
+
+**La règle, énoncée comme règle et pas comme « ça tombe juste » :** une fonction privée à un seul appelant,
+émise comme fonction PLUS une référence, est une indirection qui n'existe que pour porter un nom. Filament
+n'expédie aucune machinerie dont le seul rôle est de servir la machinerie. C'est de l'**inlining
+single-use**, mécanique et vérifiable.
+
+**Pourquoi TOUJOURS une flèche, et c'est une question de correction :** `addEventListener` invoque son
+listener **avec l'Event**. `listen(el,'click',Increment)` appelle donc une méthode C# à **zéro paramètre**
+avec **un argument**. Pour `void Increment()` JS l'ignore ; pour une méthode qui prend un paramètre, cela
+lierait un Event DOM brut là où le C# dit `MouseEventArgs`. **Les deux answer keys sont d'accord sur ce
+point** : `counter.js` émet `() => {...}`, `rows.js` émet `() => batch(run)`. **Aucune** n'émet
+`listen(el,'click',Handler)`.
+
+**MESURÉ (esbuild 0.28.1, flags de production, `gzip -9 -n`, artefacts reconstruits) :**
+
+| forme | brut | gzip | porte |
+|---|---:|---:|---|
+| **inline** | **3 056** | **1 276** | **ALPHA-ÉQUIVALENT** |
+| référence | 3 075 | 1 284 | NON ÉQUIVALENT, jeton #39 |
+
+**LES DEUX CONFONDS POINTENT DANS LE MÊME SENS ET ON LE DIT** : inliner est **plus petit** ET **fait
+passer la porte**. Ce n'est donc **pas** le motif qui prouve la décision — c'est la référence qui la
+dicte, et le gain est une **conséquence**. La preuve que le motif n'est pas la porte est ailleurs : la
+n°69 ci-dessous publie un défaut **de notre propre code**, et le paragraphe suivant publie le fait qui
+rend cette règle **PIRE** pour l'étape suivante.
+
+**DIVULGATION CONTRE NOTRE INTÉRÊT — `rows.js` CONTREDIT cette règle.** Il émet `function update()` /
+`function swapRows()` et les référence depuis leurs handlers, alors que **chacune est nommée par
+exactement un `@onclick` et appelée de nulle part ailleurs** : sous la règle ci-dessus, la key de `Rows`
+les voudrait **inlinées**. **Les deux answer keys spécifient donc des mappings de handler DIFFÉRENTS**, et
+aucune règle unique ne reproduit les deux — sauf à la rétro-ingénierer depuis les artefacts (« inliner ssi
+le corps n'a pas besoin de `batch` » les ajuste toutes les deux et **ne signifie rien**). La key de
+`Counter` est sans ambiguïté et c'est **la** référence pour `Counter` ; le désaccord de `Rows` est
+**rapporté**, pas maquillé depuis une étape qui ne mesure pas `Rows`. **C'est au propriétaire de trancher
+avant l'étape `Rows`.**
+
+**`batch()` ssi il y a plus d'une écriture à COALESCER** — et c'est la règle qui réconcilie les deux keys,
+qui se contredisent en surface (`counter.js` : « No batch(): the body performs exactly one write » ;
+`rows.js` (3) : « Every @onclick handler body runs inside batch() »). Une écriture dans une BOUCLE compte
+pour plusieurs ; un appel porte les écritures de l'appelé ; tout ce qui n'est pas **prouvé** à une seule
+écriture prend le `batch`. `Counter` : une écriture, pas de boucle → **pas de batch**, comme la key.
+
+## 69. La suite des 20 cas hors sous-ensemble a trouvé un défaut **DANS LE COMPILATEUR QU'ELLE TESTE** — 13 cas sur 26 étaient SILENCIEUX
+
+**Le fait, mesuré avant d'être corrigé.** **13 des 26** cas hors sous-sensemble — **tous** les cas
+d'instruction et d'expression — sortaient en **exit 0**, **zéro diagnostic**, **fichier ÉCRIT** :
+
+```
+System.Console.WriteLine(currentCount);        -> exit 0, module contenant `/*refused*/;` en COMMENTAIRE
+while (currentCount < 10) { currentCount++; }  -> exit 0, `function Increment() { }` — la boucle ENTIÈRE disparue
+```
+
+Le second est **le bouton mort par une quatrième voie** : une méthode qui s'affiche parfaitement et ne
+fait **rien**. **Les deux moitiés de la §10 violées à la fois**, dans la passe dont c'est **précisément**
+le métier de les empêcher. **La n°41 pour la cinquième fois** — et cette fois c'est **nous**.
+
+**Cause.** Les corps de méthode étaient traduits **PARESSEUSEMENT**, à l'émission, c'est-à-dire **APRÈS**
+que l'appelant a lu `Diagnostics`. Les refus partaient donc dans une liste que **plus personne ne relirait**.
+
+**Correction sur l'INVARIANT, pas sur la ligne que le repro pointait (n°36).** Réordonner les deux appels
+aurait corrigé les deux repros **et laissé la forme qui les a produits**. À la place : les corps sont
+traduits **dans** `Compile()`, l'émission ne fait que **lire** un cache, et un drapeau `_sealed` rend
+« un diagnostic après `Compile()` » **irreprésentable** — c'est désormais un `FIL-WIRING` bruyant.
+
+**Ce que la suite a coûté et rapporté.** Écrite parce que la porte de la Phase 3 l'exige (« une suite de
+20 cas hors sous-ensemble produit 20 diagnostics corrects »), elle en contient **26**, et elle a payé
+**avant** d'être verte. **Mutation-testé** : neutraliser la traduction des corps → **16 ROUGES**.
+
+**Un second défaut, trouvé en la faisant tourner sur `Rows`.** Quand `@code` échoue, les **noms** de
+méthode sont enregistrés mais leurs corps jamais traduits : le walk résolvait `@onclick="Run"` et
+l'émetteur réclamait un corps inexistant → **`KeyNotFoundException`, exit 134**, une stack trace là où
+l'auteur devait lire « `List<T>`, ligne 41 ». **Rien n'est émis pour un fichier qu'on refuse** : c'est
+maintenant la règle, et `Rows` refuse proprement avec **11 diagnostics localisés**.
+
+**Un troisième, contre nous encore.** Le wrapper Roslyn n'avait **aucun `using`**, donc `List<string>` —
+**valide** dans les deux baselines (`ImplicitUsings`) — ne résolvait pas, et `RowsApp.razor` recevait
+quatre **`[unresolved-type]`** au lieu de **`[type-not-yet-implemented]`** : un diagnostic qui **blâme
+l'auteur pour une omission du compilateur**. `@code` doit **SIGNIFIER ici ce qu'il signifie dans le projet
+d'où il vient**, sinon un diagnostic à son sujet ne parle pas du code de l'auteur.
+
+## 70. Roslyn **5.6.0** cohabite avec Razor **6.0.36** — vérifié en EXÉCUTANT, pas en compilant
+
+**Décision.** `Microsoft.CodeAnalysis.CSharp` **5.6.0** est ajouté ; la n°52 (`Razor.Language` **6.0.36**,
+« ou rien ») est **intacte**. Razor 6.0.36 tire Roslyn **4.0.0** ; NuGet unifie vers 5.6.0, ce qui fait
+**franchir une version MAJEURE** à une dépendance d'un paquet mort.
+
+**Vérifié depuis l'artefact.** « Ça compile » ne prouve rien (n°10) : le risque était un
+`MissingMethodException` **au runtime**, dans la chaîne de tag helpers. Contrôle : le générateur **tourne**
+sur `Counter.razor` et sort **exit 0** — et comme `RazorFrontEnd.Parse` **lève** si zéro descripteur est
+résolu (n°53), **exit 0 PROUVE que la chaîne a résolu**. Suite **inchangée** avant/après le bump : **60
+passent / 1 échoue**, le même échec. **Ils ne se battent pas.**
+
+## 71. La porte de la Phase 2 est **FRANCHIE** — la n°55 est résolue en FAISANT le travail
+
+**Le fait.** `canon(minify(généré)) === canon(minify(answer key))` : **ALPHA-ÉQUIVALENT**, **670 o
+minifiés / 942 o canonisés / 234 jetons des deux côtés**. La n°55 avait déclaré la porte **INATTEIGNABLE
+sur `Counter`** et l'avait commitée **ROUGE**, en nommant **une seule** divergence restante : le handler.
+La Phase 3 traduit `@code`, donc la divergence est **atteignable**, et elle est **fermée**.
+
+**Ce n'est pas la porte qu'on a déplacée, c'est le travail qu'on a fait — et voici le contrôle qui le
+prouve.** Neutraliser **le seul inlining** (`ShouldInline => false`) rend la porte **NON ÉQUIVALENTE**,
+première divergence au **jeton canonique #39**, contexte : le module généré **déclare** `function V8()`
+là où la key va droit à `createElement`. **C'est mot pour mot la divergence n°1 de la n°55** (« le module
+généré **LIE** `const Increment = ...` ; la key ne le déclare jamais et inline le corps »), reproduite. La
+porte **peut** donc encore échouer : elle n'est pas devenue vraie, elle est devenue **satisfaite**.
+
+**Le coût en octets du générateur tombe à ZÉRO.** `filament-counter` **3 056 / 1 276** ·
+`filament-counter-gen` **3 056 / 1 276**. Le `+18 o` de l'entrée n°5, devenu `+7 o` après la n°64, est
+maintenant **0**. `cmp` diverge sur **12 caractères sur 3 056**, **tous** des lettres d'identifiants
+minifiés (`_`↔`h`, `b`↔`_`, `h`↔`b`) — **et on ne dit PAS « à l'octet »** : la n°66 a rectifié ce
+sur-claim exact, tailles **égales** et **alpha-équivalence**, rien de plus.
+
+**Vérifié en NAVIGATEUR, pas en compilant** (le blocage de la n°65 était un module qui compilait, se
+chargeait, s'affichait parfaitement et avait un bouton mort) : servi par `bench/harness/server.mjs`,
+rendu **« 0 »**, **5 clics → « 5 »**, **5 nœuds** (`h1#title`, `"\n\n"`, `p`, `"\n\n"`, `button#increment`),
+**zéro erreur**. **C3 tient sur du .razor PUR** : **1 seul `MutationRecord` `characterData` par
+incrément**, observé.
+
+**La forme la plus forte de « compile depuis du .razor PUR » :** le générateur compile
+**`baseline/Counter.Blazor/App.razor` LUI-MÊME** — le fichier **que Blazor compile**, en-tête de
+commentaire compris — et le résultat est **ALPHA-ÉQUIVALENT** à l'answer key. Ce n'est plus un argument
+sur deux fichiers censés concorder : c'est un fait sur un artefact.
+
+**Ce que cela ne dit PAS.** La porte de la **Phase 3** exige **les deux apps**. **`Rows` n'est pas fait**
+et est refusé avec 11 diagnostics localisés. La dette de la n°20 (**5 nœuds contre 7**) reste **OUVERTE**
+et **non encaissée**. Les chiffres du **FIL** appartiennent à la phase de Mesure (n°44) : les octets
+ci-dessus sont une **mesure de bundle au build**, pas une re-mesure C1/C4.
+
+## 72. `Rows` compile depuis du `.razor` PUR — la n°54 est **répondue en RÉ-ASSEMBLANT et en RE-PARSANT**, jamais en épissant
+
+**Le fait.** `baseline/Rows.Blazor/RowsApp.razor` — **le fichier que Blazor compile** — compile, et le
+module tourne : vérifié **en navigateur**, pas en compilant (voir la n°76).
+
+**Le problème, re-vérifié sur ce fichier avant d'écrire une ligne** (`--dump-ir`) :
+
+```
+CSharpCodeIntermediateNode     [CS] "            "                              <- l'indentation
+CSharpCodeIntermediateNode     [CS] "foreach (Row row in _rows)\n            {\n"  <- accolades NON ÉQUILIBRÉES
+MarkupElementIntermediateNode  <tr>                                            <- un FRÈRE, pas un enfant
+CSharpCodeIntermediateNode     [CS] "            }\n"
+```
+
+Razor n'émet **aucun** nœud de boucle. Ce n'est pas un bug : Blazor n'a **jamais besoin** que la boucle
+soit *comprise*, il re-parse ce texte avec Roslyn et appelle `RenderTreeBuilder` **à l'exécution**.
+Filament émet du JS : il doit la **TRADUIRE**, donc il lui faut la seule chose que Razor a détruite —
+**l'arbre syntaxique**.
+
+**LA SOLUTION : les spans sont ré-assemblés et le markup remis dedans SOUS FORME D'APPEL.**
+
+```
+foreach (Row row in _rows)
+{
+__filament_m0();              <- « émettre le nœud de markup 0 ici »
+__filament_s0(row.Id);        <- « cette expression est lue ICI, dans CE scope »
+__filament_s1(row.Label);
+__filament_s2(row.Id);        <- @key
+}
+```
+
+Ce texte **équilibre**, donc Roslyn le parse — et il est parsé **DANS LA MÊME CLASSE que `@code`** (deux
+`partial class`), donc `Row`, `_rows` **et** `row` se résolvent en **symboles réels**. Les marqueurs
+portent les deux faits que la concaténation détruirait : **où** le markup était dans le flot de
+statements, et **dans quel scope** chacune de ses `@expression` est lue. `row` est un **local de boucle** :
+rien hors de la boucle ne peut le résoudre, et rien ici n'a à le **deviner** — `__filament_s0(row.Id)` est
+*dans* la boucle, donc le modèle sémantique **répond**.
+
+**POURQUOI PAS UNE ÉPISSURE, qui est le raccourci évident.** Les accolades n'équilibrent qu'une fois le
+markup entre elles : un épisseur devrait émettre le JS du `<tr>` **DANS une chaîne C#** et espérer. §10 :
+« Toute construction hors sous-ensemble doit produire un diagnostic, **jamais du JS silencieusement
+faux**. » Une concaténation **jamais parsée** ne peut produire de diagnostic sur quoi que ce soit — elle ne
+peut produire que du **texte**.
+
+**L'espace de noms des marqueurs est RÉSERVÉ, et c'est VÉRIFIÉ.** Tout C# de l'auteur contenant
+`__filament` est **refusé, localisé** : un identifiant qui entrerait en collision avec un marqueur serait
+**lu COMME** un marqueur — du markup émis là où l'auteur a écrit un appel, à `exit 0`.
+
+**UN DÉFAUT DE CE PASSAGE, TROUVÉ EN EXÉCUTANT.** `SetKeyIntermediateNode` n'a **aucun token enfant** — sa
+valeur pend à une **propriété** `KeyValueToken` — donc le parcours générique rendait `""` pour `@key`.
+Mesuré : `__filament_s2();` **sans argument**, c'est-à-dire l'expression du `@key` **s'évaporant** en route
+vers le parser. Corrigé au point de lecture, avec le commentaire qui dit pourquoi.
+
+**CE QUI EST REFUSÉ PLUTÔT QU'APPROXIMÉ**, chacun localisé : `@if` dans le template (**dans** le
+sous-ensemble §5, mapping **non implémenté** — aucune answer key ne contient de branche, donc rien ici ne
+serait mesuré) ; du C# **imbriqué** dans du C# (il faudrait résoudre une expression dans **deux scopes à la
+fois**) ; un `@foreach` sur autre chose qu'un champ `List<T>` (`list()` doit pouvoir **s'abonner**) ; sur
+une liste que **rien ne mute** (pas de signal de version, donc pas de source) ; un `var` (le type de
+l'élément **décide** du mapping) ; un corps de boucle qui n'est pas **exactement un** élément (`list()`
+mappe **une** clé à **UN** nœud racine) ; un `@foreach` **sans `@key`**.
+
+## 73. Le **SITE DE CONSTRUCTION** est CALCULÉ — sans lui, la n°(2) de `rows.js` s'effondre et `Row.Id` devient un signal
+
+**Décision.** Une analyse d'échappement décide ce qu'est la « construction » : la **suite maximale** de
+statements `x.P = e;` **immédiatement après** `T x = new T();`, tant que `x` n'a **pas échappé**. Ces
+affectations sont **repliées dans un littéral objet** et **ne comptent pas** comme des écritures.
+
+```csharp
+Row row = new Row();        ->   const row = { id: _nextId, label: signal(nextLabel()) };
+row.Id = _nextId;                _nextId += 1;
+row.Label = NextLabel();         _rows.push(row);
+_nextId += 1;                    _rowsChanged();
+_rows.Add(row);
+```
+
+**C'EST PORTEUR, PAS COSMÉTIQUE.** `rows.js` (2) : « réactif ssi affecté **ailleurs qu'au site de
+construction de son objet** ». Sans l'analyse, `row.Id = _nextId` **est** une écriture dans `AddRow()`,
+donc `Row.Id` devient un **signal** — et `@key` compile vers le `keyOf` de `list()`, que `reconcile()`
+appelle **avec l'effet de liste ACTIF**. Résultat : **1 000 arêtes de dépendance** dont le seul effet
+possible est de **re-réconcilier toute la table**. `rows.js` dit que le mapping est **FORCÉ** exactement
+pour ça ; l'analyse est ce qui le rend **vrai** au lieu d'espéré. La key l'appelle « a bog-standard escape
+analysis, not cleverness » — et c'en est une.
+
+**L'ordre des propriétés est l'ordre des AFFECTATIONS, pas des déclarations** : c'est l'ordre
+d'évaluation du C#, et un littéral objet évalue ses valeurs dans l'ordre source. `rows.js` sur `AddRow` :
+« Field order matters and is preserved: Id is read from `_nextId`, THEN Label is drawn (3 LCG draws), THEN
+`_nextId` advances. »
+
+**Conséquence refusée volontairement :** l'initialiseur d'une propriété de record doit être un
+**littéral**. Le repli **supprime** un initialiseur que le site écrase (`Label = ""` puis
+`row.Label = NextLabel()` — un *dead store*). Supprimer un dead store est sûr ; supprimer un **appel** ne
+l'est pas. Le sous-ensemble n'admet donc que la forme où la suppression **ne peut pas** changer le
+comportement.
+
+**Mesuré, les trois quadrants, dans le module émis** (`RowsTests`) : `Row.Id` → `row.id`, **sans**
+`.value`, **sans** effet, écrit **à la création** ; `Row.Label` → `signal(...)` + **un** effet ;
+`_nextId`/`_seed` → `let` nu.
+
+## 74. Le bump de version : la **PROSE** de `rows.js` et son **CODE** se contredisent — on suit le CODE, et on le dit
+
+**Le conflit.** `rows.js` (1) énonce la règle : « every mutating operation bumps it … a mechanical rule a
+generator applies **per mutation site** ». Appliquée à la lettre, `SwapRows` a **DEUX** sites
+(`_rows[1] = _rows[998]` et `_rows[998] = tmp`) donc **deux** bumps. **La key en émet UN**, et dit
+pourquoi **sur la ligne même** : « One logical mutation; inside a batch the bump count is unobservable
+anyway, since the reconcile happens once when the batch closes. »
+
+**Décision.** Un bump après **chaque statement mutant**, et une **suite maximale** de statements mutants
+consécutifs en émet **UN**. C'est de l'**élimination de stores redondants** sur le signal de version — N
+stores sans lecture entre eux valent un store —, c'est-à-dire un **peephole**, pas une intuition. Cela
+reproduit les **trois** formes de la key : `push`+bump, `splice`+bump **dans** la boucle, deux swaps et
+**un** bump.
+
+**Divulgué :** aucune des deux lectures n'est « la » règle, et suivre la prose **casserait la porte**
+autant que suivre le code la casse ailleurs. On suit l'**artefact** parce que les n°21/n°51 en font la
+référence, et parce que la justification est **écrite par la key elle-même**.
+
+## 75. Les petits arbitrages que l'answer key **DICTE** — camelCase, `setAttr`, `const`, ordre des méthodes, hoisting
+
+Aucun n'est un choix : chacun est la seule règle qui reproduit l'artefact, et **`canon` les voit tous**.
+
+**a) `Row.Id` → `row.id` : les noms C# passent en camelCase.** `canon` garde **littéral** un nom de
+propriété après un point (« its spelling carries meaning »), donc `row.Id` **diverge** et `row.id` non.
+Règle : **minuscule sur la première lettre si elle est majuscule**, uniformément. Elle reproduit **tous**
+les noms des **deux** keys (`Id`→`id`, `NextLabel`→`nextLabel`, `SwapRows`→`swapRows`,
+`_adjectives`→`_adjectives`, `currentCount`→`currentCount`). Les noms qui **convergent** sous cette règle
+sont **refusés**, pas fusionnés en silence : deux membres qui ne diffèrent que par une majuscule sont du
+C# légal et deviendraient **une seule** liaison JS.
+
+**b) `class` → `setAttr`, plus `className`.** `rows.js` écrit `setAttr(td1, 'class', 'col-md-1')`. La table
+`PropertyAttributes` de la Phase 2 mappait `class`→`className` — un choix **qu'AUCUNE mesure ne couvrait**
+(`Counter` n'a pas d'attribut `class`). Les n°21/n°51 : la key est la référence. Le pari est **retiré**,
+pas défendu. `id` reste une propriété : **les deux** keys l'écrivent ainsi.
+
+**c) `const` quand rien ne réaffecte, `let` sinon.** `let` partout était **sûr**, mais les deux keys
+écrivent `const a` / `const row` / `const tmp` et `let i`. L'analyse (mono-affectation) est ce qui rend
+`const` **correct** plutôt qu'optimiste : une affectation ultérieure à un `const` JS est un `TypeError`,
+c'est-à-dire exactement l'échec **bruyant-mais-tardif** que ce front end existe pour transformer en
+réponse **à la compilation**.
+
+**d) Les méthodes sont émises dans l'ordre des DÉPENDANCES — appelés avant appelants.** Ce n'est **pas**
+de la sémantique : les déclarations de fonction sont hoistées, donc n'importe quel ordre tourne. C'est
+l'ordre que `rows.js` émet — `next, nextLabel, addRow, clear, run, update, swapRows` — depuis une source
+qui déclare `Clear()` **EN DERNIER**. L'ordre source mettrait `run()` avant le `clear()` qu'il appelle ; un
+DFS du graphe d'appel en ordre source produit **exactement** l'ordre de la key. C'est la **seule** règle
+qui le reproduit, et c'est aussi l'ordre qu'un lecteur suit sans défiler en avant.
+
+**e) Les listes littérales immuables montent au scope module.** La règle est **énoncée par la key
+elle-même** (n°4) : « hoisting immutable literal lists to module scope is a generator-level
+constant-folding decision and changes nothing about the work done per row ». **Immuable ET littérale**,
+les deux, sinon elle reste dans `mount()` où vit l'état du composant. **Les LABELS n'y sont PAS**, et
+c'est tout l'objet de la n°(4) : 3 tirages LCG et une concaténation en trois parties **par ligne**,
+3 000 + 1 000 par `#run`, exactement comme Blazor.
+
+## 76. Porte de la Phase 3 sur `Rows` : **NON FRANCHIE** — trois divergences, **aucune** n'est un bug de traduction
+
+**Le fait, avec la sortie réelle de `canon`** (`esbuild 0.28.1`) :
+
+```
+  file                               minified     canon    tokens
+  samples/Rows/.gen.js                 2309 B    3480 B    920
+  samples/Rows/rows.js                 2200 B    3339 B    887
+
+VERDICT: NOT EQUIVALENT      première divergence au jeton canonique #342
+  contexte A (généré) : ..., 1 ) , V15 ( ) } const V27 = document . createElement ( "div" )...
+  contexte B (key)    : ..., 1 ) , V15 ( ) } function V27 ( ) { V26 ( ) ;...
+```
+
+**VÉRIFIÉ CONSTRUCTIVEMENT — chaque divergence neutralisée SEULE, et mesurée :**
+
+| # | ce qui diverge | minifié | verdict |
+|---|---|---:|---|
+| — | généré, tel quel | 2 309 o | diverge au jeton #342 |
+| 1 | + inlining des handlers (n°68) neutralisé | 2 336 o | diverge au jeton #399 |
+| 2 | + `+=` sur un signal déplié comme la key | 2 352 o | diverge au jeton #505 |
+| 3 | + les 4 nœuds Text d'espaces retirés | **2 200 o** | **ALPHA-ÉQUIVALENT** |
+| — | `samples/Rows/rows.js` | **2 200 o** | 887 jetons |
+
+Donc la **traduction elle-même est EXACTE AU JETON** : le ré-assemblage, le record, l'analyse
+d'échappement, `list()`, `@key`, le LCG, `batch`, l'ordre des méthodes, le hoisting. Il reste **trois
+désaccords de FORME**, et chacun est **une décision du PROPRIÉTAIRE** :
+
+**1. LE HANDLER.** `rows.js` émet `function run()`/`update()`/`swapRows()` et les **référence**, alors que
+chacune est nommée par **exactement un** `@onclick` et appelée de nulle part. La n°68 **inline** (la key de
+`Counter` inline `Increment` et n'émet aucun binding). **La n°68 a enregistré ce désaccord À L'AVANCE, a
+divulgué que `Rows` divergerait, et a dit explicitement que c'était au propriétaire de trancher AVANT
+cette étape.** Ce n'est pas tranché ici : adopter la forme de `rows.js` **maintenant**, ce serait un
+implémenteur réécrivant une décision enregistrée pour **verdir sa propre porte**.
+
+**2. L'AFFECTATION COMPOSÉE.** `rows.js` déplie `_rows[i].Label += " !!!"` en
+`_rows[i].label.value = _rows[i].label.value + ' !!!'`. Ce compilateur émet `+=`, parce que l'en-tête de
+`counter.js` énonce le mapping **comme une règle** — « one node in, one node out, **no syntactic
+desugaring** » — et parce que la forme dépliée évalue `_rows[i]` **DEUX FOIS** là où le C# l'évalue une.
+`rows.js` **n'énonce aucune règle** ici, et ne déplie **pas** le `i += 10` deux lignes plus haut : son
+propre artefact n'est pas cohérent avec le dépliage.
+
+**3. LES NŒUDS D'ESPACES — et celui-ci, c'est l'ANSWER KEY qui diverge de BLAZOR**, la situation de la
+n°64 mot pour mot. `RowsApp.razor` met chaque `<button>` sur sa ligne, et Razor transforme le
+saut-de-ligne+indentation **entre frères** en un vrai nœud texte. **VÉRIFIÉ SUR LE CODE GÉNÉRÉ PAR BLAZOR
+LUI-MÊME**, pas sur une lecture des règles (`obj/.../RowsApp_razor.g.cs`, construit depuis
+`baseline/Rows.Blazor`) :
+
+```csharp
+__builder.AddMarkupContent(6,  "\n    ");
+__builder.AddMarkupContent(11, "\n    ");
+__builder.AddMarkupContent(16, "\n    ");
+__builder.AddMarkupContent(21, "\n    ");
+```
+
+Blazor expédie **quatre** nœuds texte dans `#main` ; `rows.js` n'en crée **aucun**. **REMARQUER DANS QUEL
+SENS ÇA COUPE** : les émettre rend le module de Filament **152 o PLUS GROS** et construit **4 nœuds DOM**
+que la key n'a pas. Les retirer **rétrécirait** le module **ET** ferait passer la porte. C'est
+**précisément** pour ça que ce n'est pas fait ici. La n°64 n'a corrigé `counter.js` que parce que la
+**BASELINE** — la seule autorité au-dessus de la key — la contredisait, sur décision **explicite** du
+propriétaire, motif énoncé comme **le CONTRAT** et résidu **divulgué**. La n°3 ci-dessus est la même
+forme, et attend la même décision.
+
+**VÉRIFIÉ EN NAVIGATEUR, PAS EN COMPILANT** — servi par `bench/harness/server.mjs`, module généré,
+**zéro erreur console** :
+
+- markup de ligne **exact** : `<tr><td class="col-md-1">1</td><td class="col-md-4"><a class="lbl">adorable pink desk</a></td></tr>`
+- **`#run` → 1 000 lignes**, ids `1..1000` ; deuxième `#run` → ids **à partir de 1001** (jamais réinitialisés)
+- **LE FLUX DE LABELS EST EXACT À L'OCTET** contre `bench/harness/expected-labels.json` — l'oracle doré
+  dérivé du C# — sur les **DEUX** runs : `first5`, `row1000`, `firstRunFirstId`, `secondRun.first5`,
+  `secondRun.row1000`, `secondRunFirstId`. Et le flux du **2ᵉ** run **DIFFÈRE** du 1ᵉʳ (tirages
+  3001..6000), ce qui **réfute** le hoisting/interning de labels que la n°(4) existe pour interdire.
+- **`#update` : 100 écritures `characterData`, ZÉRO churn `childList`** — c'est **LA** propriété que le
+  mapping tableau+version existe pour livrer, observée au `MutationObserver`.
+- **`#swap` : exactement 2 déplacements**, et les **MÊMES éléments `<tr>`** (identité de nœud vérifiée),
+  pas reconstruits — le LIS et l'identité par clé.
+- `#clear` : 1 000 retraits, 0 restant.
+
+**Le RUNTIME est INTACT** (`git` propre) et **aucune primitive nouvelle n'a été nécessaire** : `Rows` est
+l'app qui en justifierait une si quoi que ce soit le faisait, et elle a besoin de `list()`, qui existe.
+`npm run size` → **1 943 o gzip**, budget 2 048, marge **105 o**.
+
+**Suite : 104 passent / 1 échoue**, et l'échec est **la porte de `Rows`**, commitée **ROUGE**, comme la
+n°55 avait commité celle de `Counter`. **Les chiffres du FIL appartiennent à la phase de Mesure (n°44)** :
+les octets ci-dessus sont des **mesures de bundle au build**, pas une re-mesure C1/C4, et `BENCH.md` n'a
+**aucune** entrée pour ce passage.
+
+## 77. La suite des 20 cas **PASSAIT en couvrant un non-goal EN NOM SEULEMENT** — et trois défauts de plus, dont **du JS émis depuis du C# qui ne compile pas**
+
+**Le contexte.** La n°69 avait écrit la suite (26 cas) et payé : 13 cas sur 26 étaient silencieux. Cette
+passe-ci ne l'a pas ré-écrite, elle l'a **auditée** — en posant à **chaque** cas la question que « vert »
+ne pose pas : **quelle règle a RÉELLEMENT tiré ?** Les 25 cas de `GateSubsetTests` ont été **rejoués un
+par un depuis le binaire** : code, ligne, colonne et raison **reproduisent exactement** ce que le fichier
+asserte, et chaque (ligne, colonne) tombe **sur le token fautif** (vérifié contre le fixture, `cat -n`).
+La suite ne mentait pas. **Sa COUVERTURE, si.**
+
+**Défaut 1 — le cas « cascading parameters » était de la couverture EN NOM SEULEMENT.**
+`Gate/CascadingParameter.razor` déclare le paramètre comme une **PROPRIÉTÉ**, et `Member()` refuse les
+propriétés. Le cas était donc **VERT depuis toujours pour une raison qui n'a RIEN à voir avec le
+cascading**. Le même non-goal §3, une frame plus loin — **sur un CHAMP** :
+
+```
+[Microsoft.AspNetCore.Components.CascadingParameter]
+public int Depth = 0;        ->  exit 0, module écrit, `const depth = 0;`
+```
+
+`FieldDecl` vérifiait les modificateurs, le type, l'initialiseur — et **ne regardait pas les attributs**.
+Idem `Method()` (`[System.Obsolete] private void Increment()` → `function increment()`) et idem les
+propriétés d'un `record` (`{ id: 1, label: 'a' }`). **Les TROIS chemins de membre**, mesurés. **C'est la
+n°41 pour la SIXIÈME fois, et cette fois c'est la suite ELLE-MÊME qui la portait** : un cas vert dont la
+raison n'est pas la sienne est un cas qui ne teste rien.
+
+**Correction sur l'INVARIANT (n°36).** La garde n'est pas dans `FieldDecl` — elle serait « réparée sur le
+chemin que le repro montrait, trou identique une frame plus loin » **une septième fois**. `CheckNoAttributes`
+tourne sur la **marche des membres**, en `DescendantNodesAndSelf`, donc champ / méthode / record / propriété
+de record / paramètre : **un attribut, où qu'il soit sous un membre, est hors sous-ensemble**. §5 nomme des
+types, des expressions, des instructions et (pour `@code`) champs, méthodes, records ; un attribut est une
+construction de **DÉCLARATION** que la §5 ne nomme **jamais**, et dont le sens vit dans un **HÔTE** qu'un
+module Filament n'a pas. **C'est la catégorie exacte de la n°61** (`@inject`/`@page` : « ni template, ni
+`@code` ») **au niveau C#**.
+
+**Défaut 2 — le générateur émettait du JS depuis du C# QUI NE COMPILE PAS.**
+
+```
+private int currentCount = "this is a string, not an int";
+   ->  exit 0, module écrit, `const currentCount = 'this is a string, not an int';`
+```
+
+**CS0029. Blazor REFUSE de builder ce fichier ; Filament en a émis un module** qui rend la chaîne là où la
+source dit `int`. **Le mode interdit de la §10, atteint SANS UNE SEULE construction hors sous-ensemble** :
+chaque règle est individuellement juste et **aucune ne compose** — `CheckType` dit que `int` est dans la §5,
+`Expr` dit qu'un littéral chaîne est dans la §5, et **personne ne demandait si la paire type-check**.
+**Cause** : `Compile()` lisait `tree.GetDiagnostics()` — la **SYNTAXE**, sous un commentaire disant « a block
+that does not parse must never be compiled past » — et n'a **jamais** demandé
+`compilation.GetDiagnostics()`. **La moitié SÉMANTIQUE de sa propre affirmation n'était pas tenue.** La n°41
+au niveau de la **SOURCE du diagnostic** : la garde sur l'un des deux verdicts de Roslyn, le trou identique
+un appel plus loin.
+
+**L'ARBITRAGE : le backstop est demandé EN DERNIER, et cela se paie.** Demandé en premier, il **DÉGRADE**
+deux diagnostics que ce dépôt a déjà eus justes (mesuré, les deux) : `@nowhereDeclared` devient **CS0103**
+au lieu de `[unresolved-name]` (« a Filament module has no `this`, no base class... »), et `goto done;`
+devient **CS0159** au lieu de `[unsupported-statement]` — alors que **l'étiquette n'aurait rien changé**,
+`goto` n'est pas dans la §5. Donc **l'allowlist répond d'abord et Roslyn est le FILET dessous** : la forme
+« deux gates indépendants, le spécifique d'abord » que la n°61 a posée côté Razor. **Le prix, consigné :
+sur une entrée à la fois invalide ET hors sous-ensemble, c'est la règle de sous-ensemble qui parle, et sa
+raison peut être moins précise que celle de Roslyn.** `Gate/NotCSharp.razor` est le cas ; il est compté
+**à part** dans l'en-tête de la suite — ce n'est pas un 21ᵉ construct hors sous-ensemble, c'est **du non-C#**.
+
+**Défaut 3 — un diagnostic qui MENTAIT.** `private int seed = Compute();`, `Compute()` déclarée **trois
+lignes plus bas** → « `'Compute()' is not a call to a method declared in this component.` » **Elle EST
+déclarée dans ce composant.** L'entrée est bien invalide (**CS0236** : un initialiseur de champ ne peut pas
+référencer un membre d'instance) donc **le VERDICT était juste** — seule la **RAISON** était fausse : Roslyn
+rend `Symbol == null` pour un appel qu'il a **lié puis rejeté**, et `Invocation()` lisait ça comme « pas à
+nous ». C'est la **n°69 troisième défaut** dans sa **seconde forme** : là on blâmait l'auteur pour un `using`
+omis par le compilateur, ici on le blâme pour **une règle qu'il avait respectée**. Corrigé : si le symbole ne
+lie pas **mais qu'il y a des candidats**, c'est le verdict de Roslyn qui est vrai, et il est cité tel quel.
+**Contrôle** : `System.Console.WriteLine` et `_items.Where(...)` gardent `[unsupported-call]` — sinon « ne
+dis plus 'pas déclarée ici' » se satisferait de **ne plus jamais le dire**.
+
+**Défaut 4 — le bail-out fabriquait un SECOND diagnostic FAUX.** La première forme de la garde faisait
+`return` sur le premier attribut, donc `_methodsByName` restait **vide**, et le gate de binding du template
+rapportait alors `@onclick="Increment"` comme « **a name the @code block does not declare (it declares
+none)** » — **FAUX** : `@code` la déclare, c'est le compilateur qui a renoncé avant de regarder. Mesuré : **2
+diagnostics, le second faux**. La marche ne `return` plus ; **1 diagnostic, et il est vrai**.
+
+**Ce que la garde COÛTE, et qui est publié plutôt que rangé.** `[CascadingParameter] public int Depth
+{ get; set; }` lève désormais **DEUX** diagnostics **à la même (6,5)** — `[unsupported-attribute]` et
+`[unsupported-member]` — parce que le span d'une `PropertyDeclaration` **COMMENCE à sa liste d'attributs**.
+Les deux sont **VRAIS** et les deux sont **localisés**. Dédupliquer par localisation jetterait une
+affirmation vraie d'une règle **différente**. `TheCascadingParameterProperty_RaisesBothTrueDiagnostics`
+**épingle la paire** : un `Contains()` sur l'un des deux, c'est le comportement du second qui n'est
+consigné nulle part.
+
+**Mutation-testé, parce qu'un backstop non testé est une revendication (n°61).**
+`CheckNoAttributes` neutralisée → **`Gate/CascadingParameterField.razor` ROUGE**. `CheckSemantics`
+neutralisée → **`Gate/NotCSharp.razor` ROUGE, sur les deux tests qui la couvrent**. Les probes ont été
+**retirées et l'absence vérifiée** (`grep "MUTATION PROBE"` → rien).
+
+**Faux positif candidat RÉTRACTÉ, et le motif est le nôtre.** `_rows[0] = row;` a d'abord été rapporté comme
+« écriture structurelle sans bump de version → DOM mort en silence ». **C'était faux.** Le `grep` de contrôle
+cherchait `Version` et l'émission écrit **`_rowsChanged();`** — la ligne suivante, que le motif ne pouvait pas
+matcher. `RowsApp.razor` fait **`_rows[1] = _rows[998];`** (le `#swap` réel) et le module émet bien le bump.
+**« Vérifier depuis l'ARTEFACT, jamais depuis le drapeau qu'on croit avoir levé »** vaut aussi pour le drapeau
+qu'on croit avoir baissé : c'est un `grep` qui a failli faire publier un défaut inexistant **contre** le
+générateur.
+
+**État, mesuré, sans arrondi.** 27 cas rejoués depuis le binaire : **27 refusés, 27 localisés, 27 sans
+fichier écrit**, chaque code parmi `FIL0001/0002/0003`, **zéro `FIL-WIRING`**. Les **20 cas exigés par la
+porte sont couverts**, et le cascading l'est désormais **par la règle qui le nomme**, sur ses **deux** formes.
+Suite : **161 passent / 1 échoue**, et l'échec est **la porte d'équivalence de `Rows` (n°76)** — **ROUGE avant
+cette passe et sans rapport avec elle**. **Les trois faux positifs de la §5 restent OUVERTS et non
+réparés** : `/` (int ET double), la composition de composants, et le contrôle de flux **à la racine** du
+template — tous **bruyants, localisés, sans fichier écrit**, donc « une erreur claire », pas un bug bloquant.
+**Le troisième traîne une CASCADE** : `@foreach` à la racine sort **5** diagnostics dont **3 disent de `x`,
+la variable de boucle, qu'elle n'est pas déclarée** — elle l'est. Non corrigé (le mapping du contrôle de flux
+racine est un arbitrage OWNER, n°(2) de `TemplateCodeAtRoot`), **mais consigné ici plutôt que redécouvert**.
+
+## 78. La mesure de la Phase 3 a été **RÉCUPÉRÉE DE L'ARTEFACT** contre un faux négatif de l'agent
+
+**Décision.** L'entrée `BENCH.md` n°7 est écrite **depuis les 20 fichiers de `bench/results/phase3-pure/`
+directement**, chaque nombre recalculé, et **non** depuis le rapport structuré de l'agent de mesure — parce
+que ce rapport était **faux dans le sens qui comptait**.
+
+**Ce qui s'est passé.** L'agent `Measure` a rendu `c1Verdict:FAIL, c4Verdict:FAIL` avec le texte « **THIS
+RUN PRODUCED NO MEASUREMENT … `bench/results/phase3-pure/` is EMPTY … cut off inside config 1 of 8** ». Or
+les 20 fichiers existaient, horodatés `10:28→10:52 UTC`, `ok:true` partout, `n=10` par scénario,
+`scenariosComplete:true`, `timedIterationFailures:0`, `contractCheck.conforms:true`, oracle de labels en
+MATCH. **La mesure était complète et PASSE (C1 et C4).** L'agent a écrit ces fichiers puis a rapporté qu'ils
+n'existaient pas.
+
+**Pourquoi c'est grave, et pourquoi c'est le bon sens de gravité.** C'est l'**inverse** du biais que la
+n°48 traque : les omissions de l'agent ne penchaient pas vers le flatteur, elles penchaient **contre**
+Filament — rapporter « aucun résultat » quand le résultat est un succès net aurait fait **jeter une mesure
+qui tranche la §8**. Le réflexe du dépôt (« vérifier depuis l'artefact, jamais depuis le drapeau qu'on croit
+avoir passé » — n°10/29/43) a fonctionné **dans les deux sens** : il ne protège pas seulement contre un
+agent trop optimiste, il protège contre un agent qui se sous-estime. **Ni le PASS ni le FAIL d'un agent
+n'est repris tel quel ; seul l'artefact fait foi.**
+
+**Conséquence assumée.** La récupération est **honnête mais incomplète** : les nombres sont vérifiés par le
+mainteneur (intégrité, entrelacement, oracle, `n`, `ok`), **pas** par le panel adverse à 4 lentilles que la
+limite de session a empêché de tourner. L'entrée n°7 porte cette réserve en toutes lettres. **L'audit
+adverse de la Phase 3 reste DÛ** — il tourne sur l'arbre commité dès que la session le permet, selon
+l'ordre corrigé (commit puis audit, n°34-era) qui évite les faux positifs du Verify-avant-Report. Réserve
+technique jumelle consignée : `schemaVersion:3` **a laissé tomber le hash d'identité du harness** (n°43) ;
+« seul le composant change » n'est plus prouvable depuis ce champ et doit être rétabli.

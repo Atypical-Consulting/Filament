@@ -30,13 +30,25 @@ using Microsoft.AspNetCore.Razor.Language;
  * be pinned before any comparison ("~25 % de noeuds DOM en moins, gratuitement").
  * Taking that advantage by default is precisely what decision 20 forbids.
  *
- * CONSEQUENCE, STATED PLAINLY: samples/Counter/counter.js -- the Phase 1 answer key --
- * does NOT create these two text nodes. Its own header comment transcribes the source
- * without the blank lines that App.razor actually has, which is how they were lost.
- * So this generator and the answer key build different DOMs, the gate reports it, and
- * the answer key is the one that diverges from the baseline. NOT changed to match:
- * decision 21/51 says the answer key is the reference and the generator is what is
- * judged, so a disagreement is a REPORT, not an edit.
+ * HISTORY, KEPT BECAUSE IT IS THE EVIDENCE: samples/Counter/counter.js -- the Phase 1
+ * answer key -- did NOT create these two text nodes. Its own header transcribed the
+ * source without the blank lines App.razor actually has, which is how they were lost.
+ * So the generator and the answer key built different DOMs and the gate reported it,
+ * with the answer key as the side that diverged from the baseline. It was reported and
+ * NOT silently matched: decision 21/51 says the answer key is the reference and the
+ * generator is what is judged.
+ *
+ * RESOLVED BY THE OWNER -- decision 64. The answer key is now CORRECTED and builds
+ * these two nodes too, measured in-browser: Blazor 7, generator 5, answer key 5 (it
+ * was 3). The motive was THE CONTRACT, not the gate: a DOM contract that is not
+ * actually shared invalidates every C4 comparison built on it. The gate narrowed from
+ * two divergences to one as a SIDE EFFECT and still FAILS on the handler.
+ *
+ * THE RESIDUAL IS STILL OPEN: 5 < 7. Blazor's two extra nodes are `<!--!-->` comment
+ * markers, one per AddMarkupContent call -- its own bookkeeping for finding a markup
+ * range later. Filament has no render tree and nothing to find later, so it emits
+ * none; that is defensible, and it is still a free create-time advantage. Decision
+ * 20's open debt, disclosed, not banked.
  */
 
 if (args.Length < 2 || args.Contains("--help") || args.Contains("-h"))
@@ -114,6 +126,10 @@ static string ResolveRuntimeSpecifier(string output)
         var rel = Path.GetRelativePath(outDir, candidate).Replace(Path.DirectorySeparatorChar, '/');
         return rel.StartsWith('.') ? rel : "./" + rel;
     }
+    // FIL-WIRING, not FIL000. Failing to find the runtime is the TOOL being misused, not
+    // "your Razor is unsupported", and FIL000 squatted the spec's reserved FILxxxx
+    // namespace -- it reads exactly like FIL0001 at a glance. Decision 61 set that policy
+    // and this line was the one place that still broke it.
     throw new GeneratorException(
-        $"FIL000: could not locate src/filament-runtime/src/index.ts above '{outDir}'. Pass --runtime <specifier>.");
+        $"FIL-WIRING: could not locate src/filament-runtime/src/index.ts above '{outDir}'. Pass --runtime <specifier>.");
 }

@@ -25,10 +25,23 @@ namespace Filament.Generator;
 /// characterData write. That is the C3 claim, and it is a property of the emission
 /// ORDER, not of the runtime.
 ///
-/// WHAT IS DELIBERATELY NOT HERE: anything that needs to understand C#. Per decision
-/// 54, @foreach/@if arrive as RAW C# TEXT with unbalanced braces and the element is
-/// a SIBLING of the loop header, not a child -- Razor never structures control flow
-/// because Blazor never needs it to. Translating that is Phase 3.
+/// PHASE 3 CHANGED THE SEAM. @code is C# again (spec 5) and CSharpFrontEnd compiles it:
+/// `private int currentCount = 0` is LIFTED to `const currentCount = signal(0)` by this
+/// compiler rather than declared by hand in a JS seam. Two consequences here:
+///
+///   - The prologue is EMITTED, not spliced. There is no verbatim user text left in the
+///     output at all, which retires the whole class of defect the Phase 2 header below
+///     describes -- there is nothing left to splice.
+///   - The read path no longer GUESSES. Decision 57's disclosed hole ("un @x sur un
+///     `let x = 5` ordinaire emettrait `x.value` -- faux") existed because @code was
+///     opaque and "assume every binding is a signal" was the only rule available.
+///     EmitBinding now asks CSharpFrontEnd.IsSignal() -- the compiler's own record of
+///     what it lifted. See CSharpFrontEnd's header.
+///
+/// STILL NOT HERE: @foreach/@if. Per decision 54 they arrive as RAW C# TEXT with
+/// unbalanced braces and the element is a SIBLING of the loop header, not a child --
+/// Razor never structures control flow because Blazor never needs it to. Rows is the
+/// next step; they are still refused, with located diagnostics.
 ///
 /// ---------------------------------------------------------------------------------
 /// HOW THIS COMPILER REFUSES, AND WHY IT IS BUILT INSIDE-OUT (section 10: "Toute
@@ -62,6 +75,35 @@ namespace Filament.Generator;
 ///      is not spelled as a directive (@if, @bind, components, unknown nodes).
 /// Either one alone would have holes. Over-reporting is safe; silence is the sin.
 ///
+/// ---------------------------------------------------------------------------------
+/// EVERY C# THE TEMPLATE NAMES GOES THROUGH ONE GUARD -- NamedByTemplate().
+///
+/// This is the fix for the worst defect this generator has shipped, and it is decision
+/// 41's pattern for the THIRD time in this repo: the guard existed on the READ path and
+/// the IDENTICAL hole sat ONE FRAME OVER on the EVENT path.
+///
+///     EmitBinding   (@currentCount)   GUARDED: bare identifier, or FIL0003.
+///     EmitAttribute (@onclick="...")  UNGUARDED: it emitted `listen(el,'click',{handler})`
+///                                     with the handler SPLICED VERBATIM, no checks at all.
+///
+/// Measured against the committed tree, not theorised:
+///
+///     @onclick="() => currentCount++"  ->  exit 0, ZERO diagnostics, FILE WRITTEN,
+///                                          listen(_el0,'click',() => currentCount++)
+///
+/// Driven in a browser, that module LOADS, mount() RETURNS, the page renders "0", and
+/// after three clicks it still renders "0". The page looks perfect and THE BUTTON IS
+/// DEAD FOREVER. Both halves of section 10 violated at once: no diagnostic AND silently
+/// false JS. (`currentCount` is a signal OBJECT that @code binds with `const`, so
+/// `currentCount++` throws inside the listener -- once per click, forever, changing
+/// nothing.)
+///
+/// So the guard goes on the INVARIANT, not on the line the repro pointed at (decision
+/// 36's rule): NamedByTemplate() is the ONLY way a name the template writes reaches the
+/// output, and BOTH paths call it. In Phase 3 a handler may legitimately be more than a
+/// bare identifier -- but it will get there through the C# subset's validation, never
+/// through a verbatim splice.
+///
 /// DIAGNOSTIC CODES. Phase 2 owns exactly ONE: FIL0003, "Razor construct outside the
 /// phase's subset", carrying a [reason] tag and a location. FIL0001/FIL0002 are the
 /// C# subset's, i.e. Phase 3's, and are deliberately NOT emitted here. The generator
@@ -83,9 +125,9 @@ public sealed class TemplateCompiler
         ["signal", "computed", "effect", "batch", "untrack", "setText", "setAttr", "listen", "insert", "remove", "list"];
 
     /// <summary>
-    /// The ONLY directive Phase 2 accepts. "la logique @code reste ecrite en JS a la
-    /// main" (spec 6) -- @code is the seam, and decision 57 pins that Razor hands it
-    /// back as one opaque verbatim token. Every other directive Razor recognises --
+    /// The ONLY directive this compiler accepts. @code is the seam, and decision 57
+    /// pins that Razor hands it back as one opaque verbatim token -- which is what lets
+    /// Phase 3 hand the whole block to Roslyn. Every other directive Razor recognises --
     /// @page, @inject, @layout, @inherits, @implements, @typeparam, @attribute,
     /// @namespace, @preservewhitespace, ... -- is out of subset and must SAY SO.
     /// Driving this off Razor's own directive table (rather than off a list of node
@@ -102,40 +144,78 @@ public sealed class TemplateCompiler
     const string ComponentBaseType = "Microsoft.AspNetCore.Components.ComponentBase";
 
     /// <summary>
-    /// Static attributes written as DOM PROPERTIES rather than via setAttr(). The answer
-    /// key writes `h1.id = 'title'`, and a property write is one less runtime call and
-    /// one less string lookup than setAttribute. The map is an ALLOWLIST because the
-    /// attribute->property correspondence is not general (`class`->`className`, and
-    /// plenty of attributes have no property at all); anything not named here goes
-    /// through setAttr, which is always correct.
+    /// Static attributes written as DOM PROPERTIES rather than via setAttr(). Both answer
+    /// keys write `h1.id = 'title'` / `main.id = 'main'`, and a property write is one less
+    /// runtime call and one less string lookup than setAttribute.
+    ///
+    /// `class` USED TO BE HERE, MAPPED TO className, AND IT WAS WRONG -- not unsafe, but not
+    /// the reference. rows.js writes `setAttr(td1, 'class', 'col-md-1')`, and rows.js is the
+    /// only artifact that says anything at all about `class`: Counter has no class attribute,
+    /// so the className mapping was a Phase 2 guess that NO measurement covered. Decisions
+    /// 21/51 make the answer key the reference, so the guess is withdrawn rather than defended.
+    /// The map stays an ALLOWLIST because the attribute->property correspondence is not general
+    /// (plenty of attributes have no property at all); anything not named here goes through
+    /// setAttr, which is always correct.
     /// </summary>
     static readonly Dictionary<string, string> PropertyAttributes = new(StringComparer.OrdinalIgnoreCase)
     {
         ["id"] = "id",
-        ["class"] = "className",
     };
 
-    readonly List<string> _create = [];
-    readonly List<string> _bindings = [];
+    /// <summary>
+    /// A bare identifier, and nothing else. The ONE spelling this phase's template may
+    /// use to name state or a handler; see NamedByTemplate().
+    /// </summary>
+    static readonly Regex BareIdentifier = new(@"^[A-Za-z_$][A-Za-z0-9_$]*$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// THE @code BLOCK, PARSED. Phase 2 scraped names out of the JS seam with a regex and
+    /// disclosed the limits it could not fix without a parser; Phase 3 has a parser, so
+    /// the scrape is GONE and with it both of its documented residuals:
+    ///   - it over-refused (`const a = 1, b = 2;` bound only `a`; destructuring bound
+    ///     nothing), so valid handlers were refused;
+    ///   - it over-accepted in the dangerous direction (`let Foo = () => {}; Foo = {};`
+    ///     read as callable forever, because a regex cannot see a reassignment).
+    /// Roslyn answers both from symbols instead of from spelling.
+    /// </summary>
+    readonly CSharpFrontEnd _code = new();
+
+    List<string> _create = [];
+    List<string> _bindings = [];
     readonly List<string> _events = [];
     readonly List<string> _attach = [];
     readonly HashSet<string> _used = [];
     readonly List<Diagnostic> _diagnostics = [];
+
+    /// <summary>
+    /// Every event site the template names, RECORDED during the walk and emitted after
+    /// it. The delay is load-bearing: whether a handler's body is INLINED depends on how
+    /// many times the whole template names it, which is not known until the walk ends.
+    /// Pre-scanning the tree a second time to find out would mean a SECOND copy of the
+    /// EventCallback unwrapping -- decision 53's exact trap, where the wiring existed
+    /// twice and a test measured the copy.
+    /// </summary>
+    readonly List<(string El, string Event, string Handler)> _handlers = [];
+
+    /// <summary>
+    /// The @key node the enclosing list() has already consumed. @key outside a list is still
+    /// refused -- it names an identity nothing reconciles.
+    /// </summary>
+    IntermediateNode? _consumedKey;
+
+    /// <summary>The containers whose children held template C#. Their emission comes from OpsFor.</summary>
+    HashSet<IntermediateNode> _regions = [];
+
+    /// <summary>
+    /// Root-level template C# already refused WITH A LOCATION, so the emit walk does not
+    /// re-report it as a tool failure. See the guard in Compile.
+    /// </summary>
+    readonly HashSet<IntermediateNode> _refusedRootCode = [];
+
     string _file = "";
     int _el, _tx;
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
-
-    /// <summary>One refusal: the code, why, and WHERE. All three are required.</summary>
-    public sealed record Diagnostic(string Code, string Reason, string Message, SourceSpan? Source)
-    {
-        /// <summary>"file(line,col)" -- 1-based, the way every compiler on earth prints it.</summary>
-        public string Location => Source is { } s
-            ? $"{Path.GetFileName(s.FilePath)}({s.LineIndex + 1},{s.CharacterIndex + 1})"
-            : "<no source span>";
-
-        public override string ToString() => $"{Location}: {Code}: [{Reason}] {Message}";
-    }
 
     void Diag(string reason, string message, SourceSpan? source) =>
         _diagnostics.Add(new Diagnostic("FIL0003", reason, message, source));
@@ -166,10 +246,78 @@ public sealed class TemplateCompiler
         // @code arrives as ONE opaque CSharpCodeIntermediateNode holding the whole block
         // verbatim, as a sibling of BuildRenderTree. Razor lexes it but does not
         // interpret it, which is exactly what lets JS ride through it untouched.
-        var codeBlocks = cls.Children.OfType<CSharpCodeIntermediateNode>()
-            .Select(RawText)
-            .Where(s => !string.IsNullOrWhiteSpace(s))
+        var codeNodes = cls.Children.OfType<CSharpCodeIntermediateNode>()
+            .Where(n => !string.IsNullOrWhiteSpace(RawText(n)))
             .ToList();
+
+        // --- gate 3: ALL the C#, in ONE compilation ------------------------------
+        // BEFORE the template walk, for three reasons that used to be one:
+        //   - the walk RESOLVES against what @code declares (spec 5: "calls to methods
+        //     declared in the same component");
+        //   - the walk asks which fields were LIFTED to signals, which is the answer
+        //     decision 57's hole had to be guessed at;
+        //   - and the template's OWN C# -- @foreach's header, @row.Label, @key -- only means
+        //     anything against @code's `Row` and `_rows`, so the two halves cannot be two
+        //     compilations. Decision 54 is exactly this: the Phase 2 / Phase 3 boundary the
+        //     spec drew does not exist in the IR, because @foreach IS C#.
+        //
+        // Half of the reactivity rule is the TEMPLATE's: a field is reactive iff it is read
+        // by the template AND assigned outside its construction site (counter.js's header
+        // conjoined with rows.js's mapping decision 2 -- see CSharpFrontEnd). So the reads
+        // are collected off the same IR the walk will emit from, and resolved to SYMBOLS
+        // rather than matched as spelling.
+        var plan = new TemplatePlan();
+        foreach (var child in method.Children) Collect(child, plan);
+
+        // TEMPLATE C# AT THE ROOT -- the case Collect STRUCTURALLY CANNOT SEE, and it was
+        // reaching the emitter's FIL-WIRING throw. Measured, before this guard existed:
+        //
+        //     <div id="wrap">@foreach (int x in _xs) { <span @key="x">@x</span> }</div>
+        //         -> exit 0, compiles
+        //     @foreach (int x in _xs) { <span @key="x">@x</span> }     (the SAME loop, at root)
+        //         -> "FIL-WIRING: ... This is the TOOL being broken, not the input.",
+        //            NO location, NO spec code.
+        //
+        // Collect() is called on each CHILD of the render method and looks for C# among THAT
+        // child's kids, so the method's own child list is never a container -- a top-level C#
+        // node is never planned. Neither answer key has root-level control flow (Counter has
+        // none; Rows' @foreach is inside <tbody>), so the hole never showed.
+        //
+        // THIS RAISES THE DIAGNOSTIC; IT DOES NOT INVENT THE MAPPING. A root-level region
+        // would have to attach to mount()'s target rather than to a created element, which is
+        // a create/attach decision NEITHER ANSWER KEY CONTAINS -- so there is nothing to judge
+        // it against and nothing here would be measured. That is the same reason @if is
+        // refused, and shipping an emission path no measurement covers is what this repo
+        // refuses to do. What is NOT acceptable is telling the author the TOOL is broken when
+        // they wrote ordinary Razor: FIL-WIRING is for the tool's own failures (decision 61),
+        // and wearing it here is that boundary violated in the mirror direction.
+        //
+        // DISCLOSED, NOT BANKED: @foreach at the root IS in section 5's Razor subset, so this
+        // is still a refusal of in-subset code. It is now a CLEAR error with a location
+        // instead of a tool-blaming crash -- "une erreur claire" -- and the mapping remains
+        // an OPEN owner-level call.
+        foreach (var code in method.Children.OfType<CSharpCodeIntermediateNode>())
+        {
+            _refusedRootCode.Add(code);
+            Diag("template-code-at-root",
+                $"template C# ({Trunc(RawText(code))}) sits at the component's ROOT rather than inside an " +
+                "element. Its mapping is not implemented: a root-level region would attach to mount()'s " +
+                "target instead of to a created element, and neither answer key contains one, so there is " +
+                "nothing to be judged against and nothing here would be measured. Wrap it in an element " +
+                "(<div>@foreach ...</div> compiles today) or wait for the mapping to be decided. Refusing " +
+                "to emit rather than ship an emission path no measurement covers.",
+                code.Source);
+        }
+
+        _code.Compile(codeNodes, plan);
+        _diagnostics.AddRange(_code.Diagnostics);
+
+        _regions = plan.Regions.Select(r => r.Container).ToHashSet();
+
+        // NOT an early return, on purpose: the template gate must report too. A file
+        // whose @code is out of subset AND whose template is out of subset should say
+        // both, once, with locations -- fixing one and re-running to discover the other
+        // is how a refusal becomes a guessing game. (Rows is exactly this file.)
 
         // --- the template -----------------------------------------------------
         foreach (var child in method.Children)
@@ -178,12 +326,39 @@ public sealed class TemplateCompiler
             if (v is not null) _attach.Add($"insert(target, {v});");
         }
 
-        var prologue = string.Join("\n", codeBlocks.Select(Dedent));
-        foreach (var p in RuntimeExports)
-            if (Regex.IsMatch(prologue, $@"\b{Regex.Escape(p)}\b"))
-                _used.Add(p);
+        // --- emission, and ONLY if nothing has been refused ----------------------
+        //
+        // NOTHING IS EMITTED FOR A FILE THAT IS BEING REFUSED, and this is a guard on the
+        // invariant rather than a tidy-up. It shipped as a CRASH: when @code fails to
+        // compile, the C# front end has registered the METHOD NAMES but never translated
+        // their bodies, so the template walk happily resolved @onclick="Run" and the
+        // emitter then asked for a body that does not exist -- KeyNotFoundException, exit
+        // 134, a stack trace where the author should have seen "List<T>'s mapping is the
+        // next step, at line 41". Measured on baseline/Rows.Blazor/RowsApp.razor.
+        //
+        // A refused compile writes no file, so its emission was never worth anything: the
+        // only thing building it could produce is a crash or a garbage module. The
+        // template walk above still ran, so the template's OWN diagnostics are reported
+        // alongside @code's -- which is the point of not returning early.
+        var prologue = new List<string>();
+        var module = new List<string>();
+        if (_diagnostics.Count == 0)
+        {
+            var inlined = _handlers
+                .Select(h => h.Handler)
+                .Distinct(StringComparer.Ordinal)
+                .Where(ShouldInline)
+                .ToHashSet(StringComparer.Ordinal);
 
-        return Render(prologue, runtimeSpecifier, sourceName);
+            foreach (var h in _handlers)
+                _events.Add($"listen({h.El}, {JsString(h.Event)}, {HandlerArrow(h.Handler, inlined)});");
+
+            prologue = _code.EmitPrologue(inlined);
+            module = _code.EmitModule();
+            foreach (var p in _code.Primitives) _used.Add(p);
+        }
+
+        return Render(module, prologue, runtimeSpecifier, sourceName);
     }
 
     /// <summary>
@@ -271,6 +446,229 @@ public sealed class TemplateCompiler
     }
 
     /// <summary>
+    /// THE COLLECT WALK. It reads the template's SHAPE -- which containers hold C#, which
+    /// expressions are read in which scope -- and emits nothing.
+    ///
+    /// It exists because the compilation has to be built BEFORE the emit walk can ask it
+    /// anything, and it walks the SAME IR the emit walk will emit from, so it cannot describe
+    /// a different template. Where the two could still drift, the drift is LOUD, not silent:
+    /// the emit walk looks every node up (CSharpFrontEnd.OpsFor / SlotJs) and a node the
+    /// collect walk never saw is FIL-WIRING, not a guess. That is decision 53's lesson --
+    /// wiring described twice drifts, so the second description must be unable to disagree
+    /// quietly.
+    ///
+    /// Event handlers are deliberately NOT slots: `@onclick="Increment"` NAMES a method, and
+    /// Razor gives it a different node type (CSharpExpressionAttributeValue...), so naming a
+    /// method cannot make a field reactive.
+    /// </summary>
+    void Collect(IntermediateNode node, TemplatePlan plan)
+    {
+        var kids = node.Children.Where(c => c is not HtmlAttributeIntermediateNode).ToList();
+
+        // A container whose children hold RAW C# is decision 54's shape: no loop node, braces
+        // that do not balance, the body element a SIBLING of the header. It is reassembled and
+        // re-parsed -- see TemplatePlan.
+        if (kids.Any(k => k is CSharpCodeIntermediateNode))
+        {
+            var items = new List<RegionItem>();
+            foreach (var kid in kids)
+                items.Add(kid is CSharpCodeIntermediateNode c
+                    ? new CodeItem(c)
+                    : new MarkupItem(kid, SlotsIn(kid)));
+            plan.Regions.Add(new TemplateRegion { Container = node, Items = items });
+
+            foreach (var kid in kids)
+                if (kid is not CSharpCodeIntermediateNode) RefuseNestedCode(kid);
+            return;
+        }
+
+        foreach (var kid in kids)
+            if (kid is CSharpExpressionIntermediateNode or SetKeyIntermediateNode) plan.FreeSlots.Add(kid);
+            else Collect(kid, plan);
+    }
+
+    /// <summary>Every @expression and @key in a subtree, in document order.</summary>
+    static List<IntermediateNode> SlotsIn(IntermediateNode node)
+    {
+        var slots = new List<IntermediateNode>();
+        void Walk(IntermediateNode n)
+        {
+            if (n is CSharpExpressionIntermediateNode or SetKeyIntermediateNode) { slots.Add(n); return; }
+            foreach (var c in n.Children) Walk(c);
+        }
+        Walk(node);
+        return slots;
+    }
+
+    /// <summary>
+    /// Control flow INSIDE control flow. Rows has none, so nothing here would be measured, and
+    /// the reassembly would have to splice a region into a region -- i.e. resolve an
+    /// expression in two scopes at once. Refused with a location rather than approximated.
+    /// </summary>
+    void RefuseNestedCode(IntermediateNode node)
+    {
+        foreach (var c in node.Children)
+        {
+            if (c is CSharpCodeIntermediateNode code)
+                Diag("nested-control-flow",
+                    $"C# ({Trunc(RawText(code))}) nested inside other C# in the template is not implemented. " +
+                    "The reassembly (decision 54) splices one region's spans back together and re-parses them; " +
+                    "a region inside a region would have to resolve its expressions in two scopes at once. " +
+                    "Neither answer key contains one, so nothing here would be measured. Refusing to emit.",
+                    code.Source);
+            RefuseNestedCode(c);
+        }
+    }
+
+    /// <summary>
+    /// THE INLINE-VS-REFERENCE ARBITRAGE, and it is decision 55's remaining divergence.
+    ///
+    /// The answer key -- the REFERENCE, decisions 21/51 -- inlines:
+    ///     listen(button, 'click', () => { currentCount.value++; });
+    /// and emits NO `Increment` binding at all. Phase 2 could not reach that shape:
+    /// reading a method's BODY means translating @code, which Phase 2 excluded, so the
+    /// gate contradicted the phase's own scope (decision 55) and was committed RED.
+    /// Phase 3 translates @code, so the shape is reachable and the contradiction is
+    /// resolved by doing the work rather than by moving the threshold.
+    ///
+    /// THE RULE: a method whose ONLY use in the whole component is one event handler is
+    /// inlined into that handler. This is single-use inlining -- a bog-standard compiler
+    /// rule, mechanical and checkable -- and the justification is the thesis itself: a
+    /// private function with one caller, emitted as a function plus a reference to it, is
+    /// an indirection that exists only to have a name. Filament's whole argument is that
+    /// it ships no machinery whose only job is to serve machinery.
+    ///
+    /// A method called from @code as well keeps its function and the handler CALLS it, so
+    /// the body is never duplicated.
+    ///
+    /// DISCLOSED, BECAUSE IT IS THE NEXT STEP'S PROBLEM: rows.js does NOT obey this rule.
+    /// It emits `function update()` / `function swapRows()` and references them from their
+    /// handlers, though each is named by exactly one @onclick and called from nowhere else
+    /// -- so under this rule Rows' key would want them inlined. The two answer keys
+    /// therefore specify DIFFERENT handler mappings, and no single rule reproduces both
+    /// unless it is reverse-engineered from the artifacts (e.g. "inline iff the body needs
+    /// no batch", which fits both and means nothing). Counter's key is unambiguous and is
+    /// the reference for Counter; Rows' disagreement is reported, not pre-emptively
+    /// papered over from a step that is not measuring Rows. DECISIONS #68.
+    /// </summary>
+    bool ShouldInline(string handler) =>
+        _code.IsMethod(handler) &&
+        _code.CallsTo(handler) == 0 &&
+        _handlers.Count(h => string.Equals(h.Handler, handler, StringComparison.Ordinal)) == 1;
+
+    /// <summary>
+    /// The JS handed to listen(). ALWAYS an arrow, never a bare method reference, and
+    /// that is a correctness point rather than a shape preference:
+    /// addEventListener invokes its listener WITH the DOM Event, so `listen(el,'click',
+    /// Increment)` calls a C# method that declares no parameters with one argument. For
+    /// `void Increment()` JS ignores the extra argument and nothing breaks; for a method
+    /// that does take a parameter it would silently bind a raw DOM Event where the C#
+    /// says MouseEventArgs. An arrow passes exactly the arguments the C# declares -- none
+    /// -- so the emission cannot depend on the method's arity being lucky.
+    ///
+    /// Both answer keys agree on this: counter.js emits `() => { ... }` and rows.js emits
+    /// `() => batch(run)`. NEITHER emits `listen(el, 'click', Handler)`.
+    ///
+    /// batch() iff there is more than one write to coalesce -- see
+    /// CSharpFrontEnd.MayWriteMoreThanOnce, which is where both keys' apparently opposite
+    /// statements about batch turn out to be the same rule.
+    /// </summary>
+    string HandlerArrow(string handler, IReadOnlySet<string> inlined)
+    {
+        var batched = _code.MayWriteMoreThanOnce(handler);
+
+        string body;
+        if (inlined.Contains(handler))
+        {
+            var lines = _code.InlineBody(handler);
+            body = "() => {\n" + string.Join("\n", lines.Select(l => "  " + l)) + "\n}";
+        }
+        else
+        {
+            body = batched ? _code.MethodJs(handler) : $"() => {_code.MethodJs(handler)}()";
+        }
+
+        if (!batched) return body;
+
+        _used.Add("batch");
+        return $"() => batch({body})";
+    }
+
+    /// <summary>
+    /// THE guard: the ONE way a name the template writes may reach the emitted module.
+    /// Both the read path (@currentCount) and the event path (@onclick="Increment") call
+    /// it -- that is the whole point, because they used to disagree and the event path's
+    /// disagreement was a verbatim splice (see this class's header).
+    ///
+    /// Two conditions, and each one is refused with its own reason so the message tells
+    /// the author which mistake they made:
+    ///   1. it must be a BARE IDENTIFIER. Anything else -- a lambda, a call, a compound
+    ///      expression -- requires deciding which sub-expressions are reactive reads or
+    ///      what a body means, and that is C# work, i.e. Phase 3's (decision 54).
+    ///   2. it must RESOLVE to something @code binds. Spec 5 admits "calls to methods
+    ///      declared in the same component"; a name declared nowhere is not in the subset.
+    ///   3. if it is used as a HANDLER it must resolve to a FUNCTION, because spec 5 says
+    ///      METHODS and because naming state instead is the blocker's failure mode again:
+    ///      addEventListener takes a non-callable object without a murmur and never calls it.
+    ///
+    /// ORDER MATTERS, AND NOT FOR SAFETY -- FOR THE MESSAGE. Check 2 already subsumes check
+    /// 1 (nothing @code declares is anything but a bare identifier, so a lambda can never
+    /// resolve), and mutation-testing proved it: disabling check 1 leaves the lambda
+    /// fixtures REFUSED, by check 2, with the wrong reason. Check 1 is kept because
+    /// "() =&gt; currentCount++ is not a bare identifier" is the truth and "@code does not
+    /// declare '() =&gt; currentCount++'" is a riddle.
+    ///
+    /// PHASE 3 MADE CHECKS 2 AND 3 EXACT. They used to consult a REGEX SCRAPE of the JS
+    /// seam, which over-refused (`const a = 1, b = 2;` bound only `a`) and, worse,
+    /// over-accepted in the silent direction (`let Foo = () => {}; Foo = {};` stayed
+    /// "callable" forever because a regex cannot see a reassignment -- a dead button the
+    /// scrape could not catch). They now ask Roslyn for a SYMBOL. Both residuals are gone,
+    /// and the reason they are gone is that the question changed from "what does this text
+    /// look like" to "what did the compiler bind".
+    /// </summary>
+    bool NamedByTemplate(string name, string what, SourceSpan? source, bool mustBeCallable = false)
+    {
+        if (!BareIdentifier.IsMatch(name))
+        {
+            Diag("compound-expression",
+                $"{what} is \"{Trunc(name)}\", which is not a bare identifier. A template may NAME state or a " +
+                "method; deciding what a lambda, a call or a compound expression MEANS at a binding site is " +
+                "not something this compiler will guess at, and it will not splice it verbatim, because a " +
+                "spliced handler compiles cleanly, loads cleanly, renders correctly and then does NOTHING " +
+                "for the life of the page -- the silent mis-compile section 10 forbids. Refusing to emit.",
+                source);
+            return false;
+        }
+
+        if (!_code.Declares(name))
+        {
+            Diag("unresolved-name",
+                $"{what} names '{name}', which the @code block does not declare. The subset admits calls to " +
+                "methods declared in the SAME component (spec 5), and this compiler resolves them against the " +
+                $"names @code declares ({(_code.DeclaredNames.Any() ? "it declares: " + string.Join(", ", _code.DeclaredNames.Order()) : "it declares none")}). " +
+                "Refusing to emit rather than emit a reference to a name that does not exist.",
+                source);
+            return false;
+        }
+
+        if (mustBeCallable && !_code.IsMethod(name))
+        {
+            Diag("handler-is-not-a-method",
+                $"{what} names '{name}', which @code declares but NOT as a method. The subset admits methods " +
+                "declared in the same component (spec 5); a handler that names STATE compiles, loads, renders " +
+                $"and then does nothing -- addEventListener accepts a non-callable '{name}' silently and never " +
+                "invokes it (verified in jsdom: neither addEventListener nor dispatchEvent throws). That is the " +
+                "same dead button as a spliced lambda, reached by naming state instead of a method. " +
+                $"@code declares these methods: {(_code.MethodNames.Any() ? string.Join(", ", _code.MethodNames.Order()) : "none")}. " +
+                "Refusing to emit.",
+                source);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// A node this compiler cannot account for. It refuses, and it says where.
     ///
     /// The lowered declaration-level nodes (@inject's ComponentInjectIntermediateNode,
@@ -337,20 +735,33 @@ public sealed class TemplateCompiler
                     "ComponentMarkupBlockPass was not removed (decision 52); the IR has no structure to " +
                     "compile and nothing here can be trusted. This is the TOOL being broken, not the input.");
 
-            // @foreach / @if arrive here, as raw C# text with unbalanced braces.
+            // Root-level template C#, ALREADY REFUSED WITH A LOCATION above. The walk runs
+            // even for a file being refused (so the template's own diagnostics get reported
+            // alongside @code's), so it reaches this node again; it must not then claim the
+            // tool is broken about a construct it has already reported honestly.
+            case CSharpCodeIntermediateNode code when _refusedRootCode.Contains(code):
+                return null;
+
+            // Raw C# reaching the EMIT walk means the collect walk did not turn it into a
+            // region, i.e. the two walks disagree about the file. The root case is handled
+            // above, so a node arriving HERE really is the two walks disagreeing.
             case CSharpCodeIntermediateNode code:
-                Diag("control-flow",
-                    $"C# in the template ({Trunc(RawText(code))}) is out of Phase 2's reach. Razor emits no " +
-                    "loop/branch node -- control flow is raw C# text whose braces do not balance and whose " +
-                    "body elements are SIBLINGS of the header (decision 54). Translating it is Phase 3's " +
-                    "C#->JS work. Refusing to emit.",
-                    code.Source);
+                throw new GeneratorException(
+                    $"FIL-WIRING: raw template C# ({Trunc(RawText(code))}) reached the emitter. The collect " +
+                    "walk turns every CSharpCodeIntermediateNode into a region (decision 54's reassembly), so " +
+                    "this one was never planned and nothing here can be trusted. This is the TOOL being " +
+                    "broken, not the input.");
+
+            // @key is CONSUMED by the list() this row belongs to (see EmitList). Anywhere else
+            // it names an identity that nothing reconciles.
+            case SetKeyIntermediateNode key when ReferenceEquals(key, _consumedKey):
                 return null;
 
             case SetKeyIntermediateNode key:
                 Diag("unsupported-directive",
-                    "@key is only meaningful inside a list, and lists need @foreach, which is Phase 3 " +
-                    "(decision 54). Refusing to emit.",
+                    "@key is only meaningful inside a @foreach, where it compiles to list()'s keyOf. On an " +
+                    "element that no list reconciles there is no identity for it to be, and nothing would " +
+                    "read it. Refusing to emit rather than drop it silently.",
                     key.Source);
                 return null;
 
@@ -404,6 +815,15 @@ public sealed class TemplateCompiler
         foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
             EmitAttribute(el, v, attr);
 
+        // A container whose children held C# does not have children in document order any
+        // more -- it has a re-parsed STATEMENT LIST (decision 54). Its emission comes from
+        // the C# front end, which is the only thing that ever saw the loop.
+        if (_regions.Contains(el))
+        {
+            EmitOps(_code.OpsFor(el), v);
+            return v;
+        }
+
         foreach (var child in el.Children)
         {
             if (child is HtmlAttributeIntermediateNode) continue;
@@ -411,6 +831,95 @@ public sealed class TemplateCompiler
             if (c is not null) _create.Add($"insert({v}, {c});");
         }
         return v;
+    }
+
+    /// <summary>Emit one re-parsed region, in the order the C# says.</summary>
+    void EmitOps(IReadOnlyList<TemplateOp> ops, string container)
+    {
+        foreach (var op in ops)
+            switch (op)
+            {
+                case MarkupOp m:
+                    var c = EmitNode(m.Node, parent: container);
+                    if (c is not null) _create.Add($"insert({container}, {c});");
+                    break;
+                case ForEachOp fe:
+                    EmitList(fe, container);
+                    break;
+            }
+    }
+
+    /// <summary>
+    /// `@foreach (Row row in _rows) { &lt;tr @key="row.Id"&gt;...&lt;/tr&gt; }` -> list().
+    ///
+    /// THE ROW TEMPLATE IS A FUNCTION, and its create/binding split is mount()'s own, one
+    /// level down: list() calls it ONCE per key, inside that row's disposal scope and
+    /// untracked, so the effect it builds is adopted by the row and dies with it. That is what
+    /// stops #run leaking 1000 effects per iteration -- and it is a property of the RUNTIME
+    /// (list.ts's scope()), which is why nothing extra is emitted here to get it.
+    ///
+    /// THE SOURCE reads the version signal and hands reconcile() the LIVE array (rows.js
+    /// mapping decision 1). Not a copy: reconcile only reads `items` during the pass and never
+    /// retains it, and copying would reintroduce exactly the O(n^2) that decision rejects.
+    /// </summary>
+    void EmitList(ForEachOp fe, string container)
+    {
+        // @key -> keyOf, and it must NOT be reactive. reconcile() calls keyOf with the list
+        // effect as the ACTIVE subscriber, so a signal read here subscribes the list to every
+        // row's key -- 1000 dependency edges whose only possible effect is to re-reconcile the
+        // entire table. rows.js's header calls this out as the reason Row.Id is a plain field;
+        // this is the same fact, enforced instead of hoped for.
+        if (_code.SlotIsReactive(fe.Key))
+        {
+            Diag("reactive-key",
+                $"@key=\"{Trunc(RawText(fe.Key))}\" reads REACTIVE state. @key compiles to list()'s keyOf, " +
+                "which reconcile() calls with the list effect as the active subscriber -- so this would " +
+                "subscribe the whole list to every row's key, and the only thing those subscriptions can ever " +
+                "do is re-reconcile the entire table when one row changes. An identity that changes is not an " +
+                "identity. Refusing to emit.",
+                fe.Key.Source);
+            return;
+        }
+
+        var fn = Unique("create" + char.ToUpperInvariant(fe.Var[0]) + fe.Var[1..]);
+
+        // The row's own create/bindings. Saved and restored rather than threaded through every
+        // call: the row template IS mount()'s emission shape, one level down.
+        var outerCreate = _create;
+        var outerBindings = _bindings;
+        var outerKey = _consumedKey;
+        _create = [];
+        _bindings = [];
+        _consumedKey = fe.Key;
+
+        var root = EmitNode(fe.Body, parent: null);
+        var body = new List<string>();
+        body.AddRange(_create);
+        body.AddRange(_bindings);
+
+        _create = outerCreate;
+        _bindings = outerBindings;
+        _consumedKey = outerKey;
+
+        if (root is null) return; // the row template was refused; nothing is emitted for it
+        body.Add($"return {root};");
+
+        _bindings.Add($"function {fn}({fe.Var}) {{\n" + string.Join("\n", body.Select(l => "  " + l)) + "\n}");
+
+        _used.Add("list");
+        _bindings.Add(
+            $"list({container}, () => {{\n" +
+            $"  {fe.VersionJs}.value;\n" +
+            $"  return {fe.ListJs};\n" +
+            $"}}, ({fe.Var}) => {_code.SlotJs(fe.Key)}, {fn}, null);");
+    }
+
+    /// <summary>A binding name mount() does not already hold. @code's bindings share this scope.</summary>
+    string Unique(string want)
+    {
+        var name = want;
+        for (var i = 2; _code.IsJsNameTaken(name); i++) name = want + i;
+        return name;
     }
 
     /// <summary>Blazor's own rule: an upper-case initial (or a dotted name) is a component, not an element.</summary>
@@ -445,18 +954,67 @@ public sealed class TemplateCompiler
         var csharp = attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>().ToList();
         var html = attr.Children.OfType<HtmlAttributeValueIntermediateNode>().ToList();
 
+        // EVERY VALUE NODE ACCOUNTED FOR -- and this one was a REAL, SHIPPING, SILENT
+        // DROP, not a hypothetical. A third node type exists, CSharpCodeAttributeValue-
+        // IntermediateNode (`class="@if (c) { <text>a</text> }"`), and it matched NEITHER
+        // list above, so `value` stayed "" and this method emitted `_el0.className = ''`
+        // at exit 0 with ZERO diagnostics: the author's conditional simply GONE. Measured
+        // on all three attribute paths, and the mixed case is the worst of them --
+        // `class="box @if (c) { <text>active</text> }"` emitted `className = 'box'`, the
+        // literal half surviving so the output looks like it worked.
+        //
+        // It is decision 41's pattern one more time and in the same method as the last
+        // one: the document walk has Unaccounted() for exactly this shape, and the
+        // ATTRIBUTE VALUE walk had no equivalent. A drop is worse than a splice, because
+        // a splice is loud. This is the equivalent.
+        var unaccounted = attr.Children
+            .Where(c => c is not CSharpExpressionAttributeValueIntermediateNode
+                     && c is not HtmlAttributeValueIntermediateNode)
+            .ToList();
+
+        if (unaccounted.Count > 0)
+        {
+            foreach (var u in unaccounted)
+                Diag("unaccounted-attribute-value",
+                    $"the value of attribute '{name}' on <{el.TagName}> contains a {u.GetType().Name} " +
+                    $"({Trunc(RawText(u))}), which this compiler does not structurally understand -- C# " +
+                    "control flow inside an attribute value is not in the subset. Refusing to emit rather " +
+                    "than drop it silently: dropping it emits an attribute that is EMPTY, or that keeps " +
+                    "only its literal half, at exit 0 -- a module that renders and lies.",
+                    u.Source ?? attr.Source ?? el.Source);
+            return;
+        }
+
         if (csharp.Count > 0)
         {
-            var expr = string.Concat(csharp.SelectMany(c => c.Children.OfType<IntermediateToken>()).Select(t => t.Content));
+            var tokens = csharp.SelectMany(c => c.Children.OfType<IntermediateToken>()).ToList();
+            var expr = string.Concat(tokens.Select(t => t.Content));
+
+            // Razor SYNTHESISES the EventCallback.Factory.Create<...>(this, wrapper and
+            // gives those tokens no span; the token in the middle is what the AUTHOR
+            // typed, and it carries the author's exact position. Reporting there points
+            // at the handler itself rather than at the attribute, which matters most in
+            // precisely the case that used to splice: a multi-line lambda.
+            var authored = tokens.FirstOrDefault(t => t.Source is not null)?.Source ?? attr.Source ?? el.Source;
 
             if (TryUnwrapEventCallback(expr, out var handler))
             {
                 // Razor pre-lowers to Blazor semantics: the value is already
                 // EventCallback.Factory.Create<MouseEventArgs>(this, Increment).
                 // Filament has no EventCallback and no `this`; it has listen().
+                //
+                // THE GUARD. Without it this line spliced `handler` verbatim into
+                // listen(), which is how `@onclick="() => currentCount++"` compiled to a
+                // module that renders perfectly and whose button is dead forever.
+                if (!NamedByTemplate(handler, $"the handler for '{name}' on <{el.TagName}>", authored,
+                        mustBeCallable: true)) return;
+
                 var domEvent = name.StartsWith("on", StringComparison.Ordinal) ? name[2..] : name;
                 _used.Add("listen");
-                _events.Add($"listen({v}, {JsString(domEvent)}, {handler});");
+
+                // RECORDED, not emitted: whether this handler's body is inlined depends on
+                // how many sites name it, which the walk does not know yet. See _handlers.
+                _handlers.Add((v, domEvent, handler));
                 return;
             }
 
@@ -481,48 +1039,63 @@ public sealed class TemplateCompiler
     }
 
     /// <summary>
-    /// @currentCount -> a Text node owned forever by one effect.
+    /// @currentCount / @row.Label -> a Text node owned forever by one effect.
     ///
-    /// The text node is created once, empty, and handed to setText for the life of the
-    /// app. Writing `span.textContent = v` instead would destroy and rebuild the span's
-    /// children on every change: 2 DOM writes where the contract allows 1, and C3 would
-    /// fail on markup that looks identical.
+    /// The text node is created once, empty, and handed to setText for the life of the app.
+    /// Writing `span.textContent = v` instead would destroy and rebuild the span's children on
+    /// every change: 2 DOM writes where the contract allows 1, and C3 would fail on markup that
+    /// looks identical.
+    ///
+    /// DECISION 57's HOLE IS CLOSED HERE, BY CONSTRUCTION RATHER THAN BY A CHECK. 57 disclosed:
+    /// "un @x sur un `let x = 5` ordinaire emettrait `x.value` -- faux. Le detecter exigerait
+    /// d'analyser le JS de @code, ce que cette phase ne fait pas." The hole was not a missing
+    /// test, it was a missing FRONT END: with an opaque JS seam the only available rule was
+    /// "assume everything the template reads is a signal", and that assumption is what was
+    /// false. This asks the compiler that did the lifting (SlotIsReactive), so a source that was
+    /// NOT lifted compiles to a create-time text write with no effect -- exactly rows.js's
+    /// treatment of @row.Id, whose source is non-reactive for the same reason.
+    ///
+    /// THE BARE-IDENTIFIER RULE IS GONE, AND THAT IS PHASE 3 DOING THE WORK RATHER THAN MOVING
+    /// A THRESHOLD. Phase 2 refused anything but a bare name at a binding site because deciding
+    /// what an expression MEANT was C# work it did not do; the guard was honest about being a
+    /// stand-in for a parser. There is a parser now. `row.Id` is member access on a local record
+    /// -- section 5's subset, verbatim -- and it is REFUSED BY THE C# FRONT END if it is not, at
+    /// its exact location. What is not negotiable is that nothing is ever SPLICED: the JS here
+    /// is what CSharpFrontEnd.Expr translated from a resolved syntax tree, never the author's
+    /// text.
+    ///
+    /// ONE EFFECT PER BINDING POINT, whatever the expression reads. That is the answer to the
+    /// question Phase 2 said it would not guess at ("which sub-expressions are reactive reads,
+    /// which decides how many effects exist"): the binding point is the unit, and it subscribes
+    /// to exactly what it reads. rows.js's @row.Label is that rule with one read; @(a + b) is
+    /// the same rule with two.
     /// </summary>
     string? EmitBinding(CSharpExpressionIntermediateNode expr, string? parent)
     {
-        var text = RawText(expr).Trim();
-
-        // The seam's rule: the template reads STATE, and this phase's state is declared
-        // by the hand-written JS in @code as a signal. The runtime's read protocol is a
-        // property access (decision 22: `s.Value` in C# maps to `s.value` in JS,
-        // character for character), so a template read of `x` is `x.value`.
-        //
-        // Only a bare identifier is accepted. Anything else -- @(a + b), @Foo.Bar(),
-        // @(cond ? x : y) -- needs to know which sub-expressions are signal reads, and
-        // that is a C# (Phase 3) question this compiler will not guess at.
-        if (!Regex.IsMatch(text, @"^[A-Za-z_$][A-Za-z0-9_$]*$"))
-        {
-            Diag("compound-expression",
-                $"@({Trunc(text)}) is not a bare identifier. Deciding which parts of a compound expression are " +
-                "reactive reads is Phase 3's C# work (decision 54). Refusing to emit.",
-                expr.Source);
-            return null;
-        }
-
         if (parent is null)
         {
             Diag("top-level-expression",
-                $"@{text} at the top level of the template has no parent element to own its text node. " +
-                "Not exercised by Counter; refusing rather than guessing at the attach order.",
+                $"@{Trunc(RawText(expr).Trim())} at the top level of the template has no parent element to own " +
+                "its text node. Not exercised by either answer key; refusing rather than guessing at the " +
+                "attach order.",
                 expr.Source);
             return null;
         }
+
+        var js = _code.SlotJs(expr);
+
+        // NOT REACTIVE -> no signal, no effect, no .value: one write, at create time. The
+        // source can never change, so an effect around it would be a subscription to nothing --
+        // machinery serving machinery, which is the thing this POC refuses. rows.js's @row.Id
+        // is this case, and it is why a row costs ONE effect and not two.
+        if (!_code.SlotIsReactive(expr))
+            return $"document.createTextNode({js})";
 
         var t = $"_tx{_tx++}";
         _create.Add($"const {t} = document.createTextNode('');");
         _used.Add("setText");
         _used.Add("effect");
-        _bindings.Add($"effect(() => setText({t}, {text}.value));");
+        _bindings.Add($"effect(() => setText({t}, {js}));");
         return t;
     }
 
@@ -541,7 +1114,7 @@ public sealed class TemplateCompiler
         return handler.Length > 0;
     }
 
-    string Render(string prologue, string runtimeSpecifier, string sourceName)
+    string Render(List<string> module, List<string> prologue, string runtimeSpecifier, string sourceName)
     {
         _used.Add("insert");
         var imports = RuntimeExports.Where(_used.Contains).ToList();
@@ -549,53 +1122,80 @@ public sealed class TemplateCompiler
         var sb = new StringBuilder();
         sb.Append("// GENERATED by Filament.Generator from ").Append(sourceName).Append(". DO NOT EDIT.\n");
         sb.Append("//\n");
-        sb.Append("// The template is compiled; the @code block is hand-written JS, spliced verbatim\n");
-        sb.Append("// (Phase 2: \"la logique @code reste ecrite en JS a la main\").\n\n");
+        sb.Append("// Compiled from pure .razor: the template AND the @code block (Phase 3).\n");
+        sb.Append("// State is lifted -- a private field the template reads and something assigns\n");
+        sb.Append("// becomes a Signal -- and no user text is spliced anywhere in this file.\n\n");
 
         sb.Append("import { ").Append(string.Join(", ", imports)).Append(" } from '").Append(runtimeSpecifier).Append("';\n\n");
+
+        if (module.Count > 0)
+        {
+            // rows.js mapping decision (4): immutable literal lists are inert DATA, and hoisting
+            // them is constant folding. The LABELS are not here and must never be -- they are
+            // generated per row by the LCG, 3 draws and a concatenation each, exactly as Blazor
+            // does them. Hoisting or interning one is the cheat this POC exists not to commit.
+            sb.Append("// -- @code: immutable literal data, hoisted to module scope ------------------\n");
+            foreach (var line in module) sb.Append(line).Append('\n');
+            sb.Append('\n');
+        }
+
         sb.Append("export function mount(target) {\n");
 
-        if (prologue.Length > 0)
+        if (prologue.Count > 0)
         {
-            sb.Append("  // -- @code ------------------------------------------------------------------\n");
-            foreach (var line in prologue.Split('\n'))
-                sb.Append(line.Length > 0 ? "  " + line + "\n" : "\n");
+            sb.Append("  // -- @code: state and behaviour, compiled from C# ---------------------------\n");
+            Emit(sb, prologue);
             sb.Append('\n');
         }
 
         sb.Append("  // -- create(): the tree, built detached -------------------------------------\n");
-        foreach (var l in _create) sb.Append("  ").Append(l).Append('\n');
+        Emit(sb, _create);
 
         if (_bindings.Count > 0)
         {
             sb.Append("\n  // -- bindings ---------------------------------------------------------------\n");
-            foreach (var l in _bindings) sb.Append("  ").Append(l).Append('\n');
+            Emit(sb, _bindings);
         }
         if (_events.Count > 0)
         {
             sb.Append("\n  // -- events -----------------------------------------------------------------\n");
-            foreach (var l in _events) sb.Append("  ").Append(l).Append('\n');
+            Emit(sb, _events);
         }
 
         sb.Append("\n  // -- attach: last, so the effects' first run made no MutationRecord ----------\n");
-        foreach (var l in _attach) sb.Append("  ").Append(l).Append('\n');
+        Emit(sb, _attach);
         sb.Append("}\n");
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Emit statements at mount()'s indentation. Each ELEMENT may itself be several lines
+    /// (an inlined handler body is), so the indent is applied per LINE and not per element
+    /// -- indenting the element would indent only its first line and leave the rest jammed
+    /// against the margin.
+    /// </summary>
+    static void Emit(StringBuilder sb, List<string> statements)
+    {
+        foreach (var statement in statements)
+            foreach (var line in statement.Split('\n'))
+                sb.Append(line.Length > 0 ? "  " + line + "\n" : "\n");
+    }
+
     // ---- helpers -----------------------------------------------------------
 
-    static string RawText(IntermediateNode n) =>
-        string.Concat(n.FindDescendantNodes<IntermediateToken>().Select(t => t.Content));
-
-    static string Dedent(string s)
-    {
-        var lines = s.Replace("\r\n", "\n").Trim('\n').Split('\n');
-        var indent = lines.Where(l => l.Trim().Length > 0)
-            .Select(l => l.Length - l.TrimStart().Length)
-            .DefaultIfEmpty(0).Min();
-        return string.Join("\n", lines.Select(l => l.Length >= indent ? l[indent..] : l.TrimStart())).Trim('\n');
-    }
+    /// <summary>
+    /// One IR node's C#, as the author wrote it.
+    ///
+    /// @key IS A SPECIAL CASE AND IT HAD TO BE FOUND BY RUNNING. SetKeyIntermediateNode has
+    /// NO token children -- its value hangs off a KeyValueToken PROPERTY -- so the generic
+    /// descendant walk returns "" for it. Measured: `__filament_s2();` with no argument, i.e.
+    /// the @key expression silently vanishing on its way to the parser. It is exactly the
+    /// class of hole this compiler exists to not have, and it is caught here rather than
+    /// downstream because a `@key` that reaches list() as nothing is a list with no identity.
+    /// </summary>
+    static string RawText(IntermediateNode n) => n is SetKeyIntermediateNode k
+        ? k.KeyValueToken?.Content ?? ""
+        : string.Concat(n.FindDescendantNodes<IntermediateToken>().Select(t => t.Content));
 
     static string Trunc(string? s, int n = 60)
     {

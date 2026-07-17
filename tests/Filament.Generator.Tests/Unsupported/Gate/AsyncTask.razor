@@ -1,0 +1,11 @@
+<p><span id="counter-value">@currentCount</span></p>
+
+@code {
+    private int currentCount = 0;
+
+    private async System.Threading.Tasks.Task LoadAsync()
+    {
+        await System.Threading.Tasks.Task.Delay(1);
+        currentCount++;
+    }
+}

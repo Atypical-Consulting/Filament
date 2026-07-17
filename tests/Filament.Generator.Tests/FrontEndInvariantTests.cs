@@ -114,16 +114,23 @@ public class FrontEndInvariantTests
     /// <summary>
     /// THE @code SEAM, VERIFIED RATHER THAN ASSUMED (decision 57).
     ///
-    /// The one real design risk of this phase: Razor lexes @code as C#, so JavaScript
-    /// in it might be mangled or rejected. It is not. Razor lexes the block but does
-    /// not parse or type-check it; the whole body arrives as ONE opaque
-    /// CSharpCodeIntermediateNode token, verbatim, with ZERO diagnostics -- arrow
-    /// function, `const`, `++` and all. This test pins that byte for byte, so that a
-    /// Razor that starts interpreting the block breaks a TEST rather than the app's
-    /// state.
+    /// Razor lexes @code but does not parse or type-check it: the whole body arrives as
+    /// ONE opaque CSharpCodeIntermediateNode token, verbatim, with ZERO diagnostics. This
+    /// test pins that, so that a Razor that starts interpreting the block breaks a TEST
+    /// rather than the app.
+    ///
+    /// THIS INVARIANT GOT MORE LOAD-BEARING IN PHASE 3, NOT LESS, AND THE REASON IS WORTH
+    /// WRITING DOWN. In Phase 2 opacity is what let hand-written JAVASCRIPT ride through
+    /// untouched. In Phase 3 there is no JS here -- the block is C# -- and opacity is what
+    /// lets this compiler hand the ENTIRE block to Roslyn as text and get exact source
+    /// offsets back out of it. A Razor that "helpfully" parsed or rewrote the block would
+    /// hand Roslyn something the author did not write, and every FIL0001 location would
+    /// point at a fiction. The assertion below changed phase; the invariant did not.
+    ///
+    /// MUTATION-TESTED: assert two tokens -> RED (there is exactly one).
     /// </summary>
     [Fact]
-    public void CodeBlock_IsOpaque_AndCarriesJsVerbatim()
+    public void CodeBlock_IsOpaque_AndCarriesTheBlockVerbatim()
     {
         var parse = RazorFrontEnd.Parse(RepoPaths.CounterRazor);
 
@@ -138,10 +145,47 @@ public class FrontEndInvariantTests
         Assert.Single(tokens);
         Assert.False(tokens[0].IsHtml);
 
-        var js = tokens[0].Content;
-        Assert.Contains("const currentCount = signal(0);", js);
-        Assert.Contains("const Increment = () => {", js);
-        Assert.Contains("currentCount.value++;", js);
+        // The C# the author wrote, untouched. Razor did not reformat, reorder or lower it.
+        var cs = tokens[0].Content;
+        Assert.Contains("private int currentCount = 0;", cs);
+        Assert.Contains("private void Increment()", cs);
+        Assert.Contains("currentCount++;", cs);
+    }
+
+    /// <summary>
+    /// PHASE 3's GATE, AT THE INPUT END: "les deux apps compilent depuis du .razor PUR".
+    ///
+    /// Markup parity is asserted above; this is the OTHER half, and without it "compiles
+    /// from pure .razor" would be a claim about a file whose @code nobody compared. The
+    /// sample's @code must be the BASELINE's @code, byte for byte -- the same C# Blazor
+    /// compiles, not a Filament-flavoured rewrite of it.
+    ///
+    /// This is the test that would have caught Phase 2's real measurement problem if
+    /// Phase 2 had had it: its @code was hand-written JavaScript that declared
+    /// `signal(0)` itself, so the state lifting -- the whole thesis of this phase -- had
+    /// already happened, by hand, in the input, before the compiler ran.
+    ///
+    /// MUTATION-TESTED: change `private int currentCount = 0;` to `private int
+    /// currentCount = 1;` in the sample -> RED.
+    /// </summary>
+    [Fact]
+    public void CounterRazor_CodeBlockIsTheBaselinesCsharp_Verbatim()
+    {
+        var baseline = File.ReadAllText(Path.Combine(RepoPaths.Root, "baseline", "Counter.Blazor", "App.razor"));
+        var sample = File.ReadAllText(RepoPaths.CounterRazor);
+
+        var expected = CodeBlock(baseline);
+        Assert.Equal(expected, CodeBlock(sample));
+
+        // and it is the C# we think it is: a plain private field and a plain private
+        // method. Nothing here mentions a signal, and that is the point.
+        Assert.Equal(
+            "private int currentCount = 0;\n\n" +
+            "private void Increment()\n" +
+            "{\n" +
+            "currentCount++;\n" +
+            "}",
+            expected);
     }
 
     /// <summary>
@@ -277,6 +321,30 @@ public class FrontEndInvariantTests
         var code = s.IndexOf("@code", StringComparison.Ordinal);
         if (code >= 0) s = s[..code];
         return s.Trim('\n', ' ');
+    }
+
+    /// <summary>
+    /// The body of the @code block, with indentation normalised away.
+    ///
+    /// The two files indent it differently (the baseline's sits inside a Blazor project's
+    /// conventions), and this test is about the CODE, not about whitespace -- unlike the
+    /// markup test above, where the blank lines ARE the contract because Razor turns them
+    /// into DOM nodes. Whitespace inside @code reaches no DOM node: Roslyn parses it away.
+    /// The distinction is measured, not assumed -- it is decision 55's second divergence
+    /// in one direction and a non-issue in the other.
+    /// </summary>
+    static string CodeBlock(string razor)
+    {
+        var s = razor.Replace("\r\n", "\n");
+        var at = s.IndexOf("@code", StringComparison.Ordinal);
+        Assert.True(at >= 0, "no @code block");
+
+        var open = s.IndexOf('{', at);
+        var close = s.LastIndexOf('}');
+        Assert.True(open > 0 && close > open, "unterminated @code block");
+
+        var body = s[(open + 1)..close];
+        return string.Join('\n', body.Split('\n').Select(l => l.Trim())).Trim('\n');
     }
 
     static string Text(IntermediateNode n) =>
