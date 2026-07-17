@@ -11,6 +11,9 @@ playwright-report/
 # Multi-megabyte wasm; never committed.
 bench/publish/
 
+# Demo dev bundles: regenerable via demo/build.sh, never committed (same rule as bench/publish/).
+demo/dist/
+
 # bench/results/ is DELIBERATELY NOT ignored. Those JSON files are the measured
 # evidence behind BENCH.md -- the whole point of the baseline. Ignoring them was
 # the reproducibility gap flagged as BENCH.md open reserve #4.
@@ -29,6 +32,7 @@ bench/publish/
 # for the same reason.
 samples/filament-counter-gen/Counter.g.js
 samples/filament-rows-gen/Rows.g.js
+samples/filament-if-gen/If.g.js
 
 # Approval-test output. `*.received.js` is what the generator ACTUALLY emitted when a
 # snapshot went red -- a debugging artifact written by the failing test itself, next to
