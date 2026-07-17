@@ -11,10 +11,14 @@ namespace Filament.Generator.Tests;
 /// MAPPING DECISIONS; each one has a test below, because "it compiles" and "it compiles to
 /// the thing the key specifies" are different claims and only the second one is the gate.
 ///
-/// THE GATE TEST IS RED, AND THAT IS THE RESULT, NOT A TODO. Read its message: three
-/// divergences remain, all three are reported, and NONE of them is a bug in the translation —
-/// the other tests in this file pass, and neutralising exactly those three makes canon report
-/// ALPHA-EQUIVALENT at 2200 B / 3339 B / 887 tokens, i.e. dead on the key.
+/// THE GATE TEST IS NOW GREEN (DECISIONS #80). It was RED for a phase on three shape
+/// divergences between the generator and the key — none a translation bug — which #68/#76
+/// disclosed as the OWNER's call before this step. The owner made the call: samples/Rows/rows.js
+/// was CORRECTED to the rules the generator already applies (single-use handler inlining, `+=`
+/// verbatim, and the four whitespace Text nodes Blazor ships). That is the answer key adopting
+/// the generator's rule — decision 64's move, the baseline outranking the key — NOT the
+/// generator being re-shaped to pass. canon now reports ALPHA-EQUIVALENT at 2309 B / 3480 B /
+/// 920 tokens on both sides.
 /// </summary>
 public class RowsTests
 {
@@ -22,59 +26,54 @@ public class RowsTests
     /// PHASE 3's GATE ON ROWS: "le JS emis pour Counter et Rows est equivalent au JS ecrit a
     /// la main en phase 1" (spec 6), under decision 51's mechanical definition.
     ///
-    /// IT FAILS. The divergences, each MEASURED by neutralising it alone and re-running canon:
+    /// IT PASSES (DECISIONS #80). canon reports ALPHA-EQUIVALENT at 2309 B / 3480 B / 920
+    /// tokens on both sides. It was RED for a phase on three shape divergences, each MEASURED
+    /// by neutralising it alone (the table below is the record of that RED state):
     ///
     ///   #  what                                       minified   first canon token
     ///   -  ----------------------------------------   --------   -----------------
-    ///      generated, as it stands                       2309 B   diverges at #342
-    ///   1  handler inlining (decision 68)                2336 B   diverges at #399
-    ///   2  compound assignment on a signal               2352 B   diverges at #505
+    ///      generated, as it stands                       2309 B   diverged at #342
+    ///   1  handler inlining (decision 68)                2336 B   diverged at #399
+    ///   2  compound assignment on a signal               2352 B   diverged at #505
     ///   3  the 4 whitespace Text nodes                   2200 B   ALPHA-EQUIVALENT
-    ///      samples/Rows/rows.js                          2200 B   (887 tokens)
+    ///      samples/Rows/rows.js (old, 3-divergence)      2200 B   (887 tokens)
     ///
-    /// So the translation itself is EXACT TO THE TOKEN — the reassembly, the record, the escape
-    /// analysis, list(), @key, the LCG, batch, the method order, the hoisting. Three shape
-    /// disagreements remain and every one of them is an OWNER's call, not an implementer's:
+    /// The translation itself was EXACT TO THE TOKEN throughout — the reassembly, the record,
+    /// the escape analysis, list(), @key, the LCG, batch, the method order, the hoisting. The
+    /// three disagreements were all shape, and all the OWNER's call. The owner ruled: correct
+    /// the KEY, not the generator, so the resolution went toward BLAZOR (bigger, 2309 B), not
+    /// toward the old key (2200 B). What changed in samples/Rows/rows.js:
     ///
-    /// 1. THE HANDLER. rows.js emits `function update()` / `function swapRows()` / `function
-    ///    run()` and REFERENCES them from their handlers, though each is named by exactly one
-    ///    @onclick and called from nowhere else. Decision 68's rule — single-use inlining —
-    ///    inlines them, because counter.js inlines `Increment` and emits no binding for it.
-    ///    THE TWO ANSWER KEYS SPECIFY DIFFERENT HANDLER MAPPINGS. Decision 68 recorded this in
-    ///    advance, disclosed that Rows would diverge, and said explicitly that it is the
-    ///    owner's call BEFORE this step. It is not resolved here: adopting rows.js's shape now
-    ///    would be an implementer rewriting a recorded decision to make his own gate greener.
+    /// 1. THE HANDLER. rows.js used to emit `function run()`/`update()`/`swapRows()` and
+    ///    reference them, though each is named by exactly one @onclick and called nowhere else.
+    ///    The two answer keys specified DIFFERENT handler mappings; decision 68 disclosed that
+    ///    in advance and left it to the owner. rows.js now INLINES the three single-use handlers
+    ///    (decision 68's rule) and keeps `clear` a function because `run` also calls it.
     ///
-    /// 2. COMPOUND ASSIGNMENT. rows.js emits
-    ///        _rows[i].label.value = _rows[i].label.value + ' !!!';
-    ///    for `_rows[i].Label += " !!!"`. This compiler emits `_rows[i].label.value += ' !!!'`,
-    ///    because counter.js's header states the mapping as a RULE — "one node in, one node
-    ///    out, no syntactic desugaring" — and because the expanded form evaluates `_rows[i]`
-    ///    TWICE where the C# evaluates it once. rows.js does not state a rule here, and it does
-    ///    NOT expand the `i += 10` two lines up, so its own artifact does not follow the
-    ///    expansion consistently. Reported, not resolved.
+    /// 2. COMPOUND ASSIGNMENT. rows.js used to expand `_rows[i].Label += " !!!"` to
+    ///    `_rows[i].label.value = _rows[i].label.value + ' !!!'`, evaluating `_rows[i]` TWICE
+    ///    where the C# evaluates it once. It now emits `_rows[i].label.value += ' !!!'` —
+    ///    decision 68's "no syntactic desugaring", verbatim.
     ///
-    /// 3. THE WHITESPACE TEXT NODES — and this one is the ANSWER KEY diverging from BLAZOR,
-    ///    which is decision 64's situation exactly. RowsApp.razor puts each &lt;button&gt; on its
-    ///    own line, and Razor turns the newline+indent between siblings into a real text node.
-    ///    VERIFIED FROM BLAZOR'S OWN GENERATED CODE, not from anyone's reading of the rules:
+    /// 3. THE WHITESPACE TEXT NODES — decision 64's situation exactly: the ANSWER KEY had
+    ///    diverged from BLAZOR. RowsApp.razor puts each &lt;button&gt; on its own line, and Razor
+    ///    turns the newline+indent between siblings into a real text node — VERIFIED FROM
+    ///    BLAZOR'S OWN GENERATED CODE:
     ///        __builder.AddMarkupContent(6,  "\n    ");
     ///        __builder.AddMarkupContent(11, "\n    ");
     ///        __builder.AddMarkupContent(16, "\n    ");
     ///        __builder.AddMarkupContent(21, "\n    ");
-    ///    (obj/.../RowsApp_razor.g.cs, built from baseline/Rows.Blazor). Blazor ships four text
-    ///    nodes into #main; rows.js creates none. The GENERATOR is right and the KEY diverges
-    ///    from the shared DOM contract — and note which way that cuts: emitting them makes
-    ///    Filament's module 152 B BIGGER and builds four DOM nodes the key does not. This is
-    ///    the generator being correct AGAINST its own interest, and it is the single reason the
-    ///    verdict is FAIL rather than PASS-modulo-decision-68.
+    ///    (obj/.../RowsApp_razor.g.cs, built from baseline/Rows.Blazor). Blazor ships four; the
+    ///    old key built none. rows.js now builds all four. NOTE WHICH WAY THAT CUT: it makes the
+    ///    module 152 B BIGGER and builds four DOM nodes — the correction costs Filament, which
+    ///    is precisely why decision 21/51 forbade an IMPLEMENTER doing it and #64/#80 make it the
+    ///    OWNER's to rule on the baseline's authority.
     ///
-    /// DO NOT EDIT samples/Rows/rows.js TO MAKE THIS PASS. Decision 21/51: the answer key is
-    /// the REFERENCE and the generator is what is JUDGED. Decision 64 corrected counter.js only
-    /// because the BASELINE — the one authority above the key — disagreed with it, on the
-    /// owner's explicit decision, with the motive stated as the CONTRACT and the residual
-    /// disclosed. #3 above is the same shape and is reported for the same decision to be made,
-    /// not made here.
+    /// STILL DO NOT EDIT samples/Rows/rows.js TO MAKE THIS PASS. Decision 21/51 stands: the key
+    /// is the REFERENCE and the generator is what is JUDGED. #80 was the OWNER correcting the key
+    /// against the BASELINE (as #64 did counter.js), not an implementer softening a gate — and
+    /// the disclosed cost (a heavier hand-written filament-rows bundle, pending re-measurement)
+    /// is what a correction against one's own interest looks like.
     /// </summary>
     [Fact]
     public void Gate_GeneratedRows_IsAlphaEquivalentToAnswerKey()
@@ -84,35 +83,20 @@ public class RowsTests
         var (exit, stdout, stderr) = Run.Node(RepoPaths.Canon, generated, RepoPaths.RowsAnswerKey);
 
         Assert.True(exit == 0,
-            "PHASE 3 GATE (Rows): FAILED.\n\n" +
-            "The generated module is NOT alpha-equivalent to samples/Rows/rows.js under\n" +
-            "decision 51's definition.\n\n" +
+            "PHASE 3 GATE (Rows): REGRESSED.\n\n" +
+            "This gate is GREEN as of decision 80: the generated module was alpha-equivalent\n" +
+            "to samples/Rows/rows.js. It no longer is, so either the generator changed or the\n" +
+            "answer key was edited. Diff them and find out which.\n\n" +
             "The comparison:\n" + Indent(stdout) +
             (stderr.Length > 0 ? "\nstderr:\n" + Indent(stderr) : "") +
-            "\n\nTHREE DIVERGENCES REMAIN, ALL THREE REPORTED, NONE A TRANSLATION BUG.\n" +
-            "Read this test's doc comment for each one, its measured cost, and why it is\n" +
-            "the owner's call. In one line each:\n\n" +
-            "  1. THE HANDLER      rows.js references `run`/`update`/`swapRows`; decision 68\n" +
-            "                      inlines them. The two answer keys specify DIFFERENT handler\n" +
-            "                      mappings and 68 recorded that in advance, disclosed that Rows\n" +
-            "                      would diverge, and left the call to the owner.\n" +
-            "  2. `+=` ON A SIGNAL rows.js expands to `x.value = x.value + y`; counter.js's\n" +
-            "                      header states 'no syntactic desugaring', and the expansion\n" +
-            "                      evaluates `_rows[i]` twice where the C# evaluates it once.\n" +
-            "  3. THE WHITESPACE   rows.js builds none of the four '\\n    ' Text nodes between\n" +
-            "                      the buttons. BLAZOR SHIPS ALL FOUR -- verified from its own\n" +
-            "                      generated BuildRenderTree (AddMarkupContent(6/11/16/21,\n" +
-            "                      \"\\n    \")). The ANSWER KEY diverges from the BASELINE here,\n" +
-            "                      which is decision 64's situation and the OWNER's call.\n\n" +
-            "VERIFIED CONSTRUCTIVELY: neutralise exactly those three on the generated side\n" +
-            "and canon reports ALPHA-EQUIVALENT at 2200 B / 3339 B / 887 tokens -- dead on\n" +
-            "the key. Everything else -- the @foreach reassembly, the record -> object literal,\n" +
-            "the construction-site escape analysis, the array+version, list(), @key, the LCG,\n" +
-            "batch, the method order, the hoisting -- is exact to the token.\n\n" +
-            "NOTE WHICH WAY #3 CUTS. Emitting those nodes makes Filament 152 B BIGGER and\n" +
-            "builds 4 DOM nodes the key does not. Removing them would shrink the module AND\n" +
-            "narrow the gate. That is exactly why it is not done here.\n\n" +
-            "DO NOT EDIT samples/Rows/rows.js TO MAKE THIS PASS (decision 21/51).\n");
+            "\n\nThis gate was RED for a phase on three OWNER-level divergences, all resolved in\n" +
+            "decision 80 by CORRECTING THE KEY toward Blazor (see this test's doc comment):\n\n" +
+            "  1. THE HANDLER      single-use `run`/`update`/`swapRows` inlined (decision 68);\n" +
+            "                      `clear` kept a function because `run` calls it too.\n" +
+            "  2. `+=` ON A SIGNAL `_rows[i].label.value += ' !!!'`, no syntactic desugaring.\n" +
+            "  3. THE WHITESPACE   the four '\\n    ' Text nodes between the buttons that BLAZOR\n" +
+            "                      SHIPS (AddMarkupContent(6/11/16/21, \"\\n    \")) — decision 64.\n\n" +
+            "If you are re-opening one of those, that is an OWNER decision (21/51), not a fix.\n");
     }
 
     /// <summary>
@@ -374,9 +358,10 @@ public class RowsTests
     ///
     /// AND the four whitespace Text nodes between the buttons, which BLAZOR SHIPS
     /// (AddMarkupContent(6/11/16/21, "\n    "), read off its own generated BuildRenderTree) and
-    /// which the answer key omits. They are asserted PRESENT here on purpose: this is the
-    /// gate's third divergence, it makes Filament bigger, and pinning it stops it being
-    /// quietly "fixed" into the free create-time advantage decision 20 lists as an open debt.
+    /// which the answer key now ALSO builds (decision 80 corrected it — this WAS the gate's
+    /// third divergence). They are asserted PRESENT here on purpose: they make Filament bigger,
+    /// and pinning them stops them being quietly "fixed" into the free create-time advantage
+    /// decision 20 lists as an open debt.
     /// </summary>
     [Fact]
     public void EmittedJs_HonoursTheSharedDomContract()

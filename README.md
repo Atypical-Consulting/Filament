@@ -17,20 +17,24 @@ via `src/Filament.Generator/`, a console app. Read the scope statement before qu
 > DECISIONS.md #71 records the control that proves the gate can still FAIL: neutralise the inlining
 > and it goes NOT EQUIVALENT at token #39, which is #55's divergence reproduced.
 >
-> **🔴 PHASE 3 IS NOT PASSED.** Its gate is a conjunction — *"**both apps** compile from pure `.razor`,
-> the measurements are unchanged, and 20 out-of-subset cases produce 20 correct diagnostics."*
-> **`Rows` now COMPILES from pure `.razor`** — from `baseline/Rows.Blazor/RowsApp.razor`, the file
-> Blazor compiles — and it runs: byte-exact label stream against the golden C# oracle, `#update` at
-> **100 `characterData` writes and zero reconcile**, `#swap` at **exactly 2 moves** (DECISIONS.md #72,
-> #76). But its **equivalence gate is RED**: three shape divergences from `samples/Rows/rows.js`
-> remain, none of them a translation bug, and **all three are the owner's call** — the handler mapping
-> (#68, the two keys disagree), `+=` on a signal, and four whitespace Text nodes **the answer key omits
-> and BLAZOR SHIPS**. Neutralising exactly those three gives ALPHA-EQUIVALENT at 2 200 B / 887 tokens,
-> dead on the key. The out-of-subset suite has **27** cases, all refused and all located — and auditing
-> it found that its "cascading parameters" case had been passing **for the wrong reason** while the same
-> non-goal on a *field* compiled at exit 0, plus that `private int x = "a string";` emitted a module
-> (DECISIONS.md **#77**). Both are fixed and mutation-tested; **three §5 false positives stay OPEN and
-> disclosed**. The "measurements unchanged" term still belongs to the Measure phase (#44).
+> **🟢 THE PHASE 3 §6 GATE IS NOW GREEN — with reserves, disclosed below.** Its gate is a conjunction —
+> *"**both apps** compile from pure `.razor`, the measurements are unchanged, and 20 out-of-subset cases
+> produce 20 correct diagnostics."* **`Rows` COMPILES from pure `.razor`** — from
+> `baseline/Rows.Blazor/RowsApp.razor`, the file Blazor compiles — and it runs: byte-exact label stream
+> against the golden C# oracle, `#update` at **100 `characterData` writes and zero reconcile**, `#swap` at
+> **exactly 2 moves** (DECISIONS.md #72, #76). Its **equivalence gate was RED for a phase** on three shape
+> divergences — the handler mapping (#68, the two keys disagreed), `+=` on a signal, and four whitespace
+> Text nodes **BLAZOR SHIPS and the answer key omitted** — **all three the owner's call**. The owner made
+> it (DECISIONS.md **#80**): `samples/Rows/rows.js` was **CORRECTED** to the rules the generator already
+> applies — the answer key adopting the rule, decision 64's move, NOT the generator re-shaped to pass.
+> The resolution went **toward Blazor** (2 309 B, the *bigger* side — it costs Filament four DOM nodes),
+> not toward the old 2 200 B key; `canon` now reports **ALPHA-EQUIVALENT at 2 309 B / 920 tokens both
+> sides**, and the suite is **162 pass / 0 fail**. The out-of-subset suite has **27** cases, all refused
+> and all located (DECISIONS.md **#77**). **Reserves still OPEN and disclosed:** (1) `rows.js` is also the
+> hand-written `filament-rows` source, so that Phase 1 bundle changed and **owes a re-measurement** (the
+> generator's output — the number entry #7 measured — is **unchanged**); (2) **three §5 false positives**
+> (division, component composition, root-level control flow); (3) decision #20's node-count debt. The
+> "measurements unchanged" term is verified on the generator's output (#7, #44).
 >
 > **⚠️ THE TWO ANSWER KEYS DISAGREE about the handler mapping**, and it is an OWNER's call before the
 > `Rows` step: `counter.js` **inlines** a single-use handler body, `rows.js` emits `function update()`
@@ -49,7 +53,7 @@ via `src/Filament.Generator/`, a console app. Read the scope statement before qu
 | `DECISIONS.md` | Why each number was produced the way it was, and every arbitrage. Read this before disputing a result. |
 | `src/filament-runtime/` | The signals runtime (`signal`/`computed`/`effect`/`list`). `npm run verify` = build + typecheck + tests + **2 048 B size gate**. |
 | `src/Filament.Generator/` | **The generator.** A console app (`dotnet run -- <in.razor> <out.js>`), **not** an `ISourceGenerator` and not an MSBuild target — spec §4.3 excludes Roslyn source generators, since they cannot emit non-C# (DECISIONS.md #58). `TemplateCompiler` compiles the template (Razor IR); `CSharpFrontEnd` compiles `@code` (Roslyn) and does the **state lifting**. |
-| `tests/Filament.Generator.Tests/` | The generator's suite, **including the Phase 2 gate** (now GREEN on `Counter`) and Phase 3's out-of-subset suite: **27 cases — 26 out-of-subset constructs covering the 20 the gate names, + 1 disclosed non-C# case** — each **refused, located, no file written** (`GateSubsetTests`), against **negative controls** that must compile CLEAN (`NegativeControls`). **161 pass, 1 fails**, and the failure is **`Rows`' equivalence gate** (DECISIONS.md #76), committed RED on purpose. |
+| `tests/Filament.Generator.Tests/` | The generator's suite, **including the Phase 2 gate** (now GREEN on `Counter`) and Phase 3's out-of-subset suite: **27 cases — 26 out-of-subset constructs covering the 20 the gate names, + 1 disclosed non-C# case** — each **refused, located, no file written** (`GateSubsetTests`), against **negative controls** that must compile CLEAN (`NegativeControls`). **162 pass, 0 fail** — `Rows`' equivalence gate was RED for a phase and is now **GREEN** after the owner corrected the answer key (DECISIONS.md #76, #80). |
 | `tools/canon.mjs` | The alpha-equivalence comparator that **decides** the gate (DECISIONS.md #51/#56). `node tools/canon.test.mjs` → 23 tests. Its limitations are in its own header. |
 | `samples/Counter/Counter.razor` | The generator's **input**, now **pure `.razor`**. Its markup AND its `@code` are `baseline/Counter.Blazor/App.razor`'s, **verbatim** — both pinned by tests. The `@code` is **C#**, compiled by Roslyn (Phase 3). |
 | `samples/Counter/counter.js` | The Phase 1 **answer key** — the hand-written reference the generator is judged against. **Never edited to make the gate pass** (DECISIONS.md #21/#51). |
@@ -155,8 +159,8 @@ dotnet run --project src/Filament.Generator -- \
 # nonsense this repo refuses. Verified by running both forms.
 dotnet run --project src/Filament.Generator -- --dump-ir samples/Counter/Counter.razor
 
-# The suite, INCLUDING both gates. Expect 161 passed, 1 failed -- the failure is Rows'
-# equivalence gate, RED on purpose (DECISIONS.md #76). Anything else failing is a regression.
+# The suite, INCLUDING both gates. Expect 162 passed, 0 failed -- Rows' equivalence gate
+# was RED for a phase and is now GREEN (DECISIONS.md #76, #80). Anything failing is a regression.
 dotnet test tests/Filament.Generator.Tests/Filament.Generator.Tests.csproj
 
 # The comparator that decides the gate, and its own tests.
@@ -173,8 +177,13 @@ answer key is the **reference** and the generator is what is **judged** (#21/#51
 proves the gate can still fail: neutralise the inlining and it reports NOT EQUIVALENT at token #39 —
 #55's divergence, reproduced (#71).
 
-**`Rows` compiles and runs; its equivalence gate is RED on three OWNER-level shape calls, so the
-PHASE 3 gate — a conjunction — is NOT passed** (#76).
+**`Rows` compiles and runs; its equivalence gate was RED for a phase on three OWNER-level shape calls,
+now GREEN** — the owner corrected the answer key to the rules (single-use handler inlining, `+=` verbatim,
+and the whitespace nodes Blazor ships), resolving toward the *bigger*, baseline-faithful side (2 309 B).
+So the **PHASE 3 §6 conjunction is satisfied**, with the reserves in the scope statement above still open
+(the `filament-rows` hand-written bundle owes a re-measurement; three §5 false positives; #20's debt).
+`samples/Rows/rows.js` was corrected by the OWNER against the BASELINE, decision 64's move — not an
+implementer softening a gate (#21/#51, #64, #80).
 
 Things worth knowing before you run it:
 

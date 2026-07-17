@@ -168,38 +168,13 @@ export function mount(target) {
     }
   }
 
-  /** `void Run()` — replace the table with exactly 1000 fresh rows. */
-  function run() {
-    clear();
-    for (let i = 0; i < 1000; i++) {
-      addRow();
-    }
-  }
-
-  /**
-   * `void Update()` — append " !!!" to every 10th row's label, cumulatively.
-   *
-   * Writes ONLY label signals. `_rows` is structurally untouched, so the version
-   * never moves, so list() never re-reconciles: 100 rows change and the cost is
-   * 100 character-data writes. No diff, no key map, no LIS, no row rebuilt.
-   */
-  function update() {
-    for (let i = 0; i < _rows.length; i += 10) {
-      _rows[i].label.value = _rows[i].label.value + ' !!!';
-    }
-  }
-
-  /** `void SwapRows()` — reciprocal swap of the row objects at 1 and 998. */
-  function swapRows() {
-    if (_rows.length > 998) {
-      const tmp = _rows[1];
-      _rows[1] = _rows[998];
-      _rows[998] = tmp;
-      // One logical mutation; inside a batch the bump count is unobservable
-      // anyway, since the reconcile happens once when the batch closes.
-      _rowsChanged();
-    }
-  }
+  // `void Run()`, `void Update()` and `void SwapRows()` are NOT defined here:
+  // each is named by exactly one @onclick and called from nowhere else, so
+  // decision 68's single-use inlining folds each body straight into its handler
+  // (see the events section below). `clear` and `addRow` DO stay functions:
+  // `clear` is also a handler-referenced-from-`run`, `addRow` is called by
+  // `run`, so neither is single-use. This is the owner's correction of decision
+  // 80 — the answer key adopting the rule the generator already applied.
 
   /* -------------------------------------------------------------------------
    * create(): the static tree.
@@ -209,29 +184,41 @@ export function mount(target) {
   const main = document.createElement('div');
   main.id = 'main';
 
+  // RowsApp.razor puts each <button> on its own line, and Razor turns the
+  // newline+indent BETWEEN siblings into a real text node — Blazor ships four,
+  // `AddMarkupContent(6/11/16/21, "\n    ")` in its own generated
+  // BuildRenderTree. The answer key used to omit them; decision 80 (the owner's
+  // call, decision 64's situation) restores them so the DOM contract is the
+  // baseline's exactly. NOTE which way this cuts: it makes the module LARGER and
+  // builds four DOM nodes — the correction costs Filament, it does not flatter it.
+
   // <button id="run" @onclick="Run">Create 1000 rows</button>
   const runBtn = document.createElement('button');
   runBtn.id = 'run';
   insert(runBtn, document.createTextNode('Create 1000 rows'));
   insert(main, runBtn);
+  insert(main, document.createTextNode('\n    '));
 
   // <button id="update" @onclick="Update">Update every 10th row</button>
   const updateBtn = document.createElement('button');
   updateBtn.id = 'update';
   insert(updateBtn, document.createTextNode('Update every 10th row'));
   insert(main, updateBtn);
+  insert(main, document.createTextNode('\n    '));
 
   // <button id="swaprows" @onclick="SwapRows">Swap Rows</button>
   const swapBtn = document.createElement('button');
   swapBtn.id = 'swaprows';
   insert(swapBtn, document.createTextNode('Swap Rows'));
   insert(main, swapBtn);
+  insert(main, document.createTextNode('\n    '));
 
   // <button id="clear" @onclick="Clear">Clear</button>
   const clearBtn = document.createElement('button');
   clearBtn.id = 'clear';
   insert(clearBtn, document.createTextNode('Clear'));
   insert(main, clearBtn);
+  insert(main, document.createTextNode('\n    '));
 
   // <table><tbody id="tbody">...</tbody></table>
   const table = document.createElement('table');
@@ -300,10 +287,47 @@ export function mount(target) {
 
   /* -------------------------------------------------------------------------
    * @onclick handlers. batch() == Blazor's one render per event handler.
+   *
+   * Decision 68 (single-use inlining), applied on the owner's call (decision 80):
+   * a method named by exactly ONE @onclick and called from nowhere else is
+   * INLINED into its handler — `run`, `update` and `swapRows` are. `clear` is
+   * NOT: `run` also calls it, so it stays a `function` above and is referenced
+   * here. The handler is ALWAYS an arrow: addEventListener invokes its listener
+   * with the DOM Event, so a bare reference would hand a zero-arg method one arg.
    * ---------------------------------------------------------------------- */
-  listen(runBtn, 'click', () => batch(run));
-  listen(updateBtn, 'click', () => batch(update));
-  listen(swapBtn, 'click', () => batch(swapRows));
+
+  // Run() — replace the table with exactly 1000 fresh rows.
+  listen(runBtn, 'click', () => batch(() => {
+    clear();
+    for (let i = 0; i < 1000; i++) {
+      addRow();
+    }
+  }));
+
+  // Update() — append " !!!" to every 10th row's label, cumulatively. Writes
+  // ONLY label signals: `_rows` is structurally untouched, so the version never
+  // moves and list() never re-reconciles — 100 character-data writes, no diff,
+  // no key map, no LIS, no row rebuilt. `+=` is the compound assignment VERBATIM
+  // (decision 68, "no syntactic desugaring"): `Label += " !!!"` evaluates
+  // `_rows[i]` exactly ONCE, where `x.value = x.value + y` would evaluate it twice.
+  listen(updateBtn, 'click', () => batch(() => {
+    for (let i = 0; i < _rows.length; i += 10) {
+      _rows[i].label.value += ' !!!';
+    }
+  }));
+
+  // SwapRows() — reciprocal swap of the row objects at 1 and 998. One logical
+  // mutation; inside a batch the bump count is unobservable anyway.
+  listen(swapBtn, 'click', () => batch(() => {
+    if (_rows.length > 998) {
+      const tmp = _rows[1];
+      _rows[1] = _rows[998];
+      _rows[998] = tmp;
+      _rowsChanged();
+    }
+  }));
+
+  // Clear() — kept a `function` above (Run also calls it), so referenced here.
   listen(clearBtn, 'click', () => batch(clear));
 
   insert(target, main);

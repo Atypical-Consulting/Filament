@@ -541,15 +541,15 @@ public sealed class TemplateCompiler
     /// A method called from @code as well keeps its function and the handler CALLS it, so
     /// the body is never duplicated.
     ///
-    /// DISCLOSED, BECAUSE IT IS THE NEXT STEP'S PROBLEM: rows.js does NOT obey this rule.
-    /// It emits `function update()` / `function swapRows()` and references them from their
-    /// handlers, though each is named by exactly one @onclick and called from nowhere else
-    /// -- so under this rule Rows' key would want them inlined. The two answer keys
-    /// therefore specify DIFFERENT handler mappings, and no single rule reproduces both
-    /// unless it is reverse-engineered from the artifacts (e.g. "inline iff the body needs
-    /// no batch", which fits both and means nothing). Counter's key is unambiguous and is
-    /// the reference for Counter; Rows' disagreement is reported, not pre-emptively
-    /// papered over from a step that is not measuring Rows. DECISIONS #68.
+    /// RESOLVED (DECISIONS #80). rows.js USED to break this rule: it emitted `function
+    /// update()` / `function swapRows()` / `function run()` and referenced them from their
+    /// handlers, though each is named by exactly one @onclick and called from nowhere else,
+    /// so the two answer keys specified DIFFERENT handler mappings and #68 disclosed that as
+    /// the owner's call before the Rows step. The owner made it: rows.js was CORRECTED to
+    /// adopt this rule (single-use `run`/`update`/`swapRows` inlined; `clear` kept a function
+    /// because `run` also calls it). So the generator emits what the key now specifies, and
+    /// the Rows gate is GREEN. This was the answer key adopting the generator's rule, NOT the
+    /// generator being re-shaped to the key. DECISIONS #68 (rule), #80 (resolution).
     /// </summary>
     bool ShouldInline(string handler) =>
         _code.IsMethod(handler) &&
@@ -567,7 +567,8 @@ public sealed class TemplateCompiler
     /// -- so the emission cannot depend on the method's arity being lucky.
     ///
     /// Both answer keys agree on this: counter.js emits `() => { ... }` and rows.js emits
-    /// `() => batch(run)`. NEITHER emits `listen(el, 'click', Handler)`.
+    /// `() => batch(clear)` (and `() => batch(() => { ... })` for its inlined handlers).
+    /// NEITHER emits `listen(el, 'click', Handler)`.
     ///
     /// batch() iff there is more than one write to coalesce -- see
     /// CSharpFrontEnd.MayWriteMoreThanOnce, which is where both keys' apparently opposite

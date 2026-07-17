@@ -2076,6 +2076,10 @@ le corps n'a pas besoin de `batch` » les ajuste toutes les deux et **ne signifi
 **rapporté**, pas maquillé depuis une étape qui ne mesure pas `Rows`. **C'est au propriétaire de trancher
 avant l'étape `Rows`.**
 
+> **→ TRANCHÉ EN n°80.** Le propriétaire a tranché : `rows.js` **inline** ses handlers single-use
+> (`run`/`update`/`swapRows`) et garde `clear` en `function` (appelée par `run`). La key adopte cette règle ;
+> la porte `Rows` est **VERTE**.
+
 **`batch()` ssi il y a plus d'une écriture à COALESCER** — et c'est la règle qui réconcilie les deux keys,
 qui se contredisent en surface (`counter.js` : « No batch(): the body performs exactly one write » ;
 `rows.js` (3) : « Every @onclick handler body runs inside batch() »). Une écriture dans une BOUCLE compte
@@ -2322,6 +2326,13 @@ c'est tout l'objet de la n°(4) : 3 tirages LCG et une concaténation en trois p
 3 000 + 1 000 par `#run`, exactement comme Blazor.
 
 ## 76. Porte de la Phase 3 sur `Rows` : **NON FRANCHIE** — trois divergences, **aucune** n'est un bug de traduction
+
+> **⚠️ RÉSOLU EN n°80.** Cette entrée est le **record de l'état ROUGE** et de sa vérification constructive.
+> Le propriétaire a depuis tranché les trois divergences en **corrigeant la key** (`rows.js`) vers Blazor
+> et vers la règle n°68 — porte `Rows` **VERTE**, `canon` ALPHA-ÉQUIVALENT à **2 309 o** (et **non** 2 200 o :
+> la résolution va vers Blazor, le plus GROS des deux, pas vers l'ancienne key). Tout ci-dessous reste vrai
+> **de l'état d'alors** ; la substance (traduction exacte au jeton, divergences = appel du propriétaire) est
+> confirmée par la résolution.
 
 **Le fait, avec la sortie réelle de `canon`** (`esbuild 0.28.1`) :
 
@@ -2576,3 +2587,63 @@ remplacées ici. Les autres majeurs (charge machine omise, RADICAL sur-affirmé,
 point §8) sont des trous de **divulgation**, pas des nombres faux, et sont comblés en entrée n°8. **Le verdict
 net ne bouge pas : C1 ET C4 passent sur la sortie du générateur ; la condition de viabilité §8 est satisfaite
 et mesurée pour les deux apps ; RADICAL n'est pas éliminée et n'est pas établie comme architecture.**
+
+## 80. La porte `Rows` est FRANCHIE — le PROPRIÉTAIRE tranche les trois divergences de la n°76 en CORRIGEANT LA KEY, **pas** le générateur
+
+**Décision.** Les trois divergences de FORME que la n°76 a divulguées — et que la n°68 avait, à l'avance,
+nommées « **l'appel du propriétaire AVANT l'étape `Rows`** » — sont tranchées : `samples/Rows/rows.js` est
+**corrigée** pour adopter les règles que le générateur applique **déjà**. Le générateur n'est **pas
+touché** (snapshot `Rows.approved.js` inchangé, vérifié par la suite), donc **les mesures de sa sortie
+(entrée n°7) tiennent**. `canon` rapporte désormais **ALPHA-ÉQUIVALENT à 2 309 o / 3 480 o / 920 jetons des
+DEUX côtés**, `exit 0`. Suite : **162 passent / 0 échoue** (était 161/1) — la seule bascule est
+`Gate_GeneratedRows_IsAlphaEquivalentToAnswerKey`, ROUGE depuis la n°76, maintenant VERTE.
+
+**Les trois corrections, une par divergence de la n°76 :**
+
+1. **LE HANDLER (n°68).** L'ancienne key émettait `function run()`/`update()`/`swapRows()` et les
+   référençait, alors que chacune est nommée par **exactement un** `@onclick` et appelée de nulle part
+   ailleurs. La key **INLINE** désormais les trois handlers single-use ; `clear` **reste une `function`**
+   parce que `run` l'appelle aussi (donc pas single-use), et son handler la **référence** (`() =>
+   batch(clear)`). C'est **la règle de la n°68 appliquée**, celle que la n°68 avait explicitement laissée au
+   propriétaire pour `Rows`.
+2. **L'AFFECTATION COMPOSÉE.** L'ancienne key dépliait `_rows[i].Label += " !!!"` en
+   `_rows[i].label.value = _rows[i].label.value + ' !!!'` — **deux** évaluations de `_rows[i]` là où le C#
+   en fait **une**. La key émet maintenant `_rows[i].label.value += ' !!!'` : « no syntactic desugaring »
+   (n°68), verbatim.
+3. **LES NŒUDS D'ESPACES (n°64).** C'était **l'answer key qui divergeait de BLAZOR** : `RowsApp.razor` met
+   chaque `<button>` sur sa ligne, Razor transforme le saut-de-ligne+indentation entre frères en un vrai
+   nœud texte, et Blazor en **expédie quatre** (`AddMarkupContent(6/11/16/21, "\n    ")`, lu sur son propre
+   `BuildRenderTree`). L'ancienne key n'en construisait **aucun** ; elle **construit les quatre** désormais.
+
+**POURQUOI CE N'EST PAS « VERDIR SA PROPRE PORTE », et le motif est la n°64.** La n°21/n°51 interdit à un
+**IMPLÉMENTEUR** d'éditer la key pour passer. La n°64 a établi que le **PROPRIÉTAIRE** peut corriger la key
+quand la **BASELINE** (Blazor) la contredit — la baseline est la seule autorité au-dessus de la key. La
+divergence n°3 est **mot pour mot** la situation de la n°64. Les n°1 et n°2 adoptent une **règle enregistrée
+(n°68)** que la n°68 elle-même a renvoyée au propriétaire. **C'est l'AnswerKey qui adopte la règle du
+générateur, pas le générateur qu'on re-façonne vers la key.**
+
+**LE SENS DE LA RÉSOLUTION, ET IL COUPE CONTRE FILAMENT — DIVULGUÉ, PAS CACHÉ.** La table de la n°76
+mesurait la neutralisation des trois divergences **côté généré** → **2 200 o** (retirer les nœuds d'espaces
+**rétrécit**). Le propriétaire a fait **l'inverse** : corriger la **key VERS Blazor** → **2 309 o**. Le
+module est donc **PLUS GROS**, pas plus petit ; la correction **coûte** à Filament (les 4 nœuds DOM d'espaces
+que Blazor construit et que la key omettait). **C'est exactement à quoi ressemble une correction faite
+contre son propre intérêt** — la preuve que le motif est le CONTRAT, pas la porte.
+
+**DETTE DE MESURE, OUVERTE ET DIVULGUÉE.** `samples/Rows/rows.js` est **aussi** la source du label
+hand-written `filament-rows` (`samples/filament-rows/main.js` importe son `mount`). Le corriger **change ce
+bundle** : inlining et `+=` le **rétrécissent**, les 4 nœuds d'espaces le **grossissent** (+152 o brut,
+n°76) — net **non mesuré**. **La sortie du générateur (`filament-rows-gen`) est INCHANGÉE**, donc l'entrée
+n°7 (C1/C4 sur la sortie du générateur) **tient telle quelle**. Ce qui est **dû** : une **re-mesure de
+`filament-rows`** (la référence Phase 1, entrée n°4) dans une **nouvelle** entrée `BENCH.md` quand la phase
+de Mesure retourne — l'entrée n°4 est append-only et **n'est pas réécrite**. Aucune mesure publiée n'est
+invalidée ; c'est un futur chiffre qui différera, consigné ici plutôt que découvert.
+
+**PORTE PHASE 3 (§6), les trois termes.** (a) **les deux apps compilent depuis du `.razor` pur** →
+**VERTE** : `Counter` alpha-équivalent (n°71) **et** `Rows` alpha-équivalent (ici). (b) **mesures
+inchangées** → tient sur la **sortie du générateur** (n°7, générateur non touché). (c) **27/27
+diagnostics** → tient (n°7). **La conjonction §6 est donc satisfaite**, avec les réserves **déjà divulguées
+et toujours ouvertes** : la re-mesure `filament-rows` ci-dessus, les **trois faux positifs §5** (division
+`double/double`, composition de composant, contrôle de flux racine — n°77, non bloquants), et la **dette
+n°20** (nœuds vs Blazor, non bankée). **Le §8 ne bouge pas** : la condition de viabilité RADICALE reste
+satisfaite et mesurée pour les deux apps (n°7/entrée n°8), et RADICAL n'est **ni éliminée ni établie comme
+architecture** — le sous-ensemble §5 reste étroit et les non-goals §3 intacts.
