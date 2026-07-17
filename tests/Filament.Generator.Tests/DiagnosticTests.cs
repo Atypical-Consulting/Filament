@@ -74,6 +74,7 @@ public class DiagnosticTests
     [InlineData("Foreach.razor", 2, 20, "unsupported-foreach")]
     [InlineData("IfNested.razor", 2, 1, "unsupported-if-body")]
     [InlineData("IfMultiBody.razor", 2, 1, "unsupported-if-body")]
+    [InlineData("IfElseMultiBody.razor", 6, 1, "unsupported-if-body")]
     public void ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation(
         string fixture, int line, int col, string reason)
     {
@@ -483,6 +484,7 @@ public class DiagnosticTests
     // assert exit != 0 via Refused() -- they never asserted the file itself was never written.
     [InlineData("IfNested.razor")]
     [InlineData("IfMultiBody.razor")]
+    [InlineData("IfElseMultiBody.razor")]
     [InlineData("IfAtRoot.razor")]
     public void ARefusalWritesNoFile(string fixture)
     {
