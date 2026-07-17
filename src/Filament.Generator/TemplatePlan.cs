@@ -98,8 +98,14 @@ public sealed record ForEachOp(
     string Var, string ListJs, string VersionJs, IntermediateNode Body, IntermediateNode Key) : TemplateOp;
 
 /// <summary>
-/// `@if (cond) { &lt;body&gt; }` -> a conditional list() with a 0/1 source and a comment anchor.
+/// `@if (c0) { &lt;b0&gt; } else if (c1) { &lt;b1&gt; } … else { &lt;bn&gt; }` -> a conditional list()
+/// whose single item's value is the ACTIVE BRANCH INDEX, with a comment anchor. A plain @if is the
+/// one-branch case, and it keeps its exact #81 emission.
 /// </summary>
-/// <param name="Cond">the condition, already translated to JS (e.g. "show.value")</param>
-/// <param name="Body">the ONE markup node the @if body produces</param>
-public sealed record IfOp(string Cond, IntermediateNode Body) : TemplateOp;
+/// <param name="Branches">the if / else-if / else branches, in source order</param>
+public sealed record IfOp(IReadOnlyList<IfBranch> Branches) : TemplateOp;
+
+/// <param name="Cond">the branch condition, already translated to JS (e.g. "n.value === 0"),
+/// or null for the trailing @else</param>
+/// <param name="Body">the ONE markup node this branch produces</param>
+public sealed record IfBranch(string? Cond, IntermediateNode Body);

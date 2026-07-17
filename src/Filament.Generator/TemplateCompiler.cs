@@ -929,14 +929,43 @@ public sealed class TemplateCompiler
     /// </summary>
     void EmitIf(IfOp op, string container)
     {
-        var anchor = $"_if{_if++}";
+        var id = _if++;
+        var anchor = $"_if{id}";
         _create.Add($"const {anchor} = document.createComment('');");
         _used.Add("insert");
         _create.Add($"insert({container}, {anchor});");
+        _used.Add("list");
 
-        var fn = Unique("ifBody");
+        // PLAIN @if (one branch, no @else): the exact #81 emission, byte-for-byte, so the @if gate
+        // and snapshot still hold. A 0/1 source, a constant key, the body function passed directly.
+        if (op.Branches.Count == 1)
+        {
+            var fn = Unique("ifBody");
+            if (!EmitBranchFn(op.Branches[0].Body, fn)) return; // body refused; nothing emitted
+            _bindings.Add($"list({container}, () => ({op.Branches[0].Cond}) ? [0] : [], () => 0, {fn}, {anchor});");
+            return;
+        }
 
-        // Build the body subtree into a fresh create/binding pair, exactly as EmitList does.
+        // MULTI-BRANCH @if/@else if/@else: the single item's VALUE is the active branch index; the
+        // key IS that index, so flipping any condition changes the key and list() swaps the branch.
+        // Names carry `id` so two @if ops in one module never collide.
+        var fns = new List<string>();
+        for (var i = 0; i < op.Branches.Count; i++)
+        {
+            var fn = Unique($"ifBody{id}_{i}");
+            if (!EmitBranchFn(op.Branches[i].Body, fn)) return;
+            fns.Add(fn);
+        }
+        _bindings.Add($"list({container}, {IfSource(op.Branches)}, (i) => i, {IfCreate(fns)}, {anchor});");
+    }
+
+    /// <summary>
+    /// Build one branch body into a `function {fnName}() { …; return root; }` binding, exactly as
+    /// EmitList builds a row (fresh create/binding pair, adopted key scope). Returns false — nothing
+    /// emitted — if the body was refused.
+    /// </summary>
+    bool EmitBranchFn(IntermediateNode bodyNode, string fnName)
+    {
         var outerCreate = _create;
         var outerBindings = _bindings;
         var outerKey = _consumedKey;
@@ -944,22 +973,40 @@ public sealed class TemplateCompiler
         _bindings = [];
         _consumedKey = null;
 
-        var root = EmitNode(op.Body, parent: null);
-        var body = new List<string>();
-        body.AddRange(_create);
-        body.AddRange(_bindings);
+        var root = EmitNode(bodyNode, parent: null);
+        var lines = new List<string>();
+        lines.AddRange(_create);
+        lines.AddRange(_bindings);
 
         _create = outerCreate;
         _bindings = outerBindings;
         _consumedKey = outerKey;
 
-        if (root is null) return; // the body was refused; nothing is emitted
-        body.Add($"return {root};");
+        if (root is null) return false;
+        lines.Add($"return {root};");
+        _bindings.Add($"function {fnName}() {{\n" + string.Join("\n", lines.Select(l => "  " + l)) + "\n}");
+        return true;
+    }
 
-        _bindings.Add($"function {fn}() {{\n" + string.Join("\n", body.Select(l => "  " + l)) + "\n}");
+    /// <summary>`() => (c0) ? [0] : (c1) ? [1] : [n]` — a trailing @else is `: [n]`; a chain with no
+    /// @else ends `: []` (nothing shows when none match, generalizing plain @if's `? [0] : []`).</summary>
+    static string IfSource(IReadOnlyList<IfBranch> branches)
+    {
+        var parts = new List<string>();
+        for (var i = 0; i < branches.Count; i++)
+        {
+            if (branches[i].Cond is { } c) parts.Add($"({c}) ? [{i}] : ");
+            else return "() => " + string.Concat(parts) + $"[{i}]";   // trailing @else
+        }
+        return "() => " + string.Concat(parts) + "[]";
+    }
 
-        _used.Add("list");
-        _bindings.Add($"list({container}, () => ({op.Cond}) ? [0] : [], () => 0, {fn}, {anchor});");
+    /// <summary>`(i) => i === 0 ? f0() : i === 1 ? f1() : fN()` — the last branch needs no test.</summary>
+    static string IfCreate(IReadOnlyList<string> fns)
+    {
+        var parts = new List<string>();
+        for (var i = 0; i < fns.Count - 1; i++) parts.Add($"i === {i} ? {fns[i]}() : ");
+        return "(i) => " + string.Concat(parts) + $"{fns[^1]}()";
     }
 
     /// <summary>A binding name mount() does not already hold. @code's bindings share this scope.</summary>

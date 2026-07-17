@@ -574,40 +574,57 @@ public sealed class CSharpFrontEnd
     }
 
     /// <summary>
-    /// `@if (cond) { &lt;element&gt; }` -> IfOp, lowered to a conditional list() by TemplateCompiler.
-    ///
-    /// First cut: plain @if only. @else, nested control flow, and a body that is not exactly one
-    /// element are refused -- each is a separate mapping no answer key covers yet.
+    /// `@if (c0) { &lt;e0&gt; } else if (c1) { &lt;e1&gt; } … else { &lt;en&gt; }` -> IfOp with one
+    /// IfBranch per branch (the trailing @else, if any, is a branch with a null condition), lowered
+    /// to a keyed list() by TemplateCompiler. This cut's subset: each branch body is exactly one
+    /// element. Multi-node branch bodies and nested control flow in a branch are refused PER BRANCH
+    /// by BranchBody; @if at the template root is refused earlier by the root-code guard.
     /// </summary>
     IfOp? If(IfStatementSyntax ifs, IReadOnlyDictionary<string, IntermediateNode> markers)
     {
-        if (ifs.Else is { } els)
+        var branches = new List<IfBranch>();
+        var cur = ifs;
+        while (true)
         {
-            Refuse("else-not-yet-implemented",
-                "@else / @else if is not in this step's subset. The first cut compiles a plain @if to a " +
-                "conditional list() with a single body; an alternative branch is a separate mapping (two " +
-                "bodies, or a swap) that no answer key covers yet. Refusing to emit.",
-                els.ElseKeyword.SpanStart);
-            return null;
-        }
+            if (BranchBody(cur.Statement, markers) is not { } body) return null;
+            branches.Add(new IfBranch(Expr(cur.Condition), body));
 
+            if (cur.Else is not { } els) break;               // if / else-if chain ended, no @else
+            if (els.Statement is IfStatementSyntax nested)    // "else if (...)"
+            {
+                cur = nested;
+                continue;
+            }
+            if (BranchBody(els.Statement, markers) is not { } elseBody) return null;  // trailing "else { … }"
+            branches.Add(new IfBranch(null, elseBody));
+            break;
+        }
+        return new IfOp(branches);
+    }
+
+    /// <summary>
+    /// One @if/@else branch body -> the single markup node it must produce, or null (a located
+    /// refusal already emitted) if it is not exactly one element. Shared by every branch, so the
+    /// "exactly one element" rule applies uniformly to if, else-if, and else.
+    /// </summary>
+    IntermediateNode? BranchBody(StatementSyntax stmt, IReadOnlyDictionary<string, IntermediateNode> markers)
+    {
         // The ORIGINAL statement nodes, never a SyntaxFactory copy (see ForEach).
-        IEnumerable<StatementSyntax> body = ifs.Statement is BlockSyntax b ? b.Statements : [ifs.Statement];
+        IEnumerable<StatementSyntax> body = stmt is BlockSyntax b ? b.Statements : [stmt];
         var ops = RegionOps(body, markers);
         var markup = ops.OfType<MarkupOp>().ToList();
 
         if (markup.Count != 1 || ops.Count != markup.Count)
         {
             Refuse("unsupported-if-body",
-                $"a template @if body must be exactly ONE element and nothing else; this one produces " +
-                $"{ops.Count} thing(s). @if lowers to a conditional list() whose create() returns ONE root " +
-                "node, so a body with two roots, a stray text node, or nested control flow has no single " +
-                "thing to insert and remove. Refusing to emit.",
-                ifs.Statement.SpanStart);
+                $"a template @if / @else branch body must be exactly ONE element and nothing else; this " +
+                $"one produces {ops.Count} thing(s). @if lowers to a conditional list() whose create() " +
+                "returns ONE root node per branch, so a body with two roots, a stray text node, or nested " +
+                "control flow has no single thing to insert and remove. Refusing to emit.",
+                stmt.SpanStart);
             return null;
         }
-
-        return new IfOp(Expr(ifs.Condition), markup[0].Node);
+        return markup[0].Node;
     }
 
     static IntermediateNode? KeyOf(IntermediateNode markup) =>

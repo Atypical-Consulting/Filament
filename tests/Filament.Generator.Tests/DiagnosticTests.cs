@@ -72,7 +72,6 @@ public class DiagnosticTests
     /// </summary>
     [Theory]
     [InlineData("Foreach.razor", 2, 20, "unsupported-foreach")]
-    [InlineData("IfElse.razor", 5, 1, "else-not-yet-implemented")]
     [InlineData("IfNested.razor", 2, 1, "unsupported-if-body")]
     [InlineData("IfMultiBody.razor", 2, 1, "unsupported-if-body")]
     public void ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation(
@@ -482,7 +481,6 @@ public class DiagnosticTests
     // The deferred @if variants: refused by ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation
     // and IfAtRoot_IsRefused_ByTheRootCodeGuard_AtItsExactLocation above, but those theories only
     // assert exit != 0 via Refused() -- they never asserted the file itself was never written.
-    [InlineData("IfElse.razor")]
     [InlineData("IfNested.razor")]
     [InlineData("IfMultiBody.razor")]
     [InlineData("IfAtRoot.razor")]
