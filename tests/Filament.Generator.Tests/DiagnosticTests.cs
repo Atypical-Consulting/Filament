@@ -479,6 +479,13 @@ public class DiagnosticTests
     [InlineData("HandlerUnresolved.razor")]
     [InlineData("CodeSeamIsJs.razor")]
     [InlineData("HandlerIsState.razor")]
+    // The deferred @if variants: refused by ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation
+    // and IfAtRoot_IsRefused_ByTheRootCodeGuard_AtItsExactLocation above, but those theories only
+    // assert exit != 0 via Refused() -- they never asserted the file itself was never written.
+    [InlineData("IfElse.razor")]
+    [InlineData("IfNested.razor")]
+    [InlineData("IfMultiBody.razor")]
+    [InlineData("IfAtRoot.razor")]
     public void ARefusalWritesNoFile(string fixture)
     {
         var outPath = InRepo();
