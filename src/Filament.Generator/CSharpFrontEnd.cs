@@ -417,6 +417,7 @@ public sealed class CSharpFrontEnd
         foreach (var mi in _methods) MarkAssignments(mi.Syntax);
         foreach (var mi in _methods) MarkListMutations(mi.Syntax);
         MarkTemplateReads(slots);
+        MarkConditionReads(classes[1], regionMethods);
 
         // 3. the call graph: who calls whom, for the inlining arbitrage AND for the emission
         //    order (callees before callers -- see MethodsInDependencyOrder).
@@ -472,15 +473,9 @@ public sealed class CSharpFrontEnd
                 continue;
             }
 
-            if (s is IfStatementSyntax)
+            if (s is IfStatementSyntax ifs)
             {
-                Refuse("control-flow-not-yet-implemented",
-                    "@if in the template is in the spec's Razor subset (section 5) but its mapping is not " +
-                    "implemented in this step, which covers Rows' @foreach. A branch's mapping is a separate " +
-                    "decision -- neither answer key contains one, so there is nothing to be judged against " +
-                    "and nothing here would be measured. Refusing to emit rather than ship an emission path " +
-                    "no measurement covers.",
-                    s.SpanStart);
+                if (If(ifs, markers) is { } op) ops.Add(op);
                 continue;
             }
 
@@ -576,6 +571,43 @@ public sealed class CSharpFrontEnd
         }
 
         return new ForEachOp(JsName(fe.Identifier.Text), f.Js, li.Version, markup[0].Node, key);
+    }
+
+    /// <summary>
+    /// `@if (cond) { &lt;element&gt; }` -> IfOp, lowered to a conditional list() by TemplateCompiler.
+    ///
+    /// First cut: plain @if only. @else, nested control flow, and a body that is not exactly one
+    /// element are refused -- each is a separate mapping no answer key covers yet.
+    /// </summary>
+    IfOp? If(IfStatementSyntax ifs, IReadOnlyDictionary<string, IntermediateNode> markers)
+    {
+        if (ifs.Else is { } els)
+        {
+            Refuse("else-not-yet-implemented",
+                "@else / @else if is not in this step's subset. The first cut compiles a plain @if to a " +
+                "conditional list() with a single body; an alternative branch is a separate mapping (two " +
+                "bodies, or a swap) that no answer key covers yet. Refusing to emit.",
+                els.ElseKeyword.SpanStart);
+            return null;
+        }
+
+        // The ORIGINAL statement nodes, never a SyntaxFactory copy (see ForEach).
+        IEnumerable<StatementSyntax> body = ifs.Statement is BlockSyntax b ? b.Statements : [ifs.Statement];
+        var ops = RegionOps(body, markers);
+        var markup = ops.OfType<MarkupOp>().ToList();
+
+        if (markup.Count != 1 || ops.Count != markup.Count)
+        {
+            Refuse("unsupported-if-body",
+                $"a template @if body must be exactly ONE element and nothing else; this one produces " +
+                $"{ops.Count} thing(s). @if lowers to a conditional list() whose create() returns ONE root " +
+                "node, so a body with two roots, a stray text node, or nested control flow has no single " +
+                "thing to insert and remove. Refusing to emit.",
+                ifs.Statement.SpanStart);
+            return null;
+        }
+
+        return new IfOp(Expr(ifs.Condition), markup[0].Node);
     }
 
     static IntermediateNode? KeyOf(IntermediateNode markup) =>
@@ -1161,8 +1193,13 @@ public sealed class CSharpFrontEnd
     /// </summary>
     void MarkTemplateReads(IReadOnlyList<IntermediateNode> slots)
     {
-        foreach (var node in slots)
-        foreach (var id in SlotSyntax(node).DescendantNodesAndSelf())
+        foreach (var node in slots) MarkReads(SlotSyntax(node));
+    }
+
+    /// <summary>Mark every field/prop READ inside one expression as read-by-template.</summary>
+    void MarkReads(ExpressionSyntax e)
+    {
+        foreach (var id in e.DescendantNodesAndSelf())
         {
             if (id is not (IdentifierNameSyntax or MemberAccessExpressionSyntax)) continue;
             switch (_model.GetSymbolInfo(id).Symbol)
@@ -1171,6 +1208,19 @@ public sealed class CSharpFrontEnd
                 case IPropertySymbol ps when PropAnywhere(ps) is { } p: p.ReadByTemplate = true; break;
             }
         }
+    }
+
+    /// <summary>
+    /// A template @if condition reads state the way a slot does, so its reads must count as template
+    /// reads -- otherwise a bool read ONLY in `@if (show)` is never lifted and the conditional renders
+    /// once. MUST run with MarkTemplateReads (step 2c), BEFORE method bodies and slots are translated
+    /// (Body/TranslateSlots), so IsSignal is settled when Expr() runs on the condition.
+    /// </summary>
+    void MarkConditionReads(ClassDeclarationSyntax regionClass, IReadOnlyList<string> regionMethods)
+    {
+        foreach (var method in regionMethods)
+        foreach (var ifs in FindMethod(regionClass, method).Body!.DescendantNodes().OfType<IfStatementSyntax>())
+            MarkReads(ifs.Condition);
     }
 
     FieldInfo? Field(IFieldSymbol s) =>

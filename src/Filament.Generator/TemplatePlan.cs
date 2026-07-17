@@ -96,3 +96,10 @@ public sealed record MarkupOp(IntermediateNode Node) : TemplateOp;
 /// <param name="Key">the @key node, which becomes list()'s keyOf</param>
 public sealed record ForEachOp(
     string Var, string ListJs, string VersionJs, IntermediateNode Body, IntermediateNode Key) : TemplateOp;
+
+/// <summary>
+/// `@if (cond) { &lt;body&gt; }` -> a conditional list() with a 0/1 source and a comment anchor.
+/// </summary>
+/// <param name="Cond">the condition, already translated to JS (e.g. "show.value")</param>
+/// <param name="Body">the ONE markup node the @if body produces</param>
+public sealed record IfOp(string Cond, IntermediateNode Body) : TemplateOp;

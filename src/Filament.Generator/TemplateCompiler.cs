@@ -214,6 +214,7 @@ public sealed class TemplateCompiler
 
     string _file = "";
     int _el, _tx;
+    int _if;
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
 
@@ -847,6 +848,9 @@ public sealed class TemplateCompiler
                 case ForEachOp fe:
                     EmitList(fe, container);
                     break;
+                case IfOp iff:
+                    EmitIf(iff, container);
+                    break;
             }
     }
 
@@ -913,6 +917,49 @@ public sealed class TemplateCompiler
             $"  {fe.VersionJs}.value;\n" +
             $"  return {fe.ListJs};\n" +
             $"}}, ({fe.Var}) => {_code.SlotJs(fe.Key)}, {fn}, null);");
+    }
+
+    /// <summary>
+    /// `@if (cond) { &lt;body&gt; }` -> a conditional list() with a 0/1 source and a comment anchor.
+    ///
+    /// The anchor is a comment node inserted at the @if's position among its siblings (in _create,
+    /// so it lands in source order); list() inserts the body BEFORE it, so the conditional is
+    /// positioned correctly no matter what follows. Zero new runtime primitive: document.createComment
+    /// is a DOM builtin, and 3-arg insert / list(...anchor) already exist.
+    /// </summary>
+    void EmitIf(IfOp op, string container)
+    {
+        var anchor = $"_if{_if++}";
+        _create.Add($"const {anchor} = document.createComment('');");
+        _used.Add("insert");
+        _create.Add($"insert({container}, {anchor});");
+
+        var fn = Unique("ifBody");
+
+        // Build the body subtree into a fresh create/binding pair, exactly as EmitList does.
+        var outerCreate = _create;
+        var outerBindings = _bindings;
+        var outerKey = _consumedKey;
+        _create = [];
+        _bindings = [];
+        _consumedKey = null;
+
+        var root = EmitNode(op.Body, parent: null);
+        var body = new List<string>();
+        body.AddRange(_create);
+        body.AddRange(_bindings);
+
+        _create = outerCreate;
+        _bindings = outerBindings;
+        _consumedKey = outerKey;
+
+        if (root is null) return; // the body was refused; nothing is emitted
+        body.Add($"return {root};");
+
+        _bindings.Add($"function {fn}() {{\n" + string.Join("\n", body.Select(l => "  " + l)) + "\n}");
+
+        _used.Add("list");
+        _bindings.Add($"list({container}, () => ({op.Cond}) ? [0] : [], () => 0, {fn}, {anchor});");
     }
 
     /// <summary>A binding name mount() does not already hold. @code's bindings share this scope.</summary>

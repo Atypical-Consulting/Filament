@@ -50,8 +50,9 @@ public class DiagnosticTests
     }
 
     /// <summary>
-    /// CONTROL FLOW, AFTER THE ROWS STEP REACHED IT. Both fixtures are KEPT and both still
-    /// refuse -- for reasons that are now specific instead of "this phase does not do C#".
+    /// CONTROL FLOW, AFTER THE ROWS STEP REACHED IT. Foreach.razor is KEPT and still refuses --
+    /// for a reason that is now specific instead of "this phase does not do C#". (If.razor left
+    /// this theory when a plain @if started compiling -- see IfTests.)
     ///
     /// The premise changed, and saying so is the point. Decision 54: Razor emits no
     /// loop/branch node, the header is raw C# with unbalanced braces and the body element is
@@ -59,13 +60,10 @@ public class DiagnosticTests
     /// reassembles those spans and RE-PARSES them, so @foreach is compiled now and an
     /// assertion that it is refused would be asserting a bug.
     ///
-    /// What is tested here instead is the two edges the reassembly creates:
+    /// What is tested here instead is the edge the reassembly creates:
     ///   Foreach.razor  iterates `items`, which no @code declares -- so there is nothing
     ///                  for list() to subscribe to. Reported AT `items` (2,20), not at the
     ///                  @foreach: the loop is fine, its source is not.
-    ///   If.razor       @if IS in the spec's Razor subset and its mapping is NOT implemented
-    ///                  -- neither answer key contains a branch, so there is nothing to be
-    ///                  judged against. Same (2,2) as before, said honestly.
     ///
     /// The CODE changed FIL0003 -> FIL0001 on purpose, and it is decision 54 being taken at
     /// its word: @foreach and @if are not Razor structure, they ARE C#, which is why Razor
@@ -73,7 +71,6 @@ public class DiagnosticTests
     /// re-parsed tree, so it carries the C# subset's code.
     /// </summary>
     [Theory]
-    [InlineData("If.razor", 2, 2, "control-flow-not-yet-implemented")]
     [InlineData("Foreach.razor", 2, 20, "unsupported-foreach")]
     public void ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation(
         string fixture, int line, int col, string reason)
@@ -406,7 +403,6 @@ public class DiagnosticTests
     [InlineData("Layout.razor")]
     [InlineData("Inherits.razor")]
     [InlineData("Using.razor")]
-    [InlineData("If.razor")]
     [InlineData("Foreach.razor")]
     [InlineData("Bind.razor")]
     [InlineData("Component.razor")]
@@ -449,7 +445,6 @@ public class DiagnosticTests
     [InlineData("Inject.razor")]
     [InlineData("Page.razor")]
     [InlineData("Component.razor")]
-    [InlineData("If.razor")]
     // The handler cases especially: this generator DID write these files, and the module
     // it wrote looked perfect and had a dead button.
     [InlineData("HandlerLambda.razor")]
