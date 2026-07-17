@@ -51,6 +51,28 @@ public class IfTests
     }
 
     /// <summary>
+    /// Closed-runtime invariant: @if emits no new runtime primitive (reuses list()). Anchors are
+    /// DOM builtins (document.createComment), not runtime imports.
+    /// </summary>
+    [Fact]
+    public void EmittedIf_OnlyCallsClosedRuntimePrimitives_NoNewExport()
+    {
+        var js = File.ReadAllText(Generate.IfToTemp());
+        var import = js.Split('\n').First(l => l.StartsWith("import "));
+
+        string[] allowed =
+            ["signal", "computed", "effect", "batch", "untrack", "setText", "setAttr", "listen", "insert", "remove", "list"];
+        foreach (var name in import[(import.IndexOf('{') + 1)..import.IndexOf('}')]
+                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            Assert.True(allowed.Contains(name),
+                $"'{name}' is not a runtime export. @if must add NO new primitive (decision: reuse list()).");
+
+        // document.createComment is a DOM builtin, not a runtime import.
+        Assert.Contains("document.createComment(''", js);
+        Assert.DoesNotContain("when", import);
+    }
+
+    /// <summary>
     /// A plain @if nested in an element compiles to a conditional list(): a 0/1 source over the
     /// condition, a constant key, and a comment anchor. The condition field is lifted to a signal
     /// because a read in an @if condition counts as a template read (else the @if renders once).
