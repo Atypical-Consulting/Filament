@@ -2647,3 +2647,56 @@ et toujours ouvertes** : la re-mesure `filament-rows` ci-dessus, les **trois fau
 n°20** (nœuds vs Blazor, non bankée). **Le §8 ne bouge pas** : la condition de viabilité RADICALE reste
 satisfaite et mesurée pour les deux apps (n°7/entrée n°8), et RADICAL n'est **ni éliminée ni établie comme
 architecture** — le sous-ensemble §5 reste étroit et les non-goals §3 intacts.
+
+## 81. `@if` entre dans le sous-ensemble compilé — `list()` réemployé, un ancrage-commentaire divulgué comme divergence de +1 nœud
+
+**Décision.** `@if` quitte le camp des refus (`[control-flow-not-yet-implemented]`, l'exemple même que le
+README citait) et devient le second construct de contrôle de flux du sous-ensemble compilé, aux côtés de
+`@foreach` (n°54/72). Le générateur compile `samples/If/If.razor` en un module que `canon` rapporte
+**ALPHA-ÉQUIVALENT** à la clé de réponse écrite à la main `samples/If/if.js` — **196 jetons `canon`, 719 o,
+500 o minifiés des DEUX côtés**, `exit 0`. Le contrat DOM de la clé est lu depuis le `BuildRenderTree`
+généré par Blazor lui-même (composant jetable `IfRef.razor`, méthode de la n°64 : construit, inspecté,
+supprimé), pas deviné.
+
+**L'ABAISSEMENT RÉUTILISE `list()` — AUCUNE PRIMITIVE DE RUNTIME NOUVELLE.** Un `@if (cond) { … }` sans
+`else` s'abaisse en `list(parent, () => (cond) ? [0] : [], () => 0, bodyFn, commentAnchor)` : une source 0/1
+à clé constante sur la condition, exactement le même appel que `@foreach` émet pour une vraie liste — `@if`
+n'est qu'une liste à cardinalité 0 ou 1. Le runtime (`src/filament-runtime/src/`) est **byte-inchangé**
+(`git diff --stat src/filament-runtime` vide) et la porte de taille tient **1 943 o / 2 048 o**, identique à
+avant cette entrée. C'est le choix de conception annoncé au départ — « si vous pensez avoir besoin d'une
+primitive nouvelle, arrêtez : le design a choisi le réemploi de `list()` précisément pour l'éviter » — et un
+test d'invariant dédié (Task 4, runtime fermé) l'épingle contre toute régression future.
+
+**L'ANCRAGE-COMMENTAIRE (`document.createComment('')`) est une divergence DIVULGUÉE, pas cachée.** Il
+positionne le contenu conditionnel parmi ses frères — le générateur n'avait jusqu'ici **aucun mécanisme
+d'ancrage entre frères**, seulement l'ajout en fin de parent. C'est un nœud **+1** par rapport à Blazor, qui
+positionne son contenu conditionnel via son arbre de rendu, jamais par un commentaire DOM — **même
+catégorie que les marqueurs `<!--!-->` de la n°20**. À **RE-MESURER** si `@if` entre un jour dans une app
+mesurée (`Counter`, `Rows`) ; un incrément ultérieur peut le retirer par un ancrage au frère suivant
+(next-sibling), non fait ici.
+
+**LA RÉACTIVITÉ DE LA CONDITION exigeait un ORDRE précis, pas seulement une règle.** Un champ lu
+**seulement** dans une condition `@if` doit être marqué comme lecture de template — sinon `@if (show)` ne
+relève jamais `show` en signal et le conditionnel ne se rendrait qu'une fois, jamais en réaction au clic.
+`MarkConditionReads` tourne donc à l'étape 2c, **juste après `MarkTemplateReads`**
+(`CSharpFrontEnd.cs:419-420`), et **avant** que `Body(...)` (434) et `TranslateSlots(...)` (435) ne lisent
+`IsSignal` sur les champs. Marquer plus tard, dans le builder `If` lui-même, aurait traduit la condition
+comme un `let` ordinaire partout où un corps de méthode la lit avant l'`@if` — un faux négatif silencieux,
+pas une erreur.
+
+**LES VARIANTES DIFFÉRÉES, chacune un diagnostic LOCALISÉ, mutation-testé.** `@else`/`@else if`
+(`else-not-yet-implemented`), le contrôle de flux imbriqué et le corps multi-nœud (`unsupported-if-body` —
+`RegionOps` récursif construit naturellement un `IfOp` imbriqué, que le garde `markup.Count != 1 ||
+ops.Count != markup.Count` refuse : **voulu**, pas un bug à corriger vers le support), et `@if` à la racine
+du template (`template-code-at-root`, le même garde qui refusait déjà `@foreach` à la racine, n°77). Les
+quatre fixtures (`Unsupported/IfElse.razor`, `IfNested.razor`, `IfMultiBody.razor`, `IfAtRoot.razor`) sont
+refusées, localisées, **sans fichier écrit** ; chaque garde a été neutralisé un par un puis restauré pour
+confirmer qu'il est chargé, pas décoratif — mutation-testé, parce qu'un backstop non testé est une
+revendication (n°61).
+
+**LE PLAFOND HONNÊTE NE BOUGE PAS.** Un seul construct ne déplace pas le verdict §8 : RADICAL reste « ni
+éliminée ni établie », et le sous-ensemble §5 reste étroit — `@if` simple s'y ajoute, mais `@else`,
+l'imbrication et le contrôle de flux à la racine restent refusés. Suite : **172 passent / 0 échoue**
+(était 162/0, n°80). `node tools/canon.mjs` sur une régénération fraîche de `samples/If/If.razor` contre
+`samples/If/if.js` → **ALPHA-ÉQUIVALENT**, `exit 0` ; `cd src/filament-runtime && npm run verify` → vert,
+**1 943 o / 2 048 o**.
