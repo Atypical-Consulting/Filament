@@ -72,12 +72,40 @@ public class DiagnosticTests
     /// </summary>
     [Theory]
     [InlineData("Foreach.razor", 2, 20, "unsupported-foreach")]
+    [InlineData("IfElse.razor", 5, 1, "else-not-yet-implemented")]
+    [InlineData("IfNested.razor", 2, 1, "unsupported-if-body")]
+    [InlineData("IfMultiBody.razor", 2, 1, "unsupported-if-body")]
     public void ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation(
         string fixture, int line, int col, string reason)
     {
         var d = Refused(fixture);
 
         Assert.Contains($"{fixture}({line},{col}): FIL0001: [{reason}]", d);
+    }
+
+    /// <summary>
+    /// @if AT THE TEMPLATE ROOT -- not a C#-subset refusal like the three above, but the
+    /// PRE-EXISTING root-code guard (TemplateCompiler.Collect, decision-61-adjacent): a
+    /// root-level region has no element to attach to, so Collect() never plans it and the
+    /// gap is caught before the C# front end ever sees the @if. Split out of the FIL0001
+    /// theory above (which hardcodes that code) because this one carries FIL0003.
+    ///
+    /// Column is 2, not 1: the located span is the C# node's own text ("if (show)..."),
+    /// which starts right after the '@' Razor keeps for itself. Measured, not guessed --
+    /// the brief's placeholder was (1,1) and the generator disagreed.
+    ///
+    /// The fixture's `@if { ... }` splits into TWO root-level CSharpCodeIntermediateNodes
+    /// around the &lt;span&gt; markup ("if (show)\n{\n" and "}\n"), so the guard actually
+    /// raises TWO diagnostics here (also at (4,1)) -- both true and both
+    /// [template-code-at-root]. Only the first is asserted; the second is not spurious,
+    /// just the same guard firing again for the closing brace's own root-level node.
+    /// </summary>
+    [Fact]
+    public void IfAtRoot_IsRefused_ByTheRootCodeGuard_AtItsExactLocation()
+    {
+        var d = Refused("IfAtRoot.razor");
+
+        Assert.Contains("IfAtRoot.razor(1,2): FIL0003: [template-code-at-root]", d);
     }
 
     /// <summary>

@@ -1,0 +1,6 @@
+<div id="w">@if (show)
+{
+    <span id="a">a</span><span id="b">b</span>
+}</div>
+
+@code { private bool show = true; void T() { show = !show; } }
