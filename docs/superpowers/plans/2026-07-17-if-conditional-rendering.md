@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Runtime is CLOSED and untouched by this feature.** No new export from `src/filament-runtime/`. Size gate stays **1,943 B / 2,048 B**. `git diff --stat src/filament-runtime` must be empty at the end.
+- **Runtime SOURCE is CLOSED and untouched by this feature.** No new export from `src/filament-runtime/src/`. Size gate stays **1,943 B / 2,048 B**. `git diff --stat src/filament-runtime/src` must be empty at the end (adding a test under `src/filament-runtime/test/` in Task 5 is fine — it is not shipped runtime code).
 - **No silently-wrong output.** Every construct outside this cut's subset raises a **located** diagnostic (`file(line,col): FIL000x: [reason]`) and writes **no file**. Codes: `FIL0001` out-of-subset C#, `FIL0003` out-of-subset Razor.
 - **The answer key is the REFERENCE; the generator is JUDGED** (decisions #21/#51). Never edit an answer key to make the gate pass; only the owner corrects a key against the baseline (#64/#80).
 - **DOM contract is pinned against Blazor's own generated `BuildRenderTree`**, not a reading of the rules (#64/#76). The comment anchor is a disclosed +1-node divergence (category of #20).
@@ -660,10 +660,10 @@ Add to `IfTests.cs` (mirror `RowsTests.cs:349-367`):
 Run: `dotnet test ... --filter "FullyQualifiedName~EmittedIf_OnlyCallsClosedRuntimePrimitives"`
 Expected: PASS. If a new name appears in the import, the lowering used something outside `list()` — revisit Task 1's `EmitIf`.
 
-- [ ] **Step 3: Verify the runtime is byte-untouched**
+- [ ] **Step 3: Verify the runtime SOURCE is byte-untouched**
 
-Run: `git diff --stat src/filament-runtime`
-Expected: **empty output**. If not, revert any runtime change — this feature must not touch it.
+Run: `git diff --stat src/filament-runtime/src`
+Expected: **empty output**. If not, revert any runtime-source change — this feature must not touch it. (A new test under `src/filament-runtime/test/` from Task 5 is expected and fine.)
 
 - [ ] **Step 4: Commit**
 
