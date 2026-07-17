@@ -83,6 +83,56 @@ public class IfElseTests
         Assert.DoesNotContain("'@onclick'", js);   // descriptors resolved (decision 53)
     }
 
+    /// <summary>Closed-runtime invariant: @else emits NO new runtime primitive (reuses list()).
+    /// The anchor is a DOM builtin (document.createComment), not a runtime import.</summary>
+    [Fact]
+    public void EmittedIfElse_OnlyCallsClosedRuntimePrimitives_NoNewExport()
+    {
+        var js = File.ReadAllText(Generate.IfElseToTemp());
+        var import = js.Split('\n').First(l => l.StartsWith("import "));
+
+        string[] allowed =
+            ["signal", "computed", "effect", "batch", "untrack", "setText", "setAttr", "listen", "insert", "remove", "list"];
+        foreach (var name in import[(import.IndexOf('{') + 1)..import.IndexOf('}')]
+                     .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            Assert.True(allowed.Contains(name),
+                $"'{name}' is not a runtime export. @else must add NO new primitive (decision: reuse list()).");
+
+        Assert.Contains("document.createComment(''", js);
+        Assert.DoesNotContain("when", import);
+    }
+
+    /// <summary>
+    /// A field read ONLY in an `else if` condition (never in the @if condition or a binding) must
+    /// still lift to a signal — otherwise that branch never reacts. Locks MarkConditionReads walking
+    /// the whole else-chain (DescendantNodes over the method body already does this).
+    /// </summary>
+    [Fact]
+    public void EveryBranchCondition_LiftsItsField_NotJustTheFirst()
+    {
+        var js = Compile(
+            """
+            <div id="wrap"><button id="t" @onclick="Flip">t</button>@if (a)
+            {
+                <span id="x">x</span>
+            }
+            else if (b)
+            {
+                <span id="y">y</span>
+            }</div>
+
+            @code {
+                private bool a = true;
+                private bool b = false;
+                void Flip() { a = !a; b = !b; }
+            }
+            """);
+
+        Assert.Contains("const a = signal(true);", js);    // read by the @if condition
+        Assert.Contains("const b = signal(false);", js);   // read ONLY by the else-if condition
+        Assert.Contains("(b.value) ? [1] : []", js);       // no trailing @else -> [] when none match
+    }
+
     /// <summary>Compile an inline .razor from samples/IfElse so the runtime specifier resolves.</summary>
     static string Compile(string razor)
     {
