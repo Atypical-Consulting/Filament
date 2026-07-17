@@ -1,0 +1,17 @@
+<div id="wrap"><button id="t" @onclick="Next">t</button>@if (n == 0)
+{
+    <span id="a">a</span>
+}
+else if (n == 1)
+{
+    <span id="b">b</span>
+}
+else
+{
+    <span id="c">c</span>
+}</div>
+
+@code {
+    private int n = 0;
+    void Next() { n = (n + 1) % 3; }
+}

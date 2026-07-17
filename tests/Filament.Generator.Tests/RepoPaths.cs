@@ -21,6 +21,11 @@ public static class RepoPaths
 
     /// <summary>The @if SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string IfAnswerKey => Path.Combine(Root, "samples", "If", "if.js");
+
+    public static string IfElseRazor => Path.Combine(Root, "samples", "IfElse", "IfElse.razor");
+
+    /// <summary>The @else SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string IfElseAnswerKey => Path.Combine(Root, "samples", "IfElse", "ifelse.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
