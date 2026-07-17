@@ -60,16 +60,22 @@ Emitted JS:
 
 ```js
 // @if (cond) { <body> }
-list(parent, () => (cond) ? [0] : [], () => 0, () => { /* build body subtree, return its root */ }, anchor);
+const _if0 = document.createComment('');
+insert(parent, _if0);
+list(parent, () => (cond) ? [0] : [], () => 0, () => { /* build body subtree, return its root */ }, _if0);
 ```
 
 - **source** `() => (cond) ? [0] : []` — reactive; reading the condition's signals inside it
-  subscribes the list effect, so the conditional re-evaluates when the condition changes.
+  subscribes the list effect, so the conditional re-evaluates when the condition changes. A condition
+  that reads no signal runs once (constant → rendered once), which is also correct.
 - **keyOf** `() => 0` — a constant; at most one item.
 - **create** builds the body subtree and returns its single root node, inside the row's disposal
   scope (so body effects die with the subtree).
-- **anchor** — the insert-before position among siblings, computed the same way the construction
-  site is computed for `@foreach` (#73). Last child → `anchor = null` (append).
+- **anchor = a comment node** at the `@if`'s position among its siblings. The body is inserted
+  *before* it, so the conditional is correctly positioned no matter what follows it — which the
+  generator's append-only emission (`insert(parent, node)`, `list(..., null)`) cannot do today
+  (#73's sibling-anchor computation does not exist). The runtime already supports this via 3-arg
+  `insert(parent, node, anchor)` and `list(..., anchor)` — **no new runtime primitive**.
 
 Semantics match Blazor: on a condition flip the subtree is destroyed and recreated (Blazor does the
 same absent a `@key`), and body effects are disposed on removal.
@@ -79,7 +85,7 @@ same absent a `@key`), and body effects are disposed on removal.
 - Recognize the `@if` pattern in the re-assembled/re-parsed IR (an `if` statement header, body
   markup spans, closing brace).
 - Add a conditional node to `TemplatePlan` / `TemplateCompiler` that emits the `list()` lowering
-  above, computing the anchor from sibling position.
+  above, emitting a comment anchor at the `@if`'s position and passing it to `list()`.
 - Route the deferred variants (see Scope-out) to located diagnostics.
 - **Runtime: untouched.**
 
@@ -87,9 +93,16 @@ same absent a `@key`), and body effects are disposed on removal.
 
 The hand-written answer key is pinned against **Blazor's own generated `BuildRenderTree`** for the
 same `@if` (verifying any marker or whitespace text nodes Blazor ships around a conditional), exactly
-as #64/#76 did for Counter/Rows — never assumed from a reading of the rules. If Blazor ships marker
-nodes the naive lowering omits (or vice versa), the answer key follows Blazor and the divergence is
-disclosed, not hidden.
+as #64/#76 did for Counter/Rows — never assumed from a reading of the rules.
+
+The **comment anchor is a known, disclosed divergence**: Blazor's browser renderer positions
+conditional content via its render tree, not a DOM comment, so it likely ships no marker node at the
+`@if` site. Filament's lowering ships one comment node there. This is the same *category* as decision
+#20's residual (Blazor's own `<!--!-->` markers) — a non-rendered node that does not affect layout —
+and it is **disclosed here, not hidden**, and re-measured if/when this construct enters a measured
+app. A later increment can remove it by anchoring on the next static sibling instead (needs emit-order
+work), but that is out of this cut. If Blazor turns out to ship marker/whitespace nodes the naive
+lowering omits, the answer key follows Blazor and that divergence is disclosed the same way.
 
 ## How it's proven (rigor proportional to one construct)
 
