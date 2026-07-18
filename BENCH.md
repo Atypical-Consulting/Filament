@@ -2739,3 +2739,71 @@ est **mesuré**, pas raisonné.
 ---
 
 *Fin de l'entrée n°11. Ne pas modifier — ajouter une entrée n°12 pour toute rectification.*
+
+---
+
+## Entrée n°12 — 2026-07-18 — Phase 4 : la composition à PARAMÈTRE LIÉ (réactif) mesurée contre Blazor (CORRECTION)
+
+Première **sous-tranche différée de la n°88** fermée : un paramètre de composant **lié** (`<Display Value="@count" />`)
+entre dans le sous-ensemble (décision #90). Là où la n°88 pliait un paramètre STATIQUE en constante, ici la valeur
+est **réactive** : le `@Value` de l'enfant est une **liaison vivante** sur le signal `count` du parent. C'est
+exactement le « parent→child reactive plumbing » que la n°88 disait « not implemented ». Comme aucune answer key
+ne contient de paramètre lié, l'artefact est **fabriqué et mesuré** — même protocole que les n°9/10/11.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/BoundCompose.Blazor` : un parent `<div id="wrap"><button id="inc">…</button><Display Value="@count" /></div>`
+avec `count` incrémenté au clic, et un enfant `Display.razor` = `<span id="out">@Value</span>` avec
+`[Parameter] int Value`. Blazor **instancie** l'enfant au runtime et lui **repasse** `count` à chaque rendu ; Filament
+**inline** l'enfant au compile-time (n°88) et son `@Value` devient `effect(() => setText(_tx, count.value))` — une
+lecture VIVANTE du signal `count` DU PARENT, directement en portée, **sans repassage de prop ni instance runtime**.
+`count` est **hissé en signal** parce que l'expression liée compte comme une lecture du template (récoltée dans la
+compilation du parent, n°90). L'oracle demande : *le `#out` de Filament suit-il `count` comme celui de Blazor ?* Un
+générateur qui aurait plié la valeur au montage laisserait `#out` à « 0 » au clic — et l'oracle le verrait.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.7.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`, aucun run de poids/vitesse). La branche `boundcompose` de
+`verifyContract` lit `#out` (doit valoir « 0 »), clique `#inc`, et exige « 1 ». L'interaction est LA mesure : elle
+prouve que la liaison traverse la frontière de composition, ce qu'un rendu initial seul ne montrerait pas.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/BoundCompose.Blazor -c Release -o bench/publish/blazor-boundcompose
+./bench/build-filament.sh filament-boundcompose-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-boundcompose/wwwroot --app boundcompose --label blazor-boundcompose       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-boundcompose-gen   --app boundcompose --label filament-boundcompose-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#out` initial → `#inc` | verdict |
+|---|---|---|
+| **blazor-boundcompose** (autorité) | `0` → `1` | contrat OK |
+| **filament-boundcompose-gen** (générateur) | `0` → `1` | contrat OK |
+
+**Les deux rendent `0 → 1`, à l'identique.** Le `@Value` de l'enfant, lié au signal `count` du parent, suit sa valeur
+au clic — la liaison réactive traverse la frontière de composition. L'élargissement est **mesuré**, pas raisonné.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (app triviale, décision du propriétaire).
+- **`HARNESS_VERSION` 1.6.0 → 1.7.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (branche `boundcompose` + entrée
+  `APPS`), donc son hash change ; le numéro monte. Aucune mesure de poids antérieure n'est invalidée.
+- **TRANCHE ÉTROITE — liaison RÉACTIVE seulement.** Seul un paramètre scalaire lié à un **état parent réactif**, dans
+  un enfant **feuille-display**, en **affichage texte**, est admis. Refusés loud+localisés : liaison NON réactive
+  (« bind-once » d'une constante, `bound-parameter`), enfant avec état/événements (`composition-out-of-subset`),
+  attribut d'enfant lié (`class="@x"` — les attributs réactifs ne sont pas encore dans le sous-ensemble de base).
+  Restent différées : enfant avec état, composition imbriquée, paramètre non-scalaire. §8 inchangé : RADICAL reste
+  « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°12. Ne pas modifier — ajouter une entrée n°13 pour toute rectification.*
