@@ -2505,3 +2505,80 @@ mélangés ; l'oracle de labels — **MATCH byte-exact**, pas de hoisting/intern
 ---
 
 *Fin de l'entrée n°8. Ne pas modifier — ajouter une entrée n°9 pour toute rectification.*
+
+---
+
+## Entrée n°9 — 2026-07-18 — Phase 4 : la division `double` mesurée contre Blazor (CORRECTION, pas poids/vitesse)
+
+Première entrée qui mesure un **élargissement du sous-ensemble §5**, et non un poids ou une vitesse. La
+division `double` entre dans le sous-ensemble compilé (décision #87) ; comme **ni `counter.js` ni `rows.js`
+ne contiennent de division**, il n'existait **aucun artefact mesuré** contre lequel la juger. Le
+propriétaire a tranché : on ne l'admet pas sur le seul argument d'identité IEEE-754, on **fabrique
+l'artefact** et on le passe à l'oracle de contrat DOM (l'instrument des décisions #29/#30). Cette entrée
+est ce passage.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur et non l'arithmétique
+
+`baseline/Divide.Blazor/App.razor` fait `value = value / 2.0` sur un `double` initialisé à `7.0`. **7.0 / 2.0
+= 3.5** — une valeur que la division ENTIÈRE (`7 / 2 == 3`) **ne peut jamais produire**. L'oracle ne teste
+donc pas la fidélité de l'IEEE-754 (elle est acquise a priori) : il teste que **le générateur ÉMET la bonne
+division**. Un générateur qui aurait émis une sémantique entière rendrait `3`, et l'oracle le verrait. C'est
+la classe de défaut qu'un argument sur les nombres flottants n'attrape pas ; la mesure, si.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. Node **v26.5.0**. **Playwright 1.61.1 / Chromium
+  150.0.7871.127**, headless. **`HARNESS_VERSION` 1.4.0** — voir la réserve ci-dessous.
+- Blazor publié en Release, `InvariantGlobalization=true` (le défaut WASM), pour que `3.5` ne se rende
+  jamais `3,5` sous une locale.
+
+### Protocole
+
+Correction seulement. Le nouveau mode `--contract-only` de `bench.mjs` charge l'app, exécute `verifyContract`
+et sort **sans** aucun run de poids/vitesse : pour une app triviale, C1/C4 ne portent aucun signal — la
+seule question est *« rend-elle le nombre de Blazor ? »*. La branche `divide` de `verifyContract` lit
+`#divide-value` (doit valoir `7`), clique `#halve`, relit (doit valoir `3.5`). L'app Blazor et l'app Filament
+générée passent par **le même oracle**.
+
+### Commande pour rejouer
+
+```
+# 1) navigateur (une fois)
+(cd bench/harness && npm ci && npx playwright install chromium)
+# 2) baseline Blazor -> WASM
+dotnet publish baseline/Divide.Blazor -c Release -o bench/publish/blazor-divide
+# 3) app Filament (le générateur émet Divide.g.js, esbuild bundle, bannière vérifiée depuis l'artefact)
+./bench/build-filament.sh filament-divide-gen
+# 4) l'oracle, les deux côtés
+node bench/harness/bench.mjs --dir bench/publish/blazor-divide/wwwroot   --app divide --label blazor-divide       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-divide-gen     --app divide --label filament-divide-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#divide-value` initial | après `#halve` | verdict |
+|---|---|---|---|
+| **blazor-divide** (autorité) | `7` | **`3.5`** | contrat OK |
+| **filament-divide-gen** (générateur) | `7` | **`3.5`** | contrat OK |
+
+**Les deux rendent `7 → 3.5`, à l'identique.** Le `3.5` (et non `3`) prouve que c'est une **vraie division
+`double`** ; l'égalité avec Blazor prouve que **le générateur émet la division fidèlement**. L'élargissement
+est **mesuré**, pas raisonné. `int/int` reste refusé (message corrigé : il nomme la troncature entière au
+lieu de prétendre que « §5 admet les opérateurs arithmétiques »).
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement.** Aucun C1/C3/C4 sur `divide` — délibérément (décision du propriétaire). L'app
+  existe pour l'oracle, pas pour la balance ni le chronomètre.
+- **`HARNESS_VERSION` 1.3.0 → 1.4.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (la branche `divide` + le
+  mode `--contract-only`), donc son hash `HARNESS_SOURCE_FILES` change ; le numéro est monté en conséquence.
+  Les mesures antérieures (n°1–8) portent 1.3.0 ou moins et **ne sont pas comparables ligne à ligne** à une
+  future mesure de poids sous 1.4.0 — mais cette entrée ne mesure aucun poids, donc rien d'antérieur n'est
+  invalidé.
+- **Le §8 ne bouge pas comme ARCHITECTURE.** Le sous-ensemble §5 s'élargit d'**un** construct ; RADICAL
+  reste « ni éliminée ni établie ». Les deux autres faux positifs de la n°77 (composition de composants,
+  contrôle de flux à la racine) restent **ouverts**.
+
+---
+
+*Fin de l'entrée n°9. Ne pas modifier — ajouter une entrée n°10 pour toute rectification.*
