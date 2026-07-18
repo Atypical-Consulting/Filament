@@ -26,6 +26,12 @@ public static class RepoPaths
 
     /// <summary>The @else SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string IfElseAnswerKey => Path.Combine(Root, "samples", "IfElse", "ifelse.js");
+
+    /// <summary>THE FILE BLAZOR COMPILES (no Filament stand-in; no drift, like Rows).</summary>
+    public static string DivideRazor => Path.Combine(Root, "baseline", "Divide.Blazor", "App.razor");
+
+    /// <summary>The double-division SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string DivideAnswerKey => Path.Combine(Root, "samples", "Divide", "divide.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

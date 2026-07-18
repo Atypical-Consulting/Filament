@@ -1,0 +1,25 @@
+@* Root component. Rendered directly into #app by Program.cs.
+
+   The markup below is the SHARED DOM CONTRACT and must not be altered. The blank
+   lines between the three siblings are part of the contract (Blazor ships them as
+   "\n\n" text nodes; so does the generator; so does divide.js). See counter.js.
+
+   The point of this app is @value being halved by DOUBLE division: C#'s double `/`
+   and JS's `/` are the same IEEE-754 op, so `value / 2.0` maps to `/` verbatim.
+   7.0 / 2.0 = 3.5 -- a value integer division (== 3) could never produce, which is
+   what lets the DOM-contract oracle catch a generator that emitted the wrong `/`. *@
+
+<h1 id="title">Divide</h1>
+
+<p>Value: <span id="divide-value">@value</span></p>
+
+<button id="halve" @onclick="Halve">Halve</button>
+
+@code {
+    private double value = 7.0;
+
+    private void Halve()
+    {
+        value = value / 2.0;
+    }
+}

@@ -260,6 +260,8 @@ public static class Generate
 
     public static string IfElseToTemp() => ToTemp(RepoPaths.IfElseRazor, "IfElse");
 
+    public static string DivideToTemp() => ToTemp(RepoPaths.DivideRazor, "Divide");
+
     static string ToTemp(string razor, string sampleDir)
     {
         var inRepo = Path.Combine(RepoPaths.Root, "samples", sampleDir, $".gen-{Guid.NewGuid():N}.js");
