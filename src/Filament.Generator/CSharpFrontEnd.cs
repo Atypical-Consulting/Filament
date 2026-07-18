@@ -72,9 +72,12 @@ public sealed class CSharpFrontEnd
     readonly List<RecordInfo> _records = [];
     readonly HashSet<string> _primitives = [];
 
+    readonly List<ParamInfo> _params = [];
+
     readonly Dictionary<string, FieldInfo> _fieldsByName = new(StringComparer.Ordinal);
     readonly Dictionary<string, MethodInfo> _methodsByName = new(StringComparer.Ordinal);
     readonly Dictionary<string, RecordInfo> _recordsByName = new(StringComparer.Ordinal);
+    readonly Dictionary<string, ParamInfo> _paramsByName = new(StringComparer.Ordinal);
 
     /// <summary>Every method body, TRANSLATED DURING Compile() and cached. See _sealed.</summary>
     readonly Dictionary<string, List<string>> _bodies = new(StringComparer.Ordinal);
@@ -178,6 +181,15 @@ public sealed class CSharpFrontEnd
         public List<MethodInfo> Callees = [];
     }
 
+    /// <summary>A `[Parameter]` component parameter: a scalar value supplied by the parent at the
+    /// composition site. It has no top-level emission; a read of it folds to the parent's constant.</summary>
+    sealed class ParamInfo
+    {
+        public string Name = "";
+        public IPropertySymbol Symbol = null!;
+        public ITypeSymbol Type = null!;
+    }
+
     /// <summary>One @expression or @key, re-parsed IN ITS OWN SCOPE and translated.</summary>
     sealed class Slot
     {
@@ -275,7 +287,8 @@ public sealed class CSharpFrontEnd
         _src = new WrappedSource();
         _src.Literal(
             "using System;using System.Collections.Generic;using System.Linq;" +
-            "using System.Threading.Tasks;partial class __FilamentComponent {");
+            "using System.Threading.Tasks;using Microsoft.AspNetCore.Components;" +
+            "partial class __FilamentComponent {");
         foreach (var node in codeNodes) _src.Node(node, RawText(node));
         _src.Literal("\n}\npartial class __FilamentComponent {\n");
 
@@ -714,6 +727,16 @@ public sealed class CSharpFrontEnd
     /// </summary>
     bool CheckNoAttributes(MemberDeclarationSyntax member)
     {
+        // THE ONE ADMITTED ATTRIBUTE: [Parameter] on a component-parameter property (single-sourced
+        // with ClassifyMember). Admitted only when EVERY attribute on the member is a parameter
+        // attribute -- a foreign attribute alongside it still refuses, so the carve-out cannot be a
+        // hole through which `[JsonIgnore]` &c. reach a Filament module.
+        if (member is PropertyDeclarationSyntax pp && Filament.Subset.ConstructSubset.IsComponentParameter(pp)
+            && member.DescendantNodesAndSelf().OfType<AttributeListSyntax>()
+                .SelectMany(l => l.Attributes)
+                .All(Filament.Subset.ConstructSubset.IsParameterAttribute))
+            return true;
+
         if (member.DescendantNodesAndSelf().OfType<AttributeListSyntax>().FirstOrDefault() is not { } list)
             return true;
 
@@ -741,11 +764,46 @@ public sealed class CSharpFrontEnd
         {
             case FieldDeclarationSyntax f: FieldDecl(f); break;
             case MethodDeclarationSyntax m: Method(m); break;
+            case PropertyDeclarationSyntax p: ParamDecl(p); break;
             default:
                 throw new GeneratorException(
                     $"FIL-WIRING: ClassifyMember admitted {member.Kind()} but Member() has no case for it. " +
                     "The subset decision and the translator have drifted. Refusing to emit.");
         }
+    }
+
+    /// <summary>
+    /// A `[Parameter] public T X { get; set; }` — a COMPONENT PARAMETER. It emits NOTHING on its own:
+    /// its value comes from the PARENT at the composition site (see TemplateCompiler.EmitComposition),
+    /// and a read of it (`@X`) folds to that parent-supplied constant. Standalone (no parent), the
+    /// parameter is simply declared and unread. The shape check mirrors a record property's: a scalar
+    /// `{ get; set; }` auto-property. Anything else is refused, loud and located.
+    /// </summary>
+    void ParamDecl(PropertyDeclarationSyntax p)
+    {
+        if (p.AccessorList is null ||
+            p.AccessorList.Accessors.Any(a => a.Body is not null || a.ExpressionBody is not null) ||
+            !p.AccessorList.Accessors.Any(a => a.Kind() == SyntaxKind.GetAccessorDeclaration) ||
+            !p.AccessorList.Accessors.Any(a => a.Kind() == SyntaxKind.SetAccessorDeclaration))
+        {
+            Refuse("unsupported-member",
+                $"component parameter '{p.Identifier.Text}' is not a `{{ get; set; }}` auto-property. A " +
+                "[Parameter] in this subset carries a scalar VALUE supplied by the parent; a computed or " +
+                "init-only property has no such value to fold. Refusing to emit.",
+                p.Identifier.SpanStart);
+            return;
+        }
+
+        var type = _model.GetTypeInfo(p.Type).Type;
+        if (!CheckType(type, p.Type.SpanStart, allowList: true)) return;
+
+        _params.Add(new ParamInfo
+        {
+            Name = p.Identifier.Text,
+            Symbol = (IPropertySymbol)_model.GetDeclaredSymbol(p)!,
+            Type = type!,
+        });
+        _paramsByName[p.Identifier.Text] = _params[^1];
     }
 
     /// <summary>

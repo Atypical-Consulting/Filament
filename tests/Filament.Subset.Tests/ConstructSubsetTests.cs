@@ -67,6 +67,19 @@ public class ConstructSubsetTests
         Assert.Equal("unsupported-member", r.Value.Reason);
     }
 
+    [Fact]
+    public void ComponentParameter_ScalarProperty_ClassifiesToNull()
+        => Assert.Null(ConstructSubset.ClassifyMember(
+            FirstMember("[Microsoft.AspNetCore.Components.Parameter] public string Name { get; set; }")));
+
+    [Fact]
+    public void PlainProperty_WithoutParameterAttribute_StaysRefused()
+    {
+        var r = ConstructSubset.ClassifyMember(FirstMember("public string Name { get; set; }"));
+        Assert.NotNull(r);
+        Assert.Equal("unsupported-member", r!.Value.Reason);
+    }
+
     static (Microsoft.CodeAnalysis.CSharp.Syntax.ExpressionSyntax e, Microsoft.CodeAnalysis.SemanticModel m)
         ParseExpr(string exprSrc)
     {

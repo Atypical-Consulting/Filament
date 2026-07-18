@@ -9,7 +9,7 @@ namespace Filament.Analyzer.Tests;
 public class ConstructSubsetAnalyzerTests
 {
     const string ComponentBase =
-        "namespace Microsoft.AspNetCore.Components { public class ComponentBase {} }\n" +
+        "namespace Microsoft.AspNetCore.Components { public class ComponentBase {} public class ParameterAttribute : System.Attribute {} }\n" +
         "namespace System.Runtime.CompilerServices { internal static class IsExternalInit {} }\n";
 
     static Verify Component(string members) => new()
@@ -50,6 +50,12 @@ public class ConstructSubsetAnalyzerTests
     [Fact]
     public async Task Property_IsFlagged()
         => await Component("    {|FIL0001:public int P { get; set; }|}").RunAsync();
+
+    [Fact]
+    public async Task ComponentParameter_ScalarProperty_IsNotFlagged()
+        // A [Parameter] property is the one admitted property kind (component-parameter carve-out).
+        => await Component(
+            "    [Microsoft.AspNetCore.Components.Parameter] public string Name { get; set; }").RunAsync();
 
     [Fact]
     public async Task Constructor_IsFlagged()

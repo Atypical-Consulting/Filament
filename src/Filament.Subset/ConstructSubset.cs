@@ -1,3 +1,4 @@
+using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -28,13 +29,33 @@ public static class ConstructSubset
             "declared in the same component. Refusing to emit."),
     };
 
-    /// <summary>null = the member KIND is in §5 (@code admits fields, methods, records); non-null =
-    /// the FIL0001 refusal. A record's INTERNAL shape is a separate concern (not this classifier).</summary>
+    /// <summary>True for a `[Parameter]` attribute in any of its written forms. The generator's
+    /// CheckNoAttributes consults this so it can admit a component-parameter property IFF ALL its
+    /// attributes are parameter attributes — a foreign attribute never slips through the carve-out.</summary>
+    public static bool IsParameterAttribute(AttributeSyntax a) =>
+        a.Name.ToString() is "Parameter"
+            or "Microsoft.AspNetCore.Components.Parameter"
+            or "Components.Parameter"
+            or "ParameterAttribute"
+            or "Microsoft.AspNetCore.Components.ParameterAttribute"
+            or "Components.ParameterAttribute";
+
+    /// <summary>A [Parameter]-attributed property is admitted ONLY in the component-parameter role —
+    /// a narrow carve-out from §5's no-properties (#85) / no-attributes (#77) rules, forced because a
+    /// Blazor component parameter IS a `[Parameter] public T X { get; set; }`. Syntactic; the
+    /// scalar-type and auto-property shape are checked semantically in the generator's ParamDecl.</summary>
+    public static bool IsComponentParameter(PropertyDeclarationSyntax p) =>
+        p.AttributeLists.SelectMany(l => l.Attributes).Any(IsParameterAttribute);
+
+    /// <summary>null = the member KIND is in §5 (@code admits fields, methods, records, and a
+    /// [Parameter] scalar property); non-null = the FIL0001 refusal. A record's INTERNAL shape is a
+    /// separate concern (not this classifier).</summary>
     public static Refusal? ClassifyMember(MemberDeclarationSyntax member) => member switch
     {
         FieldDeclarationSyntax => null,
         MethodDeclarationSyntax => null,
         RecordDeclarationSyntax => null,
+        PropertyDeclarationSyntax p when IsComponentParameter(p) => null,
         _ => new Refusal("FIL0001", "unsupported-member",
             $"{Describe(member)} is not in the C# subset. @code admits FIELDS (state), METHODS " +
             "(behaviour) and RECORDS (row shapes) only (spec 5). Refusing to emit rather than drop it " +

@@ -352,6 +352,24 @@ public class NegativeControls
         Assert.DoesNotContain("Math.trunc", js);   // NOT integer division
     }
 
+    /// <summary>
+    /// SECTION 5 ADMITS "component composition with scalar parameters" AND A [Parameter] SCALAR
+    /// PROPERTY IS THE PARAMETER DECLARATION. A component declaring one compiles clean (it emits
+    /// nothing on its own -- the value comes from a parent at the composition site). This is the
+    /// narrow carve-out from §5's no-properties (#85) / no-attributes (#77) rules.
+    /// </summary>
+    [Fact]
+    public void Section5_ComponentParameterProperty_CompilesClean()
+        => Compiles(
+            """
+            <p><span id="a">@count</span></p>
+
+            @code {
+                [Parameter] public string Label { get; set; } = "";
+                private int count = 0;
+            }
+            """);
+
     /// <summary>Section 5's List&lt;T&gt;: indexing, .Count, .Add, .RemoveAt -- all four.</summary>
     [Fact]
     public void Section5_ListOperations_CompileClean()
