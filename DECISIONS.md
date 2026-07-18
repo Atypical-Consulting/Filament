@@ -2827,3 +2827,45 @@ Pas d'attribut marqueur (`[FilamentComponent]` différé). `RS2008` traité prop
 **ne s'élargit pas** (aucun construct nouveau accepté ; on **remonte** au temps d'écriture un refus qui existait
 déjà), et le verdict §8 tient — RADICAL reste « ni éliminée ni établie ». Ce que l'incrément ajoute, c'est où le
 refus s'affiche, pas ce que le compilateur accepte.
+
+## 84. `unsupported-statement` entre dans le module partagé — la décision IMPLICITE d'un `switch` devient EXPLICITE, sans dériver
+
+**Décision.** Premier construct FIL0001 mono-sourcé (incrément 1b-i) : la décision « quelles **sortes** de
+statements le §5 admet » quitte le `switch` de traduction `CSharpFrontEnd.Statement()` pour
+`Filament.Subset.ConstructSubset.ClassifyStatement`, que le générateur **et** l'analyseur appellent. Le générateur
+**valide d'abord** (au sommet de `Statement()`) puis traduit ; son `default:` de `switch` — jadis le `Refuse(
+"unsupported-statement")` — devient un **`throw` de câblage** (`FIL-WIRING`), car un statement validé a forcément
+un `case`. `StatementSubsetAnalyzer` fait remonter **FIL0001** au temps d'écriture. Suite : **214 tests** (178
+générateur inchangés + 28 `Filament.Subset.Tests` + 8 `Filament.Analyzer.Tests`), runtime **byte-inchangé**.
+
+**CE QUE CE PATTERN GÉNÉRALISE, ET POURQUOI C'ÉTAIT LE VRAI RISQUE DE 1b.** Pour les **types** (n°83),
+`CheckType` était déjà une décision pure, isolée en méthode — l'extraction était triviale. Pour les **constructs**,
+la décision « quelle sorte est admise » est **implicite dans les `case` du traducteur** : le `switch` DOIT avoir un
+`case` par sorte admise pour la traduire, donc l'ensemble admis est *défini par* les cases existantes. Extraire un
+prédicat séparé crée une **seconde définition** qui peut dériver. La résolution est le pattern *valider-puis-
+traduire* : `ClassifyStatement` devient l'**unique** autorité (l'ensemble admis y est énuméré une fois), le `switch`
+ne traduit plus que ce que le classifieur a déjà béni, et son `default:` **ne peut plus être un refus silencieux** —
+c'est un `throw` bruyant si les deux dérivent. La décision passe d'implicite-dans-le-code à explicite-dans-la-
+donnée, sans jamais être décrite deux fois (n°53/n°61).
+
+**L'ANALYSEUR MIME LA TRAVERSÉE DU GÉNÉRATEUR — signaler PUIS S'ARRÊTER.** `Statement()`/`Nest()`/`Body()` ne
+regardent **jamais** dans le corps d'un statement non-admis (ils refusent au statement lui-même, premier coup).
+L'analyseur descend donc de haut en bas dans les corps des conteneurs admis (`if`/`for`/`foreach`/block) mais
+**s'arrête** à un statement non-admis : un `switch (x) { default: break; }` est signalé **une fois** (le `switch`),
+pas aussi son `break;` intérieur — pourtant `break` est lui-même hors sous-ensemble. Un test dédié
+(`UnsupportedStatement_IsFlaggedOnce_NotItsInnards`) l'épingle, sinon l'analyseur produirait plus de diagnostics
+que le générateur sur un seul construct.
+
+**LA GARDE DE MUTATION.** Faire accepter `while` par `ClassifyStatement` (une ligne) passe au ROUGE **et**
+`While.razor` du générateur **et** `WhileLoop_IsFlagged` de l'analyseur — un seul changement du module partagé,
+preuve que les deux consomment une règle unique et non une copie (n°53). Revert par édition ciblée, pas
+`git checkout` (leçon de n°83 : un checkout emporte les voisins non commités).
+
+**INCRÉMENT 1b EST MULTI-TRANCHES ; CECI EST 1b-i.** Restent, chacune sa tranche/décision/garde de mutation
+(feuille de route dans `docs/superpowers/plans/2026-07-18-analyzer-fil0001-constructs.md`) : `unsupported-
+expression` (Expr), `unsupported-call` (Invocation), `unsupported-member` (Member/Record), `unsupported-modifier`/
+`-generic`, `reserved-name`/`name-collision`/`not-csharp`. Les refus de **couture-template** (`RegionOps`, `Slot`,
+`ListMutation`) restent dans le générateur (FIL0003-adjacents), comme en n°83.
+
+**LE PLAFOND HONNÊTE NE BOUGE PAS.** Outillage : aucun octet émis ne bouge, le §5 **ne s'élargit pas** (on remonte
+au temps d'écriture un refus qui existait déjà), §8 tient — RADICAL reste « ni éliminée ni établie ».
