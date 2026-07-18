@@ -25,3 +25,12 @@ Edit `App.razor` and rebuild. If a construct is outside the Filament subset, the
 ## What's generated (not committed)
 
 `wwwroot/App.g.js` and `wwwroot/filament.js` are produced at build time and gitignored.
+
+## Live reload
+
+    dotnet watch --no-hot-reload run
+
+Edit `App.razor` and save: the generator re-runs, `wwwroot/App.g.js` regenerates, and the browser
+refreshes. (`--no-hot-reload` is required — otherwise a `.razor` change is treated as a no-op C# hot
+reload and never rebuilds.) In Rider, add a `dotnet watch` run configuration with arguments
+`--no-hot-reload run`.

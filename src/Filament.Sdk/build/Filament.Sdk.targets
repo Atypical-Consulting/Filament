@@ -27,4 +27,10 @@
     <Copy SourceFiles="$(FilamentRuntimeJs)" DestinationFiles="$(FilamentWwwrootRuntimeJs)" />
   </Target>
 
+  <!-- Make `dotnet watch` monitor the entry .razor (a None item, otherwise unwatched). Run with the
+       no-hot-reload option so a change rebuilds and FilamentCompile regenerates the JS. -->
+  <ItemGroup>
+    <Watch Include="$(FilamentEntry)" />
+  </ItemGroup>
+
 </Project>

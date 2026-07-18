@@ -19,3 +19,12 @@ Scaffolds a Filament app anywhere: a real .NET web project whose Build compiles 
 
 Edit `App.razor` and rebuild. Out-of-subset constructs make the generator refuse and the build fail
 with a diagnostic — by design.
+
+## Live reload
+
+    dotnet watch --no-hot-reload run
+
+Edit `App.razor` and save: the generator re-runs, `wwwroot/App.g.js` regenerates, and the browser
+refreshes. (`--no-hot-reload` is required — otherwise a `.razor` change is treated as a no-op C# hot
+reload and never rebuilds.) In Rider, add a `dotnet watch` run configuration with arguments
+`--no-hot-reload run`.

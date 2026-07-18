@@ -15,7 +15,7 @@
 
   <ItemGroup>
     <!-- Brings the compile-App.razor->JS + copy-runtime targets by auto-import. -->
-    <PackageReference Include="Filament.Sdk" Version="0.1.0" />
+    <PackageReference Include="Filament.Sdk" Version="0.1.1" />
   </ItemGroup>
 
 </Project>

@@ -7,7 +7,7 @@
     <IsPackable>true</IsPackable>
 
     <PackageId>Filament.Sdk</PackageId>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Authors>Filament</Authors>
     <Description>SDK-style package: compiles Filament .razor to JS on build and ships the runtime.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>

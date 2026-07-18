@@ -14,6 +14,8 @@
   <ItemGroup>
     <!-- Visible in Rider's tree, not compiled, not published as content. -->
     <None Include="App.razor" />
+    <!-- `dotnet watch` (no-hot-reload option) monitors App.razor and recompiles it to JS on change. -->
+    <Watch Include="App.razor" />
   </ItemGroup>
 
   <PropertyGroup>
