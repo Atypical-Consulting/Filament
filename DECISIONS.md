@@ -3179,3 +3179,45 @@ Kestrel, le clic sur `#increment` fait passer `#counter-value` de `0` à `1` —
 rendu trivial par cette disposition ; l'empaquetage du générateur en **outil dotnet / cibles NuGet** (cette
 tranche utilise un `ProjectReference` in-repo) ; un bundle **minifié** de production pour les apps (hors chemin
 mesuré, volontairement) ; le **hot-reload** (`dotnet watch`) sur édition de `.razor`.
+
+## 92. `dotnet new filament` — le template DISTRIBUABLE et le paquet `Filament.Sdk` : la forme empaquetée de la n°91, générateur à ZÉRO changement
+
+**Décision.** La suite que la n°91 différait — le **template `dotnet new`** — est livrée, sous sa forme
+**distribuable** (utilisable dans n'importe quel dossier, pas seulement in-repo). `dotnet new filament -n MyApp`
+génère une app autonome qui compile `App.razor`→JS au Build et tourne en F5, **sans aucun chemin vers ce dépôt**.
+**Deux choix du propriétaire** : (1) **portée distribuable** (plutôt qu'un scaffolder in-repo) ; (2) **livraison
+par un paquet NuGet SDK-style** `Filament.Sdk` (plutôt qu'un outil dotnet global, ou un manifeste d'outil local +
+feed local). C'est l'aboutissement de l'arc ouvert par `examples/FilamentApp` (n°91).
+
+**LE MÉCANISME.** Le paquet `Filament.Sdk` embarque `build/Filament.Sdk.targets` (auto-importé par NuGet dans tout
+projet qui le référence, chemins résolus via `$(MSBuildThisFileDirectory)`), `tools/` (le générateur **publié** —
+sa fermeture complète, 32 DLL, pas seulement les 6 de `bin/` : `publish` résout tout le transitif Razor 6.0.36 /
+Roslyn), et `runtime/filament.js` (prébâti, empaqueté depuis `dist/`). Les cibles lancent le générateur en
+**hors-processus** via sa CLI existante (`dotnet <dll> App.razor wwwroot/App.g.js --runtime ./filament.js`) puis
+`<Copy>` le runtime — donc son closure Razor/Roslyn **ne charge jamais dans MSBuild** et ne peut entrer en
+conflit. Le projet d'empaquetage `src/Filament.Sdk` publie le générateur (**`PublishDir` ABSOLU** — sinon il se
+résout relativement au projet publié ; **`UseAppHost=false`** — pas d'apphost natif) et empaquette tools/ + runtime
++ targets vers le feed local gitignoré `artifacts/nuget/` via `TargetsForTfmSpecificContentInPackage`.
+
+**LA CONSÉQUENCE PROPRE : LE GÉNÉRATEUR NE CHANGE PAS D'UN OCTET.** Parce que ce sont les cibles du SDK qui copient
+le runtime (`<Copy>`), aucune option `--emit-runtime` n'est nécessaire — le générateur est **embarqué tel quel** et
+appelé par sa CLI déjà existante. Le pare-feu est donc **plus strict** que la route « outil » : aucun octet émis
+ne bouge, le chemin mesuré (`bench/build-filament.sh` appelant `dotnet run --project src/Filament.Generator`) est
+intact, source du runtime intacte, **aucune entrée BENCH** (rien n'est mesuré), aucun élargissement de §5,
+`examples/FilamentApp` inchangé, **270 tests verts** (197 + 55 + 18).
+
+**DISTRIBUTION (POC, hors NuGet.org).** Le SDK se résout depuis le feed local par un **`dotnet nuget add source`
+global unique** (le pendant honnête d'un « installer un outil une fois »), puis `dotnet new install
+./templates/filament`. L'app générée ne porte **aucun `nuget.config`** (portable). Détails d'empaquetage
+consignés pour la prochaine fois : marqueur `.cs` (évite CS2008 sur un projet sans source), placeholder `_._`
+(compat NuGet), `NoWarn` NU5100/NU5128, et **vider `~/.nuget/packages/filament.sdk`** entre deux re-tests d'une
+même version 0.1.0.
+
+**MESURÉ… NON : PROUVÉ DE BOUT EN BOUT (fumée, PAS une mesure).** Un `dotnet new filament -n MyApp` généré **hors
+du dépôt** (dans le scratchpad), restauré depuis le feed local (donc sans chemin repo), a compilé `App.razor` →
+`wwwroot/App.g.js` + déposé `filament.js` via les cibles du paquet, et dans un vrai navigateur le clic a fait
+passer `#counter-value` de `0` à `1`. `App.razor` n'est pas compilé en composant (`EnableDefaultRazorComponentItems=false`).
+
+**DIFFÉRÉ.** Publication sur **NuGet.org** ; **découverte multi-`.razor`** (le SDK compile `App.razor` par défaut,
+via `$(FilamentEntry)`) ; **`dotnet watch`** ; migrer `examples/FilamentApp` pour qu'il consomme le SDK (il reste
+sur le `ProjectReference` in-repo, comme référence).
