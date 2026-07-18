@@ -25,6 +25,11 @@ public static class TypeSubset
         if (type is null || type.TypeKind == TypeKind.Error)
             return new TypeRefusal("unresolved-type", "this type does not resolve. Refusing to emit.");
 
+        // void is acceptable — it only ever reaches here as a method return type (a field/local/
+        // parameter cannot be void), so admitting it here can never mask a real refusal. The
+        // generator guards void at its call site; this keeps both consumers consistent (decision 53).
+        if (type.SpecialType == SpecialType.System_Void) return null;
+
         if (Scalars.Contains(type.SpecialType)) return null;
         if (IsComponentRecord(type, componentRecords)) return null;
 

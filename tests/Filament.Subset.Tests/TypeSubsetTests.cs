@@ -51,6 +51,20 @@ public class TypeSubsetTests
     }
 
     [Fact]
+    public void Void_IsAcceptable_ClassifiesToNull()
+    {
+        // void only ever appears as a return type; Classify must admit it (it cannot be a
+        // field/local/param), matching the generator's call-site guard.
+        var tree = CSharpSyntaxTree.ParseText("class C { void M() {} }");
+        var comp = CSharpCompilation.Create("t", new[] { tree },
+            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        var model = comp.GetSemanticModel(tree);
+        var method = tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>().First();
+        var returnType = model.GetTypeInfo(method.ReturnType).Type;
+        Assert.Null(TypeSubset.Classify(returnType, Array.Empty<INamedTypeSymbol>()));
+    }
+
+    [Fact]
     public void ErrorType_ClassifiesToUnresolvedType()
     {
         var t = TypeOfField("Nonexistent x;", "x");
