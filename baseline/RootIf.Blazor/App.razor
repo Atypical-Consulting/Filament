@@ -1,0 +1,17 @@
+@* Root component: a toggle button and a root-level @if, no wrapping element. The
+   conditional's branch mounts and unmounts directly against #app (mount()'s target) --
+   #77's third false positive, closed by decision 89. The button sibling emits in source
+   order before the conditional's comment anchor.
+
+   No whitespace between </button> and @if, matching If.razor's contract: Razor turns
+   SOURCE whitespace between sibling nodes into text nodes, and there is none here. *@
+
+<button id="toggle" @onclick="Toggle">toggle</button>@if (show)
+{
+    <span id="cond">visible</span>
+}
+
+@code {
+    private bool show = true;
+    void Toggle() { show = !show; }
+}
