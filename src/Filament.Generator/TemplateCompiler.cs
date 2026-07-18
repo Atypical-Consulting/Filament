@@ -178,7 +178,9 @@ public sealed class TemplateCompiler
     ///     read as callable forever, because a regex cannot see a reassignment).
     /// Roslyn answers both from symbols instead of from spelling.
     /// </summary>
-    readonly CSharpFrontEnd _code = new();
+    // Not readonly: swapped to a CHILD component's front end during EmitComposition, then restored
+    // (the same save/restore idiom EmitBranchFn uses for _create/_bindings).
+    CSharpFrontEnd _code = new();
 
     List<string> _create = [];
     List<string> _bindings = [];
@@ -221,10 +223,15 @@ public sealed class TemplateCompiler
     void Diag(string reason, string message, SourceSpan? source) =>
         _diagnostics.Add(new Diagnostic("FIL0003", reason, message, source));
 
-    public string Compile(ParseResult parse, string runtimeSpecifier, string sourceName)
+    /// <summary>
+    /// Gates 1–3 for ONE component (the parent, OR a child at a composition site): the directive
+    /// allowlist, AccountForDocument, the root-level-C# refusal, and the single @code compilation.
+    /// Returns the render method and its region set. Shared by Compile and EmitComposition so a child
+    /// is gated EXACTLY as the top-level component is — one setup, not two copies (decisions 53/60).
+    /// </summary>
+    (MethodDeclarationIntermediateNode method, HashSet<IntermediateNode> regions)
+        PrepareComponent(ParseResult parse, CSharpFrontEnd code)
     {
-        _file = parse.FilePath;
-
         // --- gate 1: the directives, from Razor's own table, with exact spans ----
         foreach (var d in parse.Directives)
         {
@@ -244,76 +251,41 @@ public sealed class TemplateCompiler
             .FirstOrDefault(m => m.MethodName == "BuildRenderTree")
             ?? throw new GeneratorException("FIL-WIRING: no BuildRenderTree method in the IR.");
 
-        // @code arrives as ONE opaque CSharpCodeIntermediateNode holding the whole block
-        // verbatim, as a sibling of BuildRenderTree. Razor lexes it but does not
-        // interpret it, which is exactly what lets JS ride through it untouched.
         var codeNodes = cls.Children.OfType<CSharpCodeIntermediateNode>()
             .Where(n => !string.IsNullOrWhiteSpace(RawText(n)))
             .ToList();
 
-        // --- gate 3: ALL the C#, in ONE compilation ------------------------------
-        // BEFORE the template walk, for three reasons that used to be one:
-        //   - the walk RESOLVES against what @code declares (spec 5: "calls to methods
-        //     declared in the same component");
-        //   - the walk asks which fields were LIFTED to signals, which is the answer
-        //     decision 57's hole had to be guessed at;
-        //   - and the template's OWN C# -- @foreach's header, @row.Label, @key -- only means
-        //     anything against @code's `Row` and `_rows`, so the two halves cannot be two
-        //     compilations. Decision 54 is exactly this: the Phase 2 / Phase 3 boundary the
-        //     spec drew does not exist in the IR, because @foreach IS C#.
-        //
-        // Half of the reactivity rule is the TEMPLATE's: a field is reactive iff it is read
-        // by the template AND assigned outside its construction site (counter.js's header
-        // conjoined with rows.js's mapping decision 2 -- see CSharpFrontEnd). So the reads
-        // are collected off the same IR the walk will emit from, and resolved to SYMBOLS
-        // rather than matched as spelling.
+        // --- gate 3: ALL the C#, in ONE compilation, BEFORE the walk (decision 54) ----
         var plan = new TemplatePlan();
         foreach (var child in method.Children) Collect(child, plan);
 
-        // TEMPLATE C# AT THE ROOT -- the case Collect STRUCTURALLY CANNOT SEE, and it was
-        // reaching the emitter's FIL-WIRING throw. Measured, before this guard existed:
-        //
-        //     <div id="wrap">@foreach (int x in _xs) { <span @key="x">@x</span> }</div>
-        //         -> exit 0, compiles
-        //     @foreach (int x in _xs) { <span @key="x">@x</span> }     (the SAME loop, at root)
-        //         -> "FIL-WIRING: ... This is the TOOL being broken, not the input.",
-        //            NO location, NO spec code.
-        //
-        // Collect() is called on each CHILD of the render method and looks for C# among THAT
-        // child's kids, so the method's own child list is never a container -- a top-level C#
-        // node is never planned. Neither answer key has root-level control flow (Counter has
-        // none; Rows' @foreach is inside <tbody>), so the hole never showed.
-        //
-        // THIS RAISES THE DIAGNOSTIC; IT DOES NOT INVENT THE MAPPING. A root-level region
-        // would have to attach to mount()'s target rather than to a created element, which is
-        // a create/attach decision NEITHER ANSWER KEY CONTAINS -- so there is nothing to judge
-        // it against and nothing here would be measured. That is the same reason @if is
-        // refused, and shipping an emission path no measurement covers is what this repo
-        // refuses to do. What is NOT acceptable is telling the author the TOOL is broken when
-        // they wrote ordinary Razor: FIL-WIRING is for the tool's own failures (decision 61),
-        // and wearing it here is that boundary violated in the mirror direction.
-        //
-        // DISCLOSED, NOT BANKED: @foreach at the root IS in section 5's Razor subset, so this
-        // is still a refusal of in-subset code. It is now a CLEAR error with a location
-        // instead of a tool-blaming crash -- "une erreur claire" -- and the mapping remains
-        // an OPEN owner-level call.
-        foreach (var code in method.Children.OfType<CSharpCodeIntermediateNode>())
+        // Root-level template C# is refused WITH A LOCATION (not a FIL-WIRING crash); its mapping
+        // attaches to mount()'s target and no answer key covers it. See DiagnosticTests.
+        foreach (var rootCode in method.Children.OfType<CSharpCodeIntermediateNode>())
         {
-            _refusedRootCode.Add(code);
+            _refusedRootCode.Add(rootCode);
             Diag("template-code-at-root",
-                $"template C# ({Trunc(RawText(code))}) sits at the component's ROOT rather than inside an " +
+                $"template C# ({Trunc(RawText(rootCode))}) sits at the component's ROOT rather than inside an " +
                 "element. Its mapping is not implemented: a root-level region would attach to mount()'s " +
                 "target instead of to a created element, and neither answer key contains one, so there is " +
                 "nothing to be judged against and nothing here would be measured. Wrap it in an element " +
                 "(<div>@foreach ...</div> compiles today) or wait for the mapping to be decided. Refusing " +
                 "to emit rather than ship an emission path no measurement covers.",
-                code.Source);
+                rootCode.Source);
         }
 
-        _code.Compile(codeNodes, plan);
-        _diagnostics.AddRange(_code.Diagnostics);
+        code.Compile(codeNodes, plan);
+        _diagnostics.AddRange(code.Diagnostics);
 
-        _regions = plan.Regions.Select(r => r.Container).ToHashSet();
+        return (method, plan.Regions.Select(r => r.Container).ToHashSet());
+    }
+
+    public string Compile(ParseResult parse, string runtimeSpecifier, string sourceName)
+    {
+        _file = parse.FilePath;
+
+        var (method, regions) = PrepareComponent(parse, _code);
+        _regions = regions;
 
         // NOT an early return, on purpose: the template gate must report too. A file
         // whose @code is out of subset AND whose template is out of subset should say
@@ -787,25 +759,12 @@ public sealed class TemplateCompiler
     /// <summary>Returns the JS variable holding the element, or null if it was refused.</summary>
     string? EmitElement(MarkupElementIntermediateNode el)
     {
-        // COMPONENT COMPOSITION, and it is the quietest failure of the lot.
-        // This generator has no compilation, so it cannot resolve sibling .razor files
-        // into components: <Counter /> does NOT become a ComponentIntermediateNode, it
-        // stays a markup element named "Counter" -- and Razor emits NO diagnostic for
-        // it (verified: zero diagnostics of any severity on the probe). Emitted, that
-        // is document.createElement('Counter'): a valid unknown element that renders
-        // NOTHING. Blazor's own rule is that an upper-case initial means a component,
-        // so that is the rule used here.
+        // COMPONENT COMPOSITION. An upper-case (or dotted) tag is a component reference. Razor left
+        // it a plain markup element because this generator has no compilation to resolve it into a
+        // ComponentIntermediateNode; EmitComposition resolves it as a same-directory sibling .razor
+        // and INLINES it (static-leaf slice, decision 88), or refuses with a clear located reason.
         if (LooksLikeComponent(el.TagName))
-        {
-            Diag("component-composition",
-                $"<{el.TagName}> is a component reference (an upper-case initial, or a dotted name). " +
-                "Component composition is not in Phase 2's subset, and this generator has no compilation " +
-                "to resolve it against, so Razor left it as a plain markup element and said nothing. " +
-                $"Emitting it would produce document.createElement('{el.TagName}') -- an unknown element " +
-                "that renders nothing. Refusing to emit.",
-                el.Source);
-            return null;
-        }
+            return EmitComposition(el);
 
         var v = $"_el{_el++}";
         _create.Add($"const {v} = document.createElement({JsString(el.TagName)});");
@@ -833,6 +792,100 @@ public sealed class TemplateCompiler
             if (c is not null) _create.Add($"insert({v}, {c});");
         }
         return v;
+    }
+
+    /// <summary>
+    /// STATIC-LEAF COMPONENT COMPOSITION (decision 88). Resolve &lt;Greeting Name="World" /&gt; as the
+    /// sibling Greeting.razor, compile it in its OWN front end with the static parameters bound to
+    /// constants, and INLINE its single static root into the parent's tree. No import and no runtime
+    /// component instance: a static param folds `@Name` to `'World'`, so the child is static DOM.
+    /// Anything outside the slice -- a missing sibling, a bound parameter, a non-string parameter, a
+    /// child with state/behaviour, or not exactly one root element -- refuses, loud and located.
+    /// </summary>
+    string? EmitComposition(MarkupElementIntermediateNode el)
+    {
+        var childPath = Path.Combine(Path.GetDirectoryName(_file)!, el.TagName + ".razor");
+        if (!File.Exists(childPath))
+        {
+            Diag("unresolved-component",
+                $"<{el.TagName}> resolves to a same-directory component {el.TagName}.razor, which does not " +
+                "exist. Composition resolves a child as a sibling .razor file; a framework component such as " +
+                "<EditForm> is a spec 3 non-goal and has no sibling here. Refusing to emit.",
+                el.Source);
+            return null;
+        }
+
+        // Static scalar bindings only. A value carrying a C# expression (Name="@x") is a BOUND
+        // parameter -- out of the static-leaf slice.
+        var bindings = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
+        {
+            if (attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>().Any())
+            {
+                Diag("bound-parameter",
+                    $"the parameter '{attr.AttributeName}' on <{el.TagName}> is bound to an expression. The " +
+                    "static-leaf composition slice supports only STATIC scalar parameters; a bound parameter " +
+                    "needs parent->child reactive plumbing that is not implemented. Refusing to emit.",
+                    el.Source);
+                return null;
+            }
+            var value = string.Concat(attr.Children.OfType<HtmlAttributeValueIntermediateNode>()
+                .SelectMany(h => h.Children.OfType<IntermediateToken>()).Select(t => t.Content));
+            bindings[attr.AttributeName] = JsString(value);
+        }
+
+        var childParse = RazorFrontEnd.Parse(childPath);
+        var childCode = new CSharpFrontEnd();
+        childCode.BindParameters(bindings);
+
+        var savedFile = _file;
+        var savedCode = _code;
+        var savedRegions = _regions;
+        var diagBefore = _diagnostics.Count;
+
+        _file = childParse.FilePath;
+        var (childMethod, childRegions) = PrepareComponent(childParse, childCode);
+
+        string? result = null;
+        if (_diagnostics.Count == diagBefore)   // the child @code compiled clean
+        {
+            var unknown = bindings.Keys.FirstOrDefault(k => !childCode.ParameterNames.Contains(k));
+            var roots = childMethod.Children.OfType<MarkupElementIntermediateNode>().ToList();
+
+            if (!childCode.IsLeafDisplay)
+                Diag("composition-out-of-subset",
+                    $"<{el.TagName}> ({el.TagName}.razor) has state or behaviour. The static-leaf slice " +
+                    "composes a LEAF DISPLAY child -- [Parameter] properties only, no fields, methods or " +
+                    "events. A stateful child needs its own mounted instance, which is not implemented. " +
+                    "Refusing to emit.", el.Source);
+            else if (childCode.FirstBoundNonStringParameter() is { } bad)
+                Diag("composition-out-of-subset",
+                    $"parameter '{bad}' of <{el.TagName}> is not a string. The static-leaf slice folds a " +
+                    "STRING attribute value into the child; a numeric or bool parameter would fold a string " +
+                    "where a number is meant. Refusing to emit rather than mistranslate.", el.Source);
+            else if (unknown is not null)
+                Diag("composition-out-of-subset",
+                    $"<{el.TagName}> has no parameter '{unknown}'. {el.TagName}.razor declares: " +
+                    $"{string.Join(", ", childCode.ParameterNames)}. Refusing to emit.", el.Source);
+            else if (roots.Count != 1)
+                Diag("composition-out-of-subset",
+                    $"<{el.TagName}> ({el.TagName}.razor) must have exactly ONE root element for the " +
+                    $"static-leaf slice; it has {roots.Count}. Refusing to emit.", el.Source);
+            else
+            {
+                // Walk the child's root with _code swapped to the child front end: its create
+                // statements splice INTO the parent's shared _create (inline), and @Name folds to
+                // the bound constant. Same save/restore idiom EmitBranchFn uses for _create/_bindings.
+                _code = childCode;
+                _regions = childRegions;
+                result = EmitNode(roots[0], parent: null);
+            }
+        }
+
+        _file = savedFile;
+        _code = savedCode;
+        _regions = savedRegions;
+        return result;
     }
 
     /// <summary>Emit one re-parsed region, in the order the C# says.</summary>

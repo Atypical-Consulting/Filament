@@ -79,6 +79,11 @@ public sealed class CSharpFrontEnd
     readonly Dictionary<string, RecordInfo> _recordsByName = new(StringComparer.Ordinal);
     readonly Dictionary<string, ParamInfo> _paramsByName = new(StringComparer.Ordinal);
 
+    /// <summary>When this front end compiles a CHILD component at a composition site, the parent binds
+    /// each [Parameter] to the JS CONSTANT it supplied (name -> e.g. `'World'`). A read of that
+    /// parameter (`@Name`) folds to the constant — the static-leaf composition mapping (decision 88).</summary>
+    readonly Dictionary<string, string> _paramEnv = new(StringComparer.Ordinal);
+
     /// <summary>Every method body, TRANSLATED DURING Compile() and cached. See _sealed.</summary>
     readonly Dictionary<string, List<string>> _bodies = new(StringComparer.Ordinal);
 
@@ -107,6 +112,33 @@ public sealed class CSharpFrontEnd
     INamedTypeSymbol _component = null!;
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
+
+    /// <summary>Bind each [Parameter] to the JS CONSTANT the parent supplies at a composition site.
+    /// Call BEFORE Compile so a read of the parameter resolves to the constant. (Static-leaf slice.)</summary>
+    public void BindParameters(IReadOnlyDictionary<string, string> bindings)
+    {
+        foreach (var kv in bindings) _paramEnv[kv.Key] = kv.Value;
+    }
+
+    /// <summary>A LEAF DISPLAY child: only [Parameter] props, no state (fields/signals), no behaviour
+    /// (methods), no records. The static-leaf composition slice compiles only these; a stateful or
+    /// eventful child is refused rather than half-compiled (decision 88).</summary>
+    public bool IsLeafDisplay => _fields.Count == 0 && _methods.Count == 0 && _records.Count == 0;
+
+    /// <summary>The name of the first BOUND parameter whose declared type is not `string`, or null.
+    /// The static-leaf slice supports string parameters only — a numeric/bool param would fold a JS
+    /// STRING where a number is meant, so it is refused (deferred), not silently mistranslated.</summary>
+    public string? FirstBoundNonStringParameter()
+    {
+        foreach (var name in _paramEnv.Keys)
+            if (_paramsByName.TryGetValue(name, out var p) && p.Type.SpecialType != SpecialType.System_String)
+                return name;
+        return null;
+    }
+
+    /// <summary>The [Parameter] names this child declares — for validating the parent supplied exactly
+    /// the parameters that exist (an unknown attribute, or a missing required one, is a clear error).</summary>
+    public IReadOnlyCollection<string> ParameterNames => _paramsByName.Keys;
 
     /// <summary>The runtime primitives the emitted @code needs (signal, and for a List<T> nothing more).</summary>
     public IReadOnlySet<string> Primitives => _primitives;
@@ -1841,6 +1873,12 @@ public sealed class CSharpFrontEnd
 
             case IMethodSymbol m when _methodsByName.TryGetValue(m.Name, out var mi):
                 return mi.Js;
+
+            // A bound [Parameter] read, at a composition site: `@Name` folds to the constant the
+            // parent supplied (decision 88). A static leaf's whole reactivity is this fold — no signal,
+            // no effect (IsReactive already treats a constant as non-reactive).
+            case IPropertySymbol ps when _paramEnv.TryGetValue(ps.Name, out var constJs):
+                return constJs;
 
             default:
                 Refuse("unresolved-name",

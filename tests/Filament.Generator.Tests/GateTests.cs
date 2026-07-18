@@ -262,6 +262,8 @@ public static class Generate
 
     public static string DivideToTemp() => ToTemp(RepoPaths.DivideRazor, "Divide");
 
+    public static string ComposeToTemp() => ToTemp(RepoPaths.ComposeRazor, "Compose");
+
     static string ToTemp(string razor, string sampleDir)
     {
         var inRepo = Path.Combine(RepoPaths.Root, "samples", sampleDir, $".gen-{Guid.NewGuid():N}.js");

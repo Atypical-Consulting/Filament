@@ -91,7 +91,7 @@ public class GateSubsetTests
     [InlineData("Inject.razor", 1, 1, "FIL0003", "unsupported-directive")]
     [InlineData("Page.razor", 1, 1, "FIL0003", "unsupported-directive")]
     [InlineData("Gate/Typeparam.razor", 1, 1, "FIL0003", "unsupported-directive")]
-    [InlineData("Gate/Forms.razor", 1, 1, "FIL0003", "component-composition")]
+    [InlineData("Gate/Forms.razor", 1, 1, "FIL0003", "unresolved-component")]
     [InlineData("Gate/EventCallback.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("Gate/RenderFragment.razor", 5, 13, "FIL0002", "unsupported-type")]
     // THE TWO CASCADING-PARAMETER ROWS ARE REFUSED BY DIFFERENT RULES, AND THAT IS THE WHOLE
@@ -625,20 +625,14 @@ public class NegativeControls
     }
 
     /// <summary>
-    /// SECTION 5 ADMITS "component composition with scalar parameters (one level deep is
-    /// enough)" AND THE GENERATOR REFUSES ALL COMPOSITION.
-    ///
-    /// The refusal's own text says "Component composition is not in Phase 2's subset", which
-    /// is a true statement about PHASE 2 and a false one about section 5. This also means
-    /// Gate/Forms.razor -- &lt;EditForm&gt;, a section 3 non-goal that SHOULD be refused --
-    /// is refused by a blanket rule rather than by a rule about forms. Right verdict,
-    /// broader reason than the spec's.
-    ///
-    /// OWNER'S CALL: implementing composition is a mapping decision, and neither answer key
-    /// contains a child component.
+    /// STATIC-LEAF COMPOSITION IS NOW IN §5 (decision 88; see ComposeTests). What stays refused is
+    /// composition the slice does NOT cover -- here &lt;MyWidget Count="3" /&gt; has no sibling
+    /// MyWidget.razor to resolve, so it refuses [unresolved-component], loud and located, no file.
+    /// (Were the sibling present, Count="3" would ALSO be out of slice: an int parameter is deferred,
+    /// the slice folds STRING params only.) The old blanket "all composition is refused" is gone.
     /// </summary>
     [Fact]
-    public void ComponentComposition_IsADisclosedFalsePositive_ButIsLoudAndLocated()
+    public void UnresolvedComponent_IsRefused_LoudAndLocated()
     {
         var (exit, stderr, wrote) = Compile(
             """
@@ -652,7 +646,7 @@ public class NegativeControls
 
         Assert.NotEqual(0, exit);
         Assert.False(wrote, "a refusal must write no file");
-        Assert.Contains("FIL0003: [component-composition]", stderr);
+        Assert.Contains("FIL0003: [unresolved-component]", stderr);
         Assert.Matches(@"\(\d+,\d+\): FIL0003", stderr);
     }
 

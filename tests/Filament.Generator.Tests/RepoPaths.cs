@@ -32,6 +32,12 @@ public static class RepoPaths
 
     /// <summary>The double-division SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string DivideAnswerKey => Path.Combine(Root, "samples", "Divide", "divide.js");
+
+    /// <summary>Parent + sibling child (Greeting.razor) — the file Blazor compiles. Static-leaf composition.</summary>
+    public static string ComposeRazor => Path.Combine(Root, "baseline", "Compose.Blazor", "App.razor");
+
+    /// <summary>The composition SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string ComposeAnswerKey => Path.Combine(Root, "samples", "Compose", "compose.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

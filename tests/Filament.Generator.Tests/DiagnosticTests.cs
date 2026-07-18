@@ -109,18 +109,17 @@ public class DiagnosticTests
     }
 
     /// <summary>
-    /// COMPONENT COMPOSITION -- the quietest one, and the only one Razor itself is
-    /// silent about too (verified: zero Razor diagnostics of ANY severity on this
-    /// fixture). This generator has no compilation, so it cannot resolve a sibling
-    /// .razor into a component: &lt;SomeWidget /&gt; stays a plain markup element and would
-    /// be emitted as document.createElement('SomeWidget').
+    /// COMPONENT COMPOSITION -- static-leaf composition now COMPILES when the child resolves
+    /// (decision 88; see ComposeTests). &lt;SomeWidget /&gt; here has NO sibling SomeWidget.razor in the
+    /// fixture directory, so it refuses [unresolved-component] -- a clear located error, not the old
+    /// blanket refusal, and not a silent document.createElement('SomeWidget').
     /// </summary>
     [Fact]
-    public void ComponentComposition_IsRefused_AtItsExactLocation()
+    public void UnresolvedComponent_IsRefused_AtItsExactLocation()
     {
         var d = Refused("Component.razor");
 
-        Assert.Contains("Component.razor(2,5): FIL0003: [component-composition]", d);
+        Assert.Contains("Component.razor(2,5): FIL0003: [unresolved-component]", d);
         Assert.Contains("SomeWidget", d);
     }
 
