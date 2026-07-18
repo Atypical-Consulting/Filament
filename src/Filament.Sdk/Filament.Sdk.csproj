@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <IsPackable>true</IsPackable>
+
+    <PackageId>Filament.Sdk</PackageId>
+    <Version>0.1.0</Version>
+    <Authors>Filament</Authors>
+    <Description>SDK-style package: compiles Filament .razor to JS on build and ships the runtime.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageOutputPath>$(MSBuildProjectDirectory)/../../artifacts/nuget</PackageOutputPath>
+    <!-- NU5100: files outside lib/ (tools, runtime) are intentional. NU5128: no deps + no lib is intentional. -->
+    <NoWarn>$(NoWarn);NU5100;NU5128</NoWarn>
+
+    <GeneratorProject>$(MSBuildProjectDirectory)/../Filament.Generator/Filament.Generator.csproj</GeneratorProject>
+    <RuntimeJs>$(MSBuildProjectDirectory)/../filament-runtime/dist/filament.js</RuntimeJs>
+    <!-- ABSOLUTE publish dir: PublishDir passed to another project resolves relative to THAT project, so it must be absolute. -->
+    <GenPublishDir>$(MSBuildProjectDirectory)/obj/gen-publish/</GenPublishDir>
+
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);FilamentPackContent</TargetsForTfmSpecificContentInPackage>
+  </PropertyGroup>
+
+  <!-- Static package files present at pack time. -->
+  <ItemGroup>
+    <None Include="build/Filament.Sdk.targets" Pack="true" PackagePath="build/" />
+    <None Include="_._" Pack="true" PackagePath="lib/netstandard2.0/_._" />
+  </ItemGroup>
+
+  <!-- Guard: the runtime must be built before packing. -->
+  <Target Name="FilamentCheckRuntime" BeforeTargets="Pack;FilamentPackContent">
+    <Error Condition="!Exists('$(RuntimeJs)')"
+           Text="filament.js not found at $(RuntimeJs). Run 'npm ci &amp;&amp; npm run build' in src/filament-runtime first." />
+  </Target>
+
+  <!-- Publish the generator (framework-dependent, no apphost) into the staging dir. -->
+  <Target Name="FilamentPublishGenerator" BeforeTargets="FilamentPackContent">
+    <RemoveDir Directories="$(GenPublishDir)" />
+    <MSBuild Projects="$(GeneratorProject)"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);TargetFramework=net10.0;PublishDir=$(GenPublishDir);SelfContained=false;UseAppHost=false" />
+  </Target>
+
+  <!-- Add the generator publish output + runtime to the package. -->
+  <Target Name="FilamentPackContent" DependsOnTargets="FilamentPublishGenerator">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="$(GenPublishDir)**/*">
+        <PackagePath>tools/</PackagePath>
+      </TfmSpecificPackageFile>
+      <TfmSpecificPackageFile Include="$(RuntimeJs)">
+        <PackagePath>runtime/filament.js</PackagePath>
+      </TfmSpecificPackageFile>
+    </ItemGroup>
+  </Target>
+
+</Project>

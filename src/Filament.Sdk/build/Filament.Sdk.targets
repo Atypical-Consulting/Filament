@@ -1,0 +1,30 @@
+<Project>
+
+  <!-- Auto-imported by NuGet into any project referencing Filament.Sdk. Paths resolve
+       inside the restored package via $(MSBuildThisFileDirectory) = <pkg>/build/. -->
+  <PropertyGroup>
+    <FilamentGeneratorDll>$(MSBuildThisFileDirectory)../tools/Filament.Generator.dll</FilamentGeneratorDll>
+    <FilamentRuntimeJs>$(MSBuildThisFileDirectory)../runtime/filament.js</FilamentRuntimeJs>
+    <FilamentEntry Condition="'$(FilamentEntry)' == ''">$(MSBuildProjectDirectory)/App.razor</FilamentEntry>
+    <FilamentAppJs>$(MSBuildProjectDirectory)/wwwroot/App.g.js</FilamentAppJs>
+    <FilamentWwwrootRuntimeJs>$(MSBuildProjectDirectory)/wwwroot/filament.js</FilamentWwwrootRuntimeJs>
+  </PropertyGroup>
+
+  <Target Name="FilamentCompile"
+          AfterTargets="Build"
+          Inputs="$(FilamentEntry)"
+          Outputs="$(FilamentAppJs)">
+    <Error Condition="!Exists('$(FilamentGeneratorDll)')"
+           Text="Filament.Sdk: generator not found at $(FilamentGeneratorDll) (package restore incomplete?)." />
+    <Message Importance="high" Text="Filament: $(FilamentEntry) -&gt; wwwroot/App.g.js" />
+    <Exec Command="dotnet &quot;$(FilamentGeneratorDll)&quot; &quot;$(FilamentEntry)&quot; &quot;$(FilamentAppJs)&quot; --runtime ./filament.js" />
+  </Target>
+
+  <Target Name="FilamentCopyRuntime"
+          AfterTargets="Build"
+          Inputs="$(FilamentRuntimeJs)"
+          Outputs="$(FilamentWwwrootRuntimeJs)">
+    <Copy SourceFiles="$(FilamentRuntimeJs)" DestinationFiles="$(FilamentWwwrootRuntimeJs)" />
+  </Target>
+
+</Project>
