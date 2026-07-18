@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Filament App — Counter</title>
+    <link rel="stylesheet" href="css/app.css" />
+    <link rel="icon" href="data:," />
+</head>
+<body>
+    <div id="app">Loading…</div>
+    <script type="module">
+      import { mount } from './App.g.js';
+      const app = document.getElementById('app');
+      app.textContent = '';
+      mount(app);
+    </script>
+</body>
+</html>
