@@ -1505,6 +1505,14 @@ public sealed class CSharpFrontEnd
 
     List<string> Statement(StatementSyntax s)
     {
+        // The statement-KIND decision is single-sourced in Filament.Subset (decisions 53/61).
+        // Validate first; a validated statement is guaranteed to have a case below.
+        if (Filament.Subset.ConstructSubset.ClassifyStatement(s) is { } refusal)
+        {
+            Refuse(refusal.Reason, refusal.Message, s.SpanStart);
+            return [];
+        }
+
         switch (s)
         {
             case LocalDeclarationStatementSyntax d:
@@ -1584,12 +1592,9 @@ public sealed class CSharpFrontEnd
                 return Body(b);
 
             default:
-                Refuse("unsupported-statement",
-                    $"{Describe(s)} is not in the C# subset. Section 5 admits local declarations, " +
-                    "assignment and compound assignment, if/else, for, foreach, and calls to methods " +
-                    "declared in the same component. Refusing to emit.",
-                    s.SpanStart);
-                return [];
+                throw new GeneratorException(
+                    $"FIL-WIRING: ClassifyStatement admitted {s.Kind()} but Statement() has no case for it. " +
+                    "The subset decision and the translator have drifted. Refusing to emit.");
         }
     }
 
