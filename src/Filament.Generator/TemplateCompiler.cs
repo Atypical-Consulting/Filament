@@ -205,14 +205,11 @@ public sealed class TemplateCompiler
     /// </summary>
     IntermediateNode? _consumedKey;
 
-    /// <summary>The containers whose children held template C#. Their emission comes from OpsFor.</summary>
-    HashSet<IntermediateNode> _regions = [];
-
     /// <summary>
-    /// Root-level template C# already refused WITH A LOCATION, so the emit walk does not
-    /// re-report it as a tool failure. See the guard in Compile.
+    /// The containers whose children held template C#. Their emission comes from OpsFor.
+    /// A root @foreach/@if makes the METHOD a container (decision 89), so this can hold it too.
     /// </summary>
-    readonly HashSet<IntermediateNode> _refusedRootCode = [];
+    HashSet<IntermediateNode> _regions = [];
 
     string _file = "";
     int _el, _tx;
@@ -257,22 +254,18 @@ public sealed class TemplateCompiler
 
         // --- gate 3: ALL the C#, in ONE compilation, BEFORE the walk (decision 54) ----
         var plan = new TemplatePlan();
-        foreach (var child in method.Children) Collect(child, plan);
 
-        // Root-level template C# is refused WITH A LOCATION (not a FIL-WIRING crash); its mapping
-        // attaches to mount()'s target and no answer key covers it. See DiagnosticTests.
-        foreach (var rootCode in method.Children.OfType<CSharpCodeIntermediateNode>())
-        {
-            _refusedRootCode.Add(rootCode);
-            Diag("template-code-at-root",
-                $"template C# ({Trunc(RawText(rootCode))}) sits at the component's ROOT rather than inside an " +
-                "element. Its mapping is not implemented: a root-level region would attach to mount()'s " +
-                "target instead of to a created element, and neither answer key contains one, so there is " +
-                "nothing to be judged against and nothing here would be measured. Wrap it in an element " +
-                "(<div>@foreach ...</div> compiles today) or wait for the mapping to be decided. Refusing " +
-                "to emit rather than ship an emission path no measurement covers.",
-                rootCode.Source);
-        }
+        // ROOT-LEVEL CONTROL FLOW (decision 89, #77's third false positive). Collect() keys a
+        // region by its CONTAINING element; a root @foreach/@if has none, which is why this used
+        // to refuse [template-code-at-root]. So when the root itself holds template C#, the METHOD
+        // IS the region container: its ops emit against target, the mount point, exactly as an
+        // in-element region emits against its created element (EmitOps in Compile). RegionOps
+        // refuses any statement that is not @foreach/@if (unsupported-template-statement), so the
+        // re-parse is its OWN guard -- no root construct is admitted that it does not map.
+        if (method.Children.Any(c => c is CSharpCodeIntermediateNode))
+            Collect(method, plan);
+        else
+            foreach (var child in method.Children) Collect(child, plan);
 
         code.Compile(codeNodes, plan);
         _diagnostics.AddRange(code.Diagnostics);
@@ -293,10 +286,20 @@ public sealed class TemplateCompiler
         // is how a refusal becomes a guessing game. (Rows is exactly this file.)
 
         // --- the template -----------------------------------------------------
-        foreach (var child in method.Children)
+        // A root region (decision 89) emits as ONE unit against target: EmitOps lays down its
+        // markup/list/anchor ops in source order, the same shape an in-element region emits, only
+        // with target -- the mount point -- as the container instead of a created element.
+        if (_regions.Contains(method))
         {
-            var v = EmitNode(child, parent: null);
-            if (v is not null) _attach.Add($"insert(target, {v});");
+            EmitOps(_code.OpsFor(method), "target");
+        }
+        else
+        {
+            foreach (var child in method.Children)
+            {
+                var v = EmitNode(child, parent: null);
+                if (v is not null) _attach.Add($"insert(target, {v});");
+            }
         }
 
         // --- emission, and ONLY if nothing has been refused ----------------------
@@ -709,16 +712,10 @@ public sealed class TemplateCompiler
                     "ComponentMarkupBlockPass was not removed (decision 52); the IR has no structure to " +
                     "compile and nothing here can be trusted. This is the TOOL being broken, not the input.");
 
-            // Root-level template C#, ALREADY REFUSED WITH A LOCATION above. The walk runs
-            // even for a file being refused (so the template's own diagnostics get reported
-            // alongside @code's), so it reaches this node again; it must not then claim the
-            // tool is broken about a construct it has already reported honestly.
-            case CSharpCodeIntermediateNode code when _refusedRootCode.Contains(code):
-                return null;
-
             // Raw C# reaching the EMIT walk means the collect walk did not turn it into a
-            // region, i.e. the two walks disagree about the file. The root case is handled
-            // above, so a node arriving HERE really is the two walks disagreeing.
+            // region, i.e. the two walks disagree about the file. Root control flow is a region
+            // now (decision 89), emitted via EmitOps, so a code node arriving HERE -- walked
+            // individually -- really is the two walks disagreeing about the file.
             case CSharpCodeIntermediateNode code:
                 throw new GeneratorException(
                     $"FIL-WIRING: raw template C# ({Trunc(RawText(code))}) reached the emitter. The collect " +

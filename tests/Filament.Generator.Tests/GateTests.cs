@@ -264,6 +264,29 @@ public static class Generate
 
     public static string ComposeToTemp() => ToTemp(RepoPaths.ComposeRazor, "Compose");
 
+    /// <summary>
+    /// Emit a fixture from the Unsupported dir (some of which now COMPILE -- e.g. root control
+    /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the
+    /// relative runtime specifier resolves (a temp output would fail FIL-WIRING on a clean emit).
+    /// </summary>
+    public static string ToTempFixture(string fixture)
+    {
+        var inRepo = Path.Combine(RepoPaths.Unsupported, $".gen-{Guid.NewGuid():N}.js");
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, fixture), inRepo);
+            Assert.True(exit == 0, $"the generator refused to emit {fixture}:\n{stderr}");
+
+            var outside = Path.Combine(Path.GetTempPath(), $"filament-gen-{Guid.NewGuid():N}.js");
+            File.WriteAllText(outside, File.ReadAllText(inRepo));
+            return outside;
+        }
+        finally
+        {
+            if (File.Exists(inRepo)) File.Delete(inRepo);
+        }
+    }
+
     static string ToTemp(string razor, string sampleDir)
     {
         var inRepo = Path.Combine(RepoPaths.Root, "samples", sampleDir, $".gen-{Guid.NewGuid():N}.js");

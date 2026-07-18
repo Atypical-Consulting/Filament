@@ -1,0 +1,9 @@
+<button id="add" @onclick="Add">add</button>@foreach (string item in items)
+{
+    <li @key="item">@item</li>
+}
+
+@code {
+    List<string> items = new List<string>();
+    void Add() { items.Add("a"); }
+}

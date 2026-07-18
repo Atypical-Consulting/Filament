@@ -84,28 +84,27 @@ public class DiagnosticTests
     }
 
     /// <summary>
-    /// @if AT THE TEMPLATE ROOT -- not a C#-subset refusal like the three above, but the
-    /// PRE-EXISTING root-code guard (TemplateCompiler.Collect, decision-61-adjacent): a
-    /// root-level region has no element to attach to, so Collect() never plans it and the
-    /// gap is caught before the C# front end ever sees the @if. Split out of the FIL0001
-    /// theory above (which hardcodes that code) because this one carries FIL0003.
-    ///
-    /// Column is 2, not 1: the located span is the C# node's own text ("if (show)..."),
-    /// which starts right after the '@' Razor keeps for itself. Measured, not guessed --
-    /// the brief's placeholder was (1,1) and the generator disagreed.
-    ///
-    /// The fixture's `@if { ... }` splits into TWO root-level CSharpCodeIntermediateNodes
-    /// around the &lt;span&gt; markup ("if (show)\n{\n" and "}\n"), so the guard actually
-    /// raises TWO diagnostics here (also at (4,1)) -- both true and both
-    /// [template-code-at-root]. Only the first is asserted; the second is not spurious,
-    /// just the same guard firing again for the closing brace's own root-level node.
+    /// @if AT THE TEMPLATE ROOT now COMPILES (decision 89, #77's THIRD and last false positive
+    /// closed). It used to be refused [template-code-at-root]: Collect() keyed a region by its
+    /// containing element and a root @if has none. That guard is GONE -- when the root itself
+    /// holds template C#, the METHOD is the region container and its conditional maps onto
+    /// mount()'s target (the same `list(target, ...)` an in-element @if emits, only against the
+    /// mount point). Kept as a live regression witness that the root path stays open. The
+    /// STILL-refused root cases (bare code blocks) now carry the more specific
+    /// [unsupported-template-statement] from RegionOps -- see RootControlFlowTests.
     /// </summary>
     [Fact]
-    public void IfAtRoot_IsRefused_ByTheRootCodeGuard_AtItsExactLocation()
+    public void IfAtRoot_NowCompiles_ToAConditionalAgainstTarget()
     {
-        var d = Refused("IfAtRoot.razor");
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfAtRoot.razor"), outPath);
 
-        Assert.Contains("IfAtRoot.razor(1,2): FIL0003: [template-code-at-root]", d);
+            Assert.True(exit == 0, $"root @if should compile now (decision 89):\n{stderr}");
+            Assert.Contains("list(target,", File.ReadAllText(outPath));
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }
 
     /// <summary>
@@ -479,12 +478,12 @@ public class DiagnosticTests
     [InlineData("CodeSeamIsJs.razor")]
     [InlineData("HandlerIsState.razor")]
     // The deferred @if variants: refused by ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation
-    // and IfAtRoot_IsRefused_ByTheRootCodeGuard_AtItsExactLocation above, but those theories only
-    // assert exit != 0 via Refused() -- they never asserted the file itself was never written.
+    // above, but that theory only asserts exit != 0 via Refused() -- it never asserted the file
+    // itself was never written. (IfAtRoot.razor is NOT here anymore: root @if COMPILES now,
+    // decision 89 -- see IfAtRoot_NowCompiles_ToAConditionalAgainstTarget.)
     [InlineData("IfNested.razor")]
     [InlineData("IfMultiBody.razor")]
     [InlineData("IfElseMultiBody.razor")]
-    [InlineData("IfAtRoot.razor")]
     public void ARefusalWritesNoFile(string fixture)
     {
         var outPath = InRepo();

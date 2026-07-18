@@ -39,8 +39,9 @@ namespace Filament.Generator.Tests;
 ///      parameter list), not on the types it happens to mention. GenericErasure.razor is that
 ///      defect's regression test.
 ///
-///   2. ROOT-LEVEL TEMPLATE C# WORE FIL-WIRING (fixed: TemplateCompiler, [template-code-at-
-///      root]). See NegativeControls.TemplateCodeAtRoot_IsADisclosedFalsePositive_ButIsLocated.
+///   2. ROOT-LEVEL TEMPLATE C# WORE FIL-WIRING (fixed: TemplateCompiler, first [template-code-at-
+///      root], now COMPILES onto target -- decision 89, #77's third false positive closed).
+///      See NegativeControls.TemplateControlFlowAtRoot_NowCompiles_AttachingToTarget.
 ///
 ///   3. EVERY C# ATTRIBUTE WAS SILENTLY ERASED, ON ALL THREE MEMBER PATHS (fixed:
 ///      CheckNoAttributes, [unsupported-attribute]). `[CascadingParameter] public int Depth = 0;`
@@ -670,16 +671,19 @@ public class NegativeControls
     /// key has root-level control flow (Counter has none; Rows' @foreach is inside &lt;tbody&gt;),
     /// so it never showed.
     ///
-    /// FIXED: it is now a located FIL0003 [template-code-at-root]. The MAPPING is deliberately
-    /// NOT invented -- a root region would attach to mount()'s target rather than to a created
-    /// element, a create/attach decision no answer key covers and no measurement would reach.
-    /// Shipping that is what this repo refuses to do. So this REMAINS a false positive against
-    /// section 5, now loud and located instead of a tool-blaming crash.
+    /// NOW CLOSED (decision 89, #77's THIRD and last false positive). It WAS a located FIL0003
+    /// [template-code-at-root] with the mapping deliberately not invented; that mapping has since
+    /// been decided and MEASURED (BENCH n°11): when the root itself holds template C#, the METHOD
+    /// is the region container and its control flow maps onto mount()'s target -- the same
+    /// `list(target, ...)` an in-element @foreach/@if emits, only against the mount point. The
+    /// SAME snippet that used to refuse now COMPILES, and this control flipped with it. The
+    /// still-refused root cases (bare code blocks, not @foreach/@if) carry the more specific
+    /// [unsupported-template-statement] from RegionOps -- see RootControlFlowTests.
     /// </summary>
     [Fact]
-    public void TemplateCodeAtRoot_IsADisclosedFalsePositive_ButIsLocated_AndNotFilWiring()
+    public void TemplateControlFlowAtRoot_NowCompiles_AttachingToTarget()
     {
-        var (exit, stderr, wrote) = Compile(
+        var (exit, stderr, emitted) = CompileEmitting(
             """
             <button id="go" @onclick="Go">go</button>
             @foreach (int x in _xs)
@@ -693,14 +697,13 @@ public class NegativeControls
             }
             """);
 
-        Assert.NotEqual(0, exit);
-        Assert.False(wrote, "a refusal must write no file");
+        Assert.True(exit == 0, $"root control flow should compile now (decision 89):\n{stderr}");
 
-        // The regression that matters: the author's own Razor must NOT be reported as the
-        // tool being broken, and it must carry a location.
+        // The author's own Razor is neither tool-blamed nor refused; its list reconciles
+        // against target, the mount point, not a created wrapper element.
         Assert.DoesNotContain("FIL-WIRING", stderr);
-        Assert.Contains("FIL0003: [template-code-at-root]", stderr);
-        Assert.Matches(@"\(\d+,\d+\): FIL0003: \[template-code-at-root\]", stderr);
+        Assert.DoesNotContain("[template-code-at-root]", stderr);
+        Assert.Contains("list(target,", emitted);
     }
 
     /// <summary>
@@ -765,6 +768,27 @@ public class NegativeControls
             File.WriteAllText(src, razor);
             var (exit, _, stderr) = Run.Generator(src, outPath);
             return (exit, stderr, File.Exists(outPath));
+        }
+        finally
+        {
+            if (File.Exists(src)) File.Delete(src);
+            if (File.Exists(outPath)) File.Delete(outPath);
+        }
+    }
+
+    /// <summary>Like Compile, but hands back the EMITTED JS (for a positive control that must
+    /// assert the emission shape, e.g. root control flow attaching to target). In-repo output so
+    /// the runtime specifier resolves.</summary>
+    static (int exit, string stderr, string emitted) CompileEmitting(string razor)
+    {
+        var dir = Path.Combine(RepoPaths.Root, "samples", "Counter");
+        var src = Path.Combine(dir, $".n-{Guid.NewGuid():N}.razor");
+        var outPath = Path.Combine(dir, $".n-{Guid.NewGuid():N}.js");
+        try
+        {
+            File.WriteAllText(src, razor);
+            var (exit, _, stderr) = Run.Generator(src, outPath);
+            return (exit, stderr, File.Exists(outPath) ? File.ReadAllText(outPath) : "");
         }
         finally
         {
