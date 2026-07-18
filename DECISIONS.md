@@ -2992,3 +2992,47 @@ n°31/43/59).
 **LE PLAFOND HONNÊTE.** §5 s'élargit d'**un** construct. RADICAL reste **« ni éliminée ni établie comme architecture »** —
 la condition de viabilité §8 tenait déjà (n°80) ; ce qui bouge, c'est la largeur du sous-ensemble, d'un cran. Les deux
 autres faux positifs de la n°77 (composition de composants, contrôle de flux à la racine) restent **ouverts**.
+
+## 88. La composition de composants (FEUILLE STATIQUE) entre dans le §5 — résolution même-répertoire, carve-out `[Parameter]`, expansion INLINE au compile-time, et l'élargissement MESURÉ
+
+**Décision.** Le deuxième faux positif de la n°77 (composition de composants) est fermé pour sa tranche
+**feuille statique** : `<Greeting Name="World" />` résout le frère `Greeting.razor` dans le **même
+répertoire**, le compile dans son PROPRE front-end avec le paramètre statique **plié en constante**, et
+**inline** son unique racine statique dans l'arbre du parent. `@Name` devient `'World'` à la compilation —
+pas de signal, pas d'effet, pas d'import d'enfant, pas d'instance runtime : **Filament fait au compile-time
+ce que Blazor fait au runtime**. Un frère absent refuse `unresolved-component` (localisé), remplaçant le
+refus-bloc `component-composition` que la n°77 jugeait « bon verdict, raison plus large que la spec ». Suite :
+**258 tests** (185 générateur + 55 subset + 18 analyseur), runtime byte-inchangé.
+
+**LE CARVE-OUT `[Parameter]`, FORCÉ ET MONO-SOURCÉ.** Un paramètre Blazor EST une `[Parameter] public T X {
+get; set; }` — une **propriété** portant un **attribut**, deux choses que §5 refuse (n°85 propriétés, n°77
+attributs). Pour que la baseline Blazor **compile tout court**, il faut les admettre. Le carve-out est
+**étroit** : `ConstructSubset.IsComponentParameter` (mono-sourcé) admet une auto-propriété scalaire
+`[Parameter]`, et **seulement** elle ; `CheckNoAttributes` l'admet **ssi TOUS** ses attributs sont
+`[Parameter]` (un attribut étranger à côté refuse encore) ; l'analyseur suit sans une ligne. Mutation-testé à
+travers la couture : neutraliser `IsComponentParameter` fait rougir `Section5_ComponentParameterProperty_CompilesClean`
+(générateur) **et** `ComponentParameter_ScalarProperty_IsNotFlagged` (analyseur). Corollaire mesuré : le
+front-end @code gagne `using Microsoft.AspNetCore.Components;` (les imports par défaut de Blazor), sans quoi
+`[Parameter]` est un CS0246 `[not-csharp]` ; les 181 gates confirment qu'aucun octet émis ne bouge.
+
+**LA RÉENTRANCE EST LA SEULE VRAIE ADDITION D'ARCHITECTURE, et elle réutilise l'idiome existant.** La
+mise en place gates 1–3 (`AccountForDocument`, le plan, `code.Compile`) est extraite en `PrepareComponent`
+et partagée par le parent ET l'enfant — **un setup, pas deux copies** (n°53/60). Le parcours de l'enfant se
+fait avec `_code` **échangé** vers le front-end de l'enfant (sauvegarde/restauration, exactement comme
+`EmitBranchFn` échange `_create`/`_bindings`), tandis que `_create` reste PARTAGÉ — les statements de l'enfant
+s'inscrivent **inline** dans l'arbre du parent. Le `default:` FIL-WIRING reste le filet ; les 181 gates
+(Counter/Rows/If/IfElse/Divide byte-identiques) sont le net de parité, vérifié VERT après le refactor puis
+après la composition.
+
+**L'ÉLARGISSEMENT EST MESURÉ CONTRE BLAZOR (entrée n°10).** Aucune answer key ne contient d'enfant composé,
+donc — comme pour la division (#87) — le propriétaire a refusé l'admission sur argument seul et exigé un
+artefact mesuré. `baseline/Compose.Blazor` (parent + `Greeting.razor`) et `filament-compose-gen` passent par
+le **même** oracle de contrat DOM (#29/#30) : **les deux rendent `#greeting` = `Hello, World`**. Une feuille
+statique n'a pas d'interaction, donc le rendu INITIAL est la mesure — précisément la question (le compile-time
+reproduit-il le runtime ?). `HARNESS_VERSION` 1.4.0 → 1.5.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Seule la tranche **feuille statique / paramètre string / un niveau** entre. Restent
+refusés, loud et localisés : paramètre lié (`Name="@x"`, `bound-parameter`), paramètre non-string, enfant avec
+état/événements ou multi-racine (`composition-out-of-subset`), frère absent (`unresolved-component`). §5
+s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**. Reste le TROISIÈME faux positif de la
+n°77 : le contrôle de flux à la racine du template.
