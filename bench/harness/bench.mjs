@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.6.0';   // 1.6.0: 'rootforeach'/'rootif' contracts (root control flow). 1.5.0: 'compose'. 1.4.0: 'divide'.
+export const HARNESS_VERSION = '1.7.0';   // 1.7.0: 'boundcompose' contract (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -326,6 +326,13 @@ const APPS = {
   rootif: {
     readySelector: '#toggle',
     observeSelector: '#app',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #inc and asserts the composed child's #out tracks the
+  // parent's count across the composition boundary. Bound-parameter composition, decision 90.
+  boundcompose: {
+    readySelector: '#inc',
+    observeSelector: '#wrap',
     scenarios: [],
   },
 };
@@ -1601,6 +1608,24 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         document.querySelector('#toggle').click();
         out.observed.afterSecondToggle = present();
         if (!present()) out.problems.push('#cond absent after second toggle (show=true), expected present');
+        return out;
+      });
+    }
+
+    if (app === 'boundcompose') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#inc')) { out.problems.push('missing required element: #inc'); return out; }
+        const read = () => { const e = document.querySelector('#out'); return e ? e.textContent.trim() : null; };
+        out.observed.initial = read();
+        if (out.observed.initial !== '0') { out.problems.push(`#out initial is "${out.observed.initial}", expected "0"`); return out; }
+        document.querySelector('#inc').click();
+        out.observed.afterInc = read();
+        // THE MEASUREMENT: the composed child's @Value is a LIVE binding on the parent's signal, so
+        // #out tracks count across the composition boundary. A generator that folded the value at
+        // mount (no reactivity) would leave #out at "0" here.
+        if (out.observed.afterInc !== '1')
+          out.problems.push(`#out after #inc is "${out.observed.afterInc}", expected "1" (bound param did not track the parent signal)`);
         return out;
       });
     }

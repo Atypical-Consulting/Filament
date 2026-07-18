@@ -37,6 +37,7 @@ samples/filament-divide-gen/Divide.g.js
 samples/filament-compose-gen/App.g.js
 samples/filament-rootforeach-gen/App.g.js
 samples/filament-rootif-gen/App.g.js
+samples/filament-boundcompose-gen/App.g.js
 
 # Approval-test output. `*.received.js` is what the generator ACTUALLY emitted when a
 # snapshot went red -- a debugging artifact written by the failing test itself, next to
