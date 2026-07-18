@@ -2649,3 +2649,93 @@ composition runtime de Blazor. L'élargissement est **mesuré**, pas raisonné.
 ---
 
 *Fin de l'entrée n°10. Ne pas modifier — ajouter une entrée n°11 pour toute rectification.*
+
+---
+
+## Entrée n°11 — 2026-07-18 — Phase 4 : le contrôle de flux À LA RACINE mesuré contre Blazor (CORRECTION)
+
+Troisième élargissement de §5 mesuré, et le TROISIÈME et DERNIER des trois faux positifs de la n°77 fermé
+(après la division, entrée n°9 ; la composition, entrée n°10). Le **contrôle de flux à la racine du template**
+entre dans le sous-ensemble (décision #89) : un `@foreach`/`@if` posé à la RACINE du composant — sans élément
+qui l'enveloppe — se mappe désormais sur `target`, le point de montage, au lieu de refuser
+`[template-code-at-root]`. Comme aucune answer key ne contient de contrôle de flux racine, les artefacts sont
+**fabriqués et mesurés** — même protocole que les n°9/n°10, et cette fois DEUX apps (une par construction),
+sur le choix explicite du propriétaire de fermer le faux positif en entier.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+Deux apps, chacune une pure tranche racine :
+
+- `baseline/RootForeach.Blazor` : `<button id="add">` + un `@foreach (string item in items)` racine sans
+  wrapper, la liste `items` mutée au clic. `@foreach` exige une collection RÉACTIVE (une liste jamais mutée
+  est refusée : pas de signal de version pour relancer `list()`), donc la liste part vide et le clic la
+  peuple. Le clic EST la mesure : trois `<li>` réconciliés **directement dans `#app`** (le `target`), sans
+  élément wrapper.
+- `baseline/RootIf.Blazor` : `<button id="toggle">` + un `@if (show)` racine sans wrapper. Le clic bascule
+  `show` ; le `<span id="cond">` se **monte et se démonte** directement sur `#app`. Un balisage inconditionnel
+  resterait en place ; un vrai `@if` racine conditionne — c'est ce que le mount/unmount mesure.
+
+L'oracle demande, pour chacune : *le DOM que Filament produit est-il celui que Blazor produit ?* Un générateur
+qui aurait attaché la `list()` à un élément créé plutôt qu'à `target`, perdu une ligne, ou laissé le balisage
+inconditionnel, rendrait un DOM différent — et l'oracle le verrait contre le DOM que Blazor rend lui-même.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.6.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`, aucun run de poids/vitesse). La branche `rootforeach` de
+`verifyContract` vérifie que `#app li` part **vide**, clique `#add`, et exige `[alpha, beta, gamma]`. La
+branche `rootif` vérifie `#cond` présent (`show=true`), clique `#toggle` → `#cond` **absent** (`show=false`),
+re-clique → `#cond` de nouveau présent. Deux constructions, deux mesures, un même élargissement.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/RootForeach.Blazor -c Release -o bench/publish/blazor-rootforeach
+dotnet publish baseline/RootIf.Blazor      -c Release -o bench/publish/blazor-rootif
+./bench/build-filament.sh filament-rootforeach-gen filament-rootif-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-rootforeach/wwwroot --app rootforeach --label blazor-rootforeach       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-rootforeach-gen   --app rootforeach --label filament-rootforeach-gen --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/blazor-rootif/wwwroot      --app rootif      --label blazor-rootif            --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-rootif-gen        --app rootif      --label filament-rootif-gen      --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#app li` après `#add` | verdict |
+|---|---|---|
+| **blazor-rootforeach** (autorité) | `[alpha, beta, gamma]` (initial `[]`) | contrat OK |
+| **filament-rootforeach-gen** (générateur) | `[alpha, beta, gamma]` (initial `[]`) | contrat OK |
+
+| Label | `#cond` initial → toggle → toggle | verdict |
+|---|---|---|
+| **blazor-rootif** (autorité) | présent → absent → présent | contrat OK |
+| **filament-rootif-gen** (générateur) | présent → absent → présent | contrat OK |
+
+**Les deux paires rendent à l'identique.** La `list(target, …)` de Filament réconcilie dans `#app` la même
+liste que Blazor ; son `@if` racine monte/démonte `#cond` sur `#app` exactement comme Blazor. L'élargissement
+est **mesuré**, pas raisonné.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (apps triviales, décision du propriétaire).
+- **`HARNESS_VERSION` 1.5.0 → 1.6.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (branches `rootforeach`
+  et `rootif` + entrées `APPS`), donc son hash change ; le numéro monte. Aucune mesure de poids antérieure
+  n'est invalidée (cette entrée n'en mesure aucune).
+- **NŒUD-COMMENTAIRE (`@if`).** Le `<!-- -->` ancre du `@if` racine est une divergence +1-nœud DIVULGUÉE
+  vis-à-vis de Blazor (catégorie des marqueurs `<!--!-->` de la décision #20) ; la retirer demande l'ancrage
+  next-sibling, différé. L'oracle vérifie la présence/absence de `#cond`, insensible au commentaire.
+- **MAPPING GÉNÉRAL, mesuré sur deux formes.** Le mapping racine → `target` est général (toute région de
+  contrôle de flux racine), car `RegionOps` refuse toute instruction hors `@foreach`/`@if`
+  (`unsupported-template-statement`) — le re-parse est son propre garde. Mesuré ici sur les deux
+  constructions ; le §8 ne bouge pas comme architecture : RADICAL reste « ni éliminée ni établie ».
+- **LES TROIS FAUX POSITIFS DE LA n°77 SONT MAINTENANT FERMÉS** (division n°9, composition n°10, contrôle de
+  flux racine n°11) — chacun fermé pour sa tranche et mesuré, ou différé avec raison.
+
+---
+
+*Fin de l'entrée n°11. Ne pas modifier — ajouter une entrée n°12 pour toute rectification.*
