@@ -42,7 +42,7 @@ public sealed class TypeSubsetAnalyzer : DiagnosticAnalyzer
     static void OnTypeStart(SymbolStartAnalysisContext context)
     {
         var type = (INamedTypeSymbol)context.Symbol;
-        if (!IsComponent(type)) return;
+        if (!ComponentScope.IsComponent(type)) return;
 
         var records = type.GetTypeMembers()
             .Where(m => m.TypeKind == TypeKind.Struct || m.IsRecord)
@@ -81,12 +81,5 @@ public sealed class TypeSubsetAnalyzer : DiagnosticAnalyzer
                     if (p.Type is { } pt) yield return pt;
                 break;
         }
-    }
-
-    static bool IsComponent(INamedTypeSymbol type)
-    {
-        for (var b = type.BaseType; b is not null; b = b.BaseType)
-            if (b.ToDisplayString() == "Microsoft.AspNetCore.Components.ComponentBase") return true;
-        return false;
     }
 }
