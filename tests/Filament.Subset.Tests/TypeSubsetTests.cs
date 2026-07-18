@@ -1,0 +1,61 @@
+using System;
+using System.Linq;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Xunit;
+
+namespace Filament.Subset.Tests;
+
+public class TypeSubsetTests
+{
+    static ITypeSymbol TypeOfField(string decls, string fieldName)
+    {
+        var tree = CSharpSyntaxTree.ParseText(
+            "using System;using System.Collections.Generic;class C {" + decls + "}");
+        var comp = CSharpCompilation.Create("t", new[] { tree },
+            new[] { MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        var model = comp.GetSemanticModel(tree);
+        var field = tree.GetRoot().DescendantNodes()
+            .OfType<VariableDeclaratorSyntax>()
+            .First(v => v.Identifier.Text == fieldName);
+        return ((IFieldSymbol)model.GetDeclaredSymbol(field)!).Type;
+    }
+
+    [Theory]
+    [InlineData("int x;", "x")]
+    [InlineData("double x;", "x")]
+    [InlineData("bool x;", "x")]
+    [InlineData("string x;", "x")]
+    [InlineData("List<int> x;", "x")]
+    [InlineData("List<string> x;", "x")]
+    public void InSubsetTypes_ClassifyToNull(string decls, string field)
+    {
+        var t = TypeOfField(decls, field);
+        Assert.Null(TypeSubset.Classify(t, Array.Empty<INamedTypeSymbol>()));
+    }
+
+    [Theory]
+    [InlineData("decimal x;", "x")]
+    [InlineData("long x;", "x")]
+    [InlineData("float x;", "x")]
+    [InlineData("object x;", "x")]
+    [InlineData("DateTime x;", "x")]
+    [InlineData("List<long> x;", "x")]
+    public void OutOfSubsetTypes_ClassifyToUnsupportedType(string decls, string field)
+    {
+        var t = TypeOfField(decls, field);
+        var r = TypeSubset.Classify(t, Array.Empty<INamedTypeSymbol>());
+        Assert.NotNull(r);
+        Assert.Equal("unsupported-type", r!.Value.Reason);
+    }
+
+    [Fact]
+    public void ErrorType_ClassifiesToUnresolvedType()
+    {
+        var t = TypeOfField("Nonexistent x;", "x");
+        var r = TypeSubset.Classify(t, Array.Empty<INamedTypeSymbol>());
+        Assert.NotNull(r);
+        Assert.Equal("unresolved-type", r!.Value.Reason);
+    }
+}

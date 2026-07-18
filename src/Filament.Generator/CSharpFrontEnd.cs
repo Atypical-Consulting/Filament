@@ -59,14 +59,6 @@ namespace Filament.Generator;
 public sealed class CSharpFrontEnd
 {
     /// <summary>Spec 5's scalar types, resolved through a real Compilation rather than matched as text.</summary>
-    static readonly Dictionary<SpecialType, string> ScalarTypes = new()
-    {
-        [SpecialType.System_Int32] = "int",
-        [SpecialType.System_Double] = "double",
-        [SpecialType.System_Boolean] = "bool",
-        [SpecialType.System_String] = "string",
-    };
-
     /// <summary>
     /// The prefix every name this compiler synthesises carries. User code containing it is
     /// REFUSED (see Compile): a user identifier that collided with a marker would be
@@ -882,7 +874,7 @@ public sealed class CSharpFrontEnd
                 Symbol = symbol, At = v.Identifier.SpanStart,
             };
 
-            if (ListElement(type!) is not null)
+            if (Filament.Subset.TypeSubset.ListElement(type!) is not null)
             {
                 // rows.js mapping decision (1). A List<T> IS a mutable collection, so it maps to a
                 // mutable array; what reactivity needs on TOP is a way to say "the structure
@@ -954,44 +946,19 @@ public sealed class CSharpFrontEnd
         SyntaxKind.PrivateKeyword or SyntaxKind.ProtectedKeyword or SyntaxKind.PublicKeyword or
         SyntaxKind.InternalKeyword or SyntaxKind.ReadOnlyKeyword;
 
-    /// <summary>Spec 5's type list, resolved through the Compilation. FIL0002's whole job.</summary>
+    /// <summary>Spec 5's type list, resolved through the Compilation. FIL0002's whole job — the
+    /// DECISION now lives in Filament.Subset.TypeSubset.Classify (single source, decisions 53/61).
+    /// This adapter keeps the Refuse() calls and the `at` location; only the allow/deny table moved.</summary>
     bool CheckType(ITypeSymbol? type, int at, bool allowList = true)
     {
-        if (type is null || type.TypeKind == TypeKind.Error)
+        var records = _recordsByName.Values.Select(r => r.Symbol).ToArray();
+        if (Filament.Subset.TypeSubset.Classify(type, records, allowList) is { } refusal)
         {
-            Refuse("unresolved-type", "this type does not resolve. Refusing to emit.", at, "FIL0002");
+            Refuse(refusal.Reason, refusal.Message, at, "FIL0002");
             return false;
         }
-
-        if (ScalarTypes.ContainsKey(type.SpecialType)) return true;
-        if (_recordsByName.ContainsKey(type.Name) &&
-            SymbolEqualityComparer.Default.Equals(_recordsByName[type.Name].Symbol, type)) return true;
-
-        if (allowList && ListElement(type) is { } element)
-        {
-            if (ScalarTypes.ContainsKey(element.SpecialType)) return true;
-            if (_recordsByName.TryGetValue(element.Name, out var rec) &&
-                SymbolEqualityComparer.Default.Equals(rec.Symbol, element)) return true;
-
-            Refuse("unsupported-type",
-                $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits List<T> of int, double, " +
-                "bool, string, or of a record declared in the component. Refusing to emit.",
-                at, "FIL0002");
-            return false;
-        }
-
-        Refuse("unsupported-type",
-            $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits int, double, bool, " +
-            "string, and List<T> of those or of a record declared in the component. Refusing to emit.",
-            at, "FIL0002");
-        return false;
+        return true;
     }
-
-    static ITypeSymbol? ListElement(ITypeSymbol type) =>
-        type.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.List<T>" &&
-        type is INamedTypeSymbol { TypeArguments.Length: 1 } n
-            ? n.TypeArguments[0]
-            : null;
 
     // ---- methods ------------------------------------------------------------
 
