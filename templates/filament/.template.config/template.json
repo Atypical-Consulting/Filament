@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json.schemastore.org/template",
+  "author": "Filament",
+  "classifications": [ "Web", "Filament" ],
+  "identity": "Filament.App",
+  "name": "Filament App",
+  "shortName": "filament",
+  "sourceName": "FilamentApp",
+  "tags": { "language": "C#", "type": "project" },
+  "preferNameDirectory": true
+}

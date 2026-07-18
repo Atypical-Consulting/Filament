@@ -1,0 +1,18 @@
+@* The Filament component. Filament.Generator compiles this to wwwroot/App.g.js on build.
+   Blank lines between siblings are part of the shared DOM contract (they become real
+   text nodes) -- keep them. *@
+
+<h1 id="title">Counter</h1>
+
+<p>Current count: <span id="counter-value">@currentCount</span></p>
+
+<button id="increment" @onclick="Increment">Click me</button>
+
+@code {
+    private int currentCount = 0;
+
+    private void Increment()
+    {
+        currentCount++;
+    }
+}

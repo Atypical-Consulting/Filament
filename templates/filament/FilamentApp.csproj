@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Filament compiles App.razor to JS; the Razor SDK must not compile it as a component. -->
+    <EnableDefaultRazorComponentItems>false</EnableDefaultRazorComponentItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="App.razor" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Brings the compile-App.razor->JS + copy-runtime targets by auto-import. -->
+    <PackageReference Include="Filament.Sdk" Version="0.1.0" />
+  </ItemGroup>
+
+</Project>
