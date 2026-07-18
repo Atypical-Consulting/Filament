@@ -3081,3 +3081,49 @@ de la n°77 sont maintenant FERMÉS** — division `double` (#87), composition f
 flux racine (#89) — chacun fermé pour sa tranche et **mesuré**, le reste refusé loud+localisé ou différé avec
 raison. Restent différées comme suites naturelles, pas comme faux positifs : les sous-tranches de composition
 (paramètre lié, enfant avec état, imbriquée) et le reste de la famille `@if` (corps multi-nœuds, imbrication).
+
+## 90. Le paramètre de composant LIÉ (réactif) entre dans la composition — récolte de l'expression dans la compilation du parent, liaison VIVANTE via l'inline, `bind-once` refusé
+
+**Décision.** La première sous-tranche différée de la n°88 est fermée : un paramètre **lié**
+(`<Display Value="@count" />`) entre dans la composition, avec une **liaison réactive vivante**. Là où la n°88
+pliait un paramètre STATIQUE en constante (`@Name` → `'World'`), ici le `@Value` de l'enfant devient
+`effect(() => setText(_tx, count.value))` — une lecture VIVANTE du signal `count` **du parent**. C'est le
+« parent→child reactive plumbing » que la n°88 déclarait « not implemented ». Suite : **270 tests** (197
+générateur + 55 subset + 18 analyseur).
+
+**POURQUOI ÇA MARCHE SANS REPASSAGE DE PROP.** Parce que la n°88 **inline** déjà l'enfant dans la portée du
+`mount()` du parent, une liaison réactive n'a besoin ni de prop ni d'instance runtime : le `@Value` de l'enfant
+référence **directement** le signal `count` du parent, en portée. La réactivité traverse la frontière de
+composition par simple substitution + inline, pas par plomberie de composant.
+
+**LE VRAI TRAVAIL : RÉCOLTER L'EXPRESSION LIÉE DANS LA COMPILATION DU PARENT.** `Collect()` ne descend pas dans
+les attributs (il filtre `HtmlAttributeIntermediateNode`), donc la n°88 (littéraux statiques) n'en avait pas
+besoin ; un paramètre lié SI. `CollectComponentBindings` récolte chaque `@`-expression de composant dans
+`plan.FreeSlots`, ce qui fait DEUX choses : le parent **traduit** l'expression (`count.value`) ET elle **compte
+comme une lecture du template** — et c'est cette lecture qui **hisse `count` en signal** (la conjonction de la
+n°22/67), sans quoi la liaison de l'enfant s'abonnerait à rien. `EmitComposition` relit `SlotJs`/`SlotIsReactive`
+sur le MÊME nœud et passe la réactivité à l'enfant via `_paramReactive` ; l'`IsReactive` de l'enfant honore alors
+la réactivité fournie par le parent (un fait que ses propres tables ne peuvent pas voir). Le nœud est compilé mais
+**non émis** comme nœud-texte parasite : le parcours d'émission atteint l'élément-composant et `EmitComposition`
+consomme son JS traduit au lieu d'entrer dedans.
+
+**`FirstBoundNonStringParameter` NE CONCERNE PLUS QUE LES PLIS STATIQUES.** Un pli statique splice un littéral
+STRING (donc un paramètre non-string y serait mal traduit — refusé, n°88) ; une expression liée **porte son propre
+type** (`count.value` EST un nombre), donc un compteur `int` lié s'affiche fidèlement, exempté. **Le `bind-once`
+est REFUSÉ** (`bound-parameter`) : une valeur liée NON réactive (constante, ou champ jamais muté) ne suivrait
+jamais sa source silencieusement ; une valeur vraiment constante utilise un attribut statique (`Name="…"`). La
+tranche admise est donc **exactement** ce qui est mesuré (choix explicite du propriétaire : « full reactive »,
+pas « bind-once »).
+
+**GÉNÉRATEUR SEUL — l'analyseur ne bouge pas** (18 tests, byte-identique à la n°88/89) : la composition est une
+affaire de template (`TemplateCompiler`/`CSharpFrontEnd`), invisible à l'analyseur de syntaxe C#.
+
+**MESURÉ CONTRE BLAZOR (entrée n°12).** `baseline/BoundCompose.Blazor` et `filament-boundcompose-gen` : les deux
+rendent `#out` `0 → 1` au clic de `#inc` — le `@Value` de l'enfant suit le `count` du parent à travers la
+frontière. `HARNESS_VERSION` 1.6.0 → 1.7.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Seul un scalaire lié à un **état parent réactif**, dans un enfant **feuille-display**, en
+**affichage texte**, entre. Restent refusés loud+localisés : `bind-once`, enfant avec état/événements
+(`composition-out-of-subset`), attribut d'enfant lié (`class="@x"` — les attributs réactifs ne sont pas encore
+dans le sous-ensemble de base, donc hors d'atteinte ici). Restent différées : enfant avec état, composition
+imbriquée, paramètre non-scalaire. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
