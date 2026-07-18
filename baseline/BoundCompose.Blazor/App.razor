@@ -1,0 +1,14 @@
+@* Parent: a counter whose value is passed to a composed child as a BOUND parameter. The
+   child's @Value is a LIVE reactive binding on the parent's `count` signal (decision 90) --
+   #88's first deferred sub-slice. Clicking #inc updates the child's #out across the
+   composition boundary; that update IS the measurement (BENCH n°12).
+
+   No whitespace between the siblings inside #wrap, matching Compose.Blazor's contract: Razor
+   turns SOURCE whitespace between sibling nodes into text nodes, and there is none here. *@
+
+<div id="wrap"><button id="inc" @onclick="Inc">inc</button><Display Value="@count" /></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

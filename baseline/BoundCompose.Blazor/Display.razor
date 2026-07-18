@@ -1,0 +1,7 @@
+@* Leaf-display child: a [Parameter] and nothing else -- no fields, methods, or records. Its
+   @Value is a reactive text binding on whatever the parent bound (here, the parent's count). *@
+<span id="out">@Value</span>
+
+@code {
+    [Parameter] public int Value { get; set; }
+}

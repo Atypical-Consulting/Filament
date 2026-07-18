@@ -50,6 +50,12 @@ public static class RepoPaths
 
     /// <summary>The root-@if SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string RootIfAnswerKey => Path.Combine(Root, "samples", "RootIf", "rootif.js");
+
+    /// <summary>Bound-parameter composition (a reactive counter into a child) — the file Blazor compiles.</summary>
+    public static string BoundComposeRazor => Path.Combine(Root, "baseline", "BoundCompose.Blazor", "App.razor");
+
+    /// <summary>The bound-composition SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string BoundComposeAnswerKey => Path.Combine(Root, "samples", "BoundCompose", "boundcompose.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
