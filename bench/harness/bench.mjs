@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.5.0';   // 1.5.0: added the 'compose' contract (static-leaf composition). 1.4.0: 'divide'.
+export const HARNESS_VERSION = '1.6.0';   // 1.6.0: 'rootforeach'/'rootif' contracts (root control flow). 1.5.0: 'compose'. 1.4.0: 'divide'.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -312,6 +312,20 @@ const APPS = {
   compose: {
     readySelector: '#greeting',
     observeSelector: '#greeting',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #add and asserts a root @foreach reconciles three
+  // <li> directly INTO #app (mount target), no wrapper. Root control flow, decision 89.
+  rootforeach: {
+    readySelector: '#add',
+    observeSelector: '#app',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract drives #toggle and asserts a root @if mounts/unmounts #cond
+  // directly on #app (mount target). Root control flow, decision 89.
+  rootif: {
+    readySelector: '#toggle',
+    observeSelector: '#app',
     scenarios: [],
   },
 };
@@ -1543,6 +1557,50 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         // renders something else -- and this catches it against Blazor's own composed DOM.
         if (out.observed.text !== 'Hello, World')
           out.problems.push(`#greeting is "${out.observed.text}", expected "Hello, World"`);
+        return out;
+      });
+    }
+
+    if (app === 'rootforeach') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#add')) { out.problems.push('missing required element: #add'); return out; }
+        const rows = () => [...document.querySelectorAll('#app li')].map(e => e.textContent.trim());
+        // @foreach needs a reactive list: it starts empty, the click populates it.
+        out.observed.initial = rows();
+        if (out.observed.initial.length !== 0) {
+          out.problems.push(`#app li starts non-empty (${JSON.stringify(out.observed.initial)}), expected []`);
+          return out;
+        }
+        document.querySelector('#add').click();
+        out.observed.afterAdd = rows();
+        // THE MEASUREMENT: three keyed rows reconciled DIRECTLY into #app (mount target), no wrapper.
+        // A generator that attached the list to a created element instead of target, or dropped a
+        // row, renders a different set -- caught here against Blazor's own rendered list.
+        const expected = ['alpha', 'beta', 'gamma'];
+        const got = out.observed.afterAdd;
+        if (got.length !== expected.length || got.some((t, i) => t !== expected[i]))
+          out.problems.push(`#app li after #add is ${JSON.stringify(got)}, expected ${JSON.stringify(expected)}`);
+        return out;
+      });
+    }
+
+    if (app === 'rootif') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#toggle')) { out.problems.push('missing required element: #toggle'); return out; }
+        const present = () => !!document.querySelector('#cond');
+        // show starts true: the branch renders directly into #app.
+        out.observed.initial = present();
+        if (!present()) { out.problems.push('#cond absent initially (show=true), expected present'); return out; }
+        document.querySelector('#toggle').click();
+        out.observed.afterToggle = present();
+        // THE MEASUREMENT: a root @if UNMOUNTS its branch from #app when the condition goes false.
+        // Unconditional markup would still be here; a real root @if gates.
+        if (present()) { out.problems.push('#cond still present after toggle (show=false), expected absent'); return out; }
+        document.querySelector('#toggle').click();
+        out.observed.afterSecondToggle = present();
+        if (!present()) out.problems.push('#cond absent after second toggle (show=true), expected present');
         return out;
       });
     }
