@@ -16,4 +16,40 @@
     <None Include="App.razor" />
   </ItemGroup>
 
+  <PropertyGroup>
+    <FilamentGeneratorDll>$(MSBuildProjectDirectory)/../../src/Filament.Generator/bin/$(Configuration)/net10.0/Filament.Generator.dll</FilamentGeneratorDll>
+    <FilamentRuntimeJs>$(MSBuildProjectDirectory)/../../src/filament-runtime/dist/filament.js</FilamentRuntimeJs>
+    <FilamentAppRazor>$(MSBuildProjectDirectory)/App.razor</FilamentAppRazor>
+    <FilamentAppJs>$(MSBuildProjectDirectory)/wwwroot/App.g.js</FilamentAppJs>
+    <FilamentWwwrootRuntimeJs>$(MSBuildProjectDirectory)/wwwroot/filament.js</FilamentWwwrootRuntimeJs>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Build the generator first; we invoke its DLL (AfterTargets=Build), not link its assembly. -->
+    <ProjectReference Include="../../src/Filament.Generator/Filament.Generator.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Compile App.razor -> wwwroot/App.g.js via Filament.Generator. AfterTargets=Build so the
+       generator ProjectReference is already built; Inputs/Outputs make an unchanged .razor a no-op. -->
+  <Target Name="CompileFilament"
+          AfterTargets="Build"
+          Inputs="$(FilamentAppRazor)"
+          Outputs="$(FilamentAppJs)">
+    <Error Condition="!Exists('$(FilamentGeneratorDll)')"
+           Text="Filament.Generator.dll not found at $(FilamentGeneratorDll). Build the solution so the generator is compiled first." />
+    <Message Importance="high" Text="Filament: App.razor -> wwwroot/App.g.js" />
+    <Exec Command="dotnet &quot;$(FilamentGeneratorDll)&quot; &quot;$(FilamentAppRazor)&quot; &quot;$(FilamentAppJs)&quot; --runtime ./filament.js" />
+  </Target>
+
+  <!-- Copy the prebuilt runtime next to the emitted module (native ES-module import). -->
+  <Target Name="CopyFilamentRuntime"
+          AfterTargets="Build"
+          Inputs="$(FilamentRuntimeJs)"
+          Outputs="$(FilamentWwwrootRuntimeJs)">
+    <Error Condition="!Exists('$(FilamentRuntimeJs)')"
+           Text="filament.js not found at $(FilamentRuntimeJs). Run 'npm ci &amp;&amp; npm run build' in src/filament-runtime first." />
+    <Copy SourceFiles="$(FilamentRuntimeJs)" DestinationFiles="$(FilamentWwwrootRuntimeJs)" />
+  </Target>
+
 </Project>
