@@ -2582,3 +2582,70 @@ lieu de prétendre que « §5 admet les opérateurs arithmétiques »).
 ---
 
 *Fin de l'entrée n°9. Ne pas modifier — ajouter une entrée n°10 pour toute rectification.*
+
+---
+
+## Entrée n°10 — 2026-07-18 — Phase 4 : la composition de composants (feuille statique) mesurée contre Blazor (CORRECTION)
+
+Deuxième élargissement de §5 mesuré, et le deuxième des trois faux positifs de la n°77 fermé (après la
+division, entrée n°9). La **composition de composants en feuille statique** entre dans le sous-ensemble
+(décision #88) : `<Greeting Name="World" />` résout le frère `Greeting.razor`, plie le paramètre statique en
+CONSTANTE, et **inline** l'unique racine statique de l'enfant dans le parent. Comme aucune answer key ne
+contient d'enfant composé, l'artefact est **fabriqué et mesuré** — même protocole que la n°9.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/Compose.Blazor` : un parent `<div id="wrap"><Greeting Name="World" /></div>` et un enfant
+`Greeting.razor` = `<span id="greeting">Hello, @Name</span>` avec `[Parameter] string Name`. Blazor
+**instancie** l'enfant au RUNTIME ; Filament l'**expanse au COMPILE-TIME** (`@Name` → `'World'`). L'oracle
+demande : *le DOM composé de Filament est-il celui que Blazor rend ?* Un générateur qui aurait laissé
+`<Greeting>` comme élément inconnu, rendu `Hello, @Name` littéral, ou perdu le paramètre, rendrait un
+`#greeting` différent — et l'oracle le verrait.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. Node **v26.5.0**. **Playwright 1.61.1 / Chromium**,
+  headless. **`HARNESS_VERSION` 1.5.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`, aucun run de poids/vitesse). La branche `compose` de
+`verifyContract` lit `#greeting.textContent` (doit valoir `Hello, World`). Une **feuille statique n'a aucune
+interaction** : le rendu INITIAL EST la mesure — c'est exactement la question de la composition (le
+compile-time de Filament reproduit-il le runtime de Blazor ?).
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/Compose.Blazor -c Release -o bench/publish/blazor-compose
+./bench/build-filament.sh filament-compose-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-compose/wwwroot   --app compose --label blazor-compose        --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-compose-gen     --app compose --label filament-compose-gen  --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#greeting` | verdict |
+|---|---|---|
+| **blazor-compose** (autorité) | **`Hello, World`** | contrat OK |
+| **filament-compose-gen** (générateur) | **`Hello, World`** | contrat OK |
+
+**Les deux rendent `Hello, World`, à l'identique.** L'expansion compile-time de Filament reproduit la
+composition runtime de Blazor. L'élargissement est **mesuré**, pas raisonné.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (app triviale, décision du propriétaire).
+- **`HARNESS_VERSION` 1.4.0 → 1.5.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (branche `compose`), donc
+  son hash change ; le numéro monte. Aucune mesure de poids antérieure n'est invalidée (cette entrée n'en
+  mesure aucune).
+- **SLICE ÉTROITE.** Seule la composition **feuille statique / paramètre string / un niveau** est admise.
+  Restent refusés, **loud et localisés** : paramètre lié (`Name="@x"`), paramètre non-string, enfant avec
+  état/événements, composition imbriquée, enfant multi-racine, et un frère `.razor` absent
+  (`unresolved-component`). Le §8 ne bouge pas comme architecture : RADICAL reste « ni éliminée ni établie ».
+  Il reste le TROISIÈME faux positif de la n°77 : le contrôle de flux à la racine du template.
+
+---
+
+*Fin de l'entrée n°10. Ne pas modifier — ajouter une entrée n°11 pour toute rectification.*
