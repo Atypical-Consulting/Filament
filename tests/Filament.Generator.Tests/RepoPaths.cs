@@ -38,6 +38,18 @@ public static class RepoPaths
 
     /// <summary>The composition SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string ComposeAnswerKey => Path.Combine(Root, "samples", "Compose", "compose.js");
+
+    /// <summary>Root-level @foreach (a reactive list into #app) — the file Blazor compiles (no drift, like Rows).</summary>
+    public static string RootForeachRazor => Path.Combine(Root, "baseline", "RootForeach.Blazor", "App.razor");
+
+    /// <summary>The root-@foreach SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string RootForeachAnswerKey => Path.Combine(Root, "samples", "RootForeach", "rootforeach.js");
+
+    /// <summary>Root-level @if (with a sibling toggle) — the file Blazor compiles (no drift, like Rows).</summary>
+    public static string RootIfRazor => Path.Combine(Root, "baseline", "RootIf.Blazor", "App.razor");
+
+    /// <summary>The root-@if SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string RootIfAnswerKey => Path.Combine(Root, "samples", "RootIf", "rootif.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

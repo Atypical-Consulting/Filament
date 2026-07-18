@@ -264,6 +264,10 @@ public static class Generate
 
     public static string ComposeToTemp() => ToTemp(RepoPaths.ComposeRazor, "Compose");
 
+    public static string RootForeachToTemp() => ToTemp(RepoPaths.RootForeachRazor, "RootForeach");
+
+    public static string RootIfToTemp() => ToTemp(RepoPaths.RootIfRazor, "RootIf");
+
     /// <summary>
     /// Emit a fixture from the Unsupported dir (some of which now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the

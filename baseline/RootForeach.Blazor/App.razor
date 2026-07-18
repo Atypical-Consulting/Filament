@@ -1,0 +1,27 @@
+@* Root component: a button that populates a reactive list, and a root-level @foreach
+   with NO wrapping element -- the list reconciles directly into #app (mount()'s target).
+   #77's third false positive, closed by decision 89.
+
+   @foreach needs a REACTIVE collection (a never-mutated list is refused: it has no
+   version signal for list() to re-run on). So #add mutates it and the click IS the
+   measurement -- three <li> reconciled into the mount point, no wrapper element.
+
+   No whitespace between </button> and @foreach, matching If.razor's contract: Razor
+   turns SOURCE whitespace between sibling nodes into text nodes, and there is none here. *@
+
+<button id="add" @onclick="Add">add</button>@foreach (string item in items)
+{
+    <li @key="item" class="row">@item</li>
+}
+
+@code {
+    List<string> items = new List<string>();
+
+    // Three distinct labels so @key="item" (the string value itself) has stable identities.
+    void Add()
+    {
+        items.Add("alpha");
+        items.Add("beta");
+        items.Add("gamma");
+    }
+}
