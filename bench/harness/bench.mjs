@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.4.0';   // 1.4.0: added the 'divide' contract (double-division correctness oracle).
+export const HARNESS_VERSION = '1.5.0';   // 1.5.0: added the 'compose' contract (static-leaf composition). 1.4.0: 'divide'.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -305,6 +305,13 @@ const APPS = {
   divide: {
     readySelector: '#halve',
     observeSelector: '#divide-value',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract asserts the COMPOSED DOM (#greeting = "Hello, World").
+  // Static-leaf composition has no interaction, so the initial render IS the measurement.
+  compose: {
+    readySelector: '#greeting',
+    observeSelector: '#greeting',
     scenarios: [],
   },
 };
@@ -1521,6 +1528,21 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
             `#divide-value after #halve is "${out.observed.afterHalve}", expected "3.5" ` +
             `("3" would mean integer-division semantics leaked into the emitted JS)`);
         }
+        return out;
+      });
+    }
+
+    if (app === 'compose') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        const el = document.querySelector('#greeting');
+        if (!el) { out.problems.push('missing required element: #greeting'); return out; }
+        out.observed.text = el.textContent.trim();
+        // Static-leaf composition: the composed child renders "Hello, World". A generator that
+        // dropped the param, or emitted the literal @Name, or left <Greeting> as an unknown element,
+        // renders something else -- and this catches it against Blazor's own composed DOM.
+        if (out.observed.text !== 'Hello, World')
+          out.problems.push(`#greeting is "${out.observed.text}", expected "Hello, World"`);
         return out;
       });
     }

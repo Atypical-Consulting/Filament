@@ -174,6 +174,7 @@ ALL_LABELS=(
   filament-counter-gen
   filament-rows-gen
   filament-divide-gen
+  filament-compose-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -187,6 +188,7 @@ project_for() {
     filament-counter-gen|filament-counter-gen-stats) echo "samples/filament-counter-gen" ;;
     filament-rows-gen|filament-rows-gen-stats)       echo "samples/filament-rows-gen" ;;
     filament-divide-gen)                             echo "samples/filament-divide-gen" ;;
+    filament-compose-gen)                            echo "samples/filament-compose-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -196,7 +198,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -219,6 +221,7 @@ razor_for() {
     filament-counter-gen|filament-counter-gen-stats) echo "$REPO_ROOT/samples/Counter/Counter.razor" ;;
     filament-rows-gen|filament-rows-gen-stats)       echo "$REPO_ROOT/baseline/Rows.Blazor/RowsApp.razor" ;;
     filament-divide-gen)                             echo "$REPO_ROOT/baseline/Divide.Blazor/App.razor" ;;
+    filament-compose-gen)                            echo "$REPO_ROOT/baseline/Compose.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -234,6 +237,7 @@ generated_js_for() {
     filament-counter-gen|filament-counter-gen-stats) echo "Counter.g.js" ;;
     filament-rows-gen|filament-rows-gen-stats)       echo "Rows.g.js" ;;
     filament-divide-gen)                             echo "Divide.g.js" ;;
+    filament-compose-gen)                            echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -245,6 +249,7 @@ title_for() {
     filament-counter-gen|filament-counter-gen-stats) echo "Counter" ;;
     filament-rows-gen|filament-rows-gen-stats)       echo "Rows" ;;
     filament-divide-gen)                             echo "Divide" ;;
+    filament-compose-gen)                            echo "Compose" ;;
     *) return 1 ;;
   esac
 }
@@ -259,6 +264,7 @@ blazor_label_for() {
     filament-counter-gen|filament-counter-gen-stats) echo "blazor-counter-nojit" ;;
     filament-rows-gen|filament-rows-gen-stats)       echo "blazor-rows-nojit" ;;
     filament-divide-gen)                             echo "blazor-divide" ;;
+    filament-compose-gen)                            echo "blazor-compose" ;;
     *) return 1 ;;
   esac
 }
@@ -281,6 +287,7 @@ css_for() {
     filament-counter-gen|filament-counter-gen-stats) echo "$REPO_ROOT/baseline/Counter.Blazor/wwwroot/css/app.css" ;;
     filament-rows-gen|filament-rows-gen-stats)       echo "$REPO_ROOT/baseline/Rows.Blazor/wwwroot/css/app.css" ;;
     filament-divide-gen)                             echo "$REPO_ROOT/baseline/Divide.Blazor/wwwroot/css/app.css" ;;
+    filament-compose-gen)                            echo "$REPO_ROOT/baseline/Compose.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }
