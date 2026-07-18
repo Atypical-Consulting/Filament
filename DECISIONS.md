@@ -3221,3 +3221,37 @@ passer `#counter-value` de `0` à `1`. `App.razor` n'est pas compilé en composa
 **DIFFÉRÉ.** Publication sur **NuGet.org** ; **découverte multi-`.razor`** (le SDK compile `App.razor` par défaut,
 via `$(FilamentEntry)`) ; **`dotnet watch`** ; migrer `examples/FilamentApp` pour qu'il consomme le SDK (il reste
 sur le `ProjectReference` in-repo, comme référence).
+
+## 93. Hot-reload `dotnet watch` — une seule `<Watch>`, et la leçon mesurée : hot reload NO-OPe un `.razor`, `--no-hot-reload` reconstruit
+
+**Décision.** `dotnet watch --no-hot-reload run` donne la boucle vivante : on édite `App.razor`, le générateur
+re-tourne, `wwwroot/App.g.js` se régénère, le navigateur se rafraîchit — pour `examples/FilamentApp` **et** toute
+app `dotnet new filament`. Suite naturelle (petite) de la n°92.
+
+**CE QUE L'EXPÉRIENCE A ÉTABLI (mesuré, pas supposé).** Lancer `dotnet watch` contre une app a montré deux
+choses : (1) **`dotnet watch` ignore `App.razor` par défaut** — c'est un item `<None>` (Filament le possède, le SDK
+Razor est éteint), donc hors du jeu surveillé ; l'éditer ne produisait aucun événement. (2) **Avec le hot reload
+actif, un changement de `.razor` NO-OPe** — une fois `App.razor` surveillé, le moteur de hot reload prend le
+changement, annonce *« No managed code changes to apply »* et **ne reconstruit pas**, donc la cible
+`AfterTargets="Build"` `FilamentCompile` ne tourne pas et `App.g.js` n'est pas régénéré. Le correctif prouvé de
+bout en bout : surveiller le fichier **ET** lancer avec **`--no-hot-reload`**, de sorte qu'un changement
+reconstruise+redémarre, ce qui exécute `FilamentCompile` (régénère `App.g.js`), puis — en Development — le
+browser-refresh de `dotnet watch` recharge la page.
+
+**LE CORRECTIF, UNE LIGNE.** `<Watch Include="$(FilamentEntry)" />` dans `Filament.Sdk.targets` (toutes les apps
+générées en héritent) + la parité `<Watch Include="App.razor" />` dans `examples/FilamentApp` (qui utilise ses
+cibles inline, pas le SDK). `Filament.Sdk` passe **0.1.0 → 0.1.1** (le contenu du paquet change ; le bump évite
+aussi la collision de cache NuGet d'un re-pack de même version), et la `<PackageReference>` du template suit.
+`--no-hot-reload` est **documenté** (README du template + de `examples/FilamentApp`, plus une note Rider) : il
+n'existe pas de propriété MSBuild propre par-projet pour le forcer.
+
+**UN PIÈGE XML, CONSIGNÉ.** Le commentaire initial contenait `--no-hot-reload` — or `--` est **illégal dans un
+commentaire XML** (`MSB4025`), ce qui cassait le chargement du `.csproj`/`.targets` chez le consommateur. Reformulé
+sans double tiret.
+
+**MESURÉ.** Édition de `App.razor` sous watch → `App.g.js` régénéré en ~2 s, sur `examples/FilamentApp` **et** sur
+une app fraîchement générée en 0.1.1 (donc la `<Watch>` fournie PAR le SDK marche de bout en bout).
+
+**LE PARE-FEU.** Aucun octet du générateur, aucune source du runtime, **aucune entrée BENCH** : `<Watch>` est une
+métadonnée de build inerte hors de `dotnet watch`, le Build normal est intact, **270 tests verts**. Différé : faire
+marcher `dotnet watch` **sans** le drapeau ; surveiller plusieurs `.razor` (va avec la tranche multi-composants).
