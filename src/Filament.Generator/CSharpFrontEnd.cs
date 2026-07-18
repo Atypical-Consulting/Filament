@@ -730,17 +730,21 @@ public sealed class CSharpFrontEnd
 
     void Member(MemberDeclarationSyntax member)
     {
+        // The member-KIND decision is single-sourced in Filament.Subset (decisions 53/61).
+        if (Filament.Subset.ConstructSubset.ClassifyMember(member) is { } refusal)
+        {
+            Refuse(refusal.Reason, refusal.Message, member.SpanStart);
+            return;
+        }
+
         switch (member)
         {
             case FieldDeclarationSyntax f: FieldDecl(f); break;
             case MethodDeclarationSyntax m: Method(m); break;
             default:
-                Refuse("unsupported-member",
-                    $"{Describe(member)} is not in the C# subset. @code admits FIELDS (state), METHODS " +
-                    "(behaviour) and RECORDS (row shapes) only (spec 5). Refusing to emit rather than drop it " +
-                    "silently -- a dropped member is a module that looks right and does less than the source says.",
-                    member.SpanStart);
-                break;
+                throw new GeneratorException(
+                    $"FIL-WIRING: ClassifyMember admitted {member.Kind()} but Member() has no case for it. " +
+                    "The subset decision and the translator have drifted. Refusing to emit.");
         }
     }
 

@@ -40,4 +40,30 @@ public class ConstructSubsetTests
         Assert.Equal("FIL0001", r!.Value.Code);
         Assert.Equal("unsupported-statement", r.Value.Reason);
     }
+
+    static MemberDeclarationSyntax FirstMember(string members)
+    {
+        var tree = CSharpSyntaxTree.ParseText("class C {" + members + "}");
+        return tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>()
+            .First().Members.First();
+    }
+
+    [Theory]
+    [InlineData("int x;")]
+    [InlineData("void M() {}")]
+    [InlineData("record R(int x);")]
+    public void SupportedMemberKinds_ClassifyToNull(string members)
+        => Assert.Null(ConstructSubset.ClassifyMember(FirstMember(members)));
+
+    [Theory]
+    [InlineData("int P { get; set; }")]
+    [InlineData("C() {}")]
+    [InlineData("class N {}")]
+    public void UnsupportedMemberKinds_ClassifyToUnsupportedMember(string members)
+    {
+        var r = ConstructSubset.ClassifyMember(FirstMember(members));
+        Assert.NotNull(r);
+        Assert.Equal("FIL0001", r!.Value.Code);
+        Assert.Equal("unsupported-member", r.Value.Reason);
+    }
 }

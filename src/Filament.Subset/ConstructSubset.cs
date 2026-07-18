@@ -28,6 +28,19 @@ public static class ConstructSubset
             "declared in the same component. Refusing to emit."),
     };
 
+    /// <summary>null = the member KIND is in §5 (@code admits fields, methods, records); non-null =
+    /// the FIL0001 refusal. A record's INTERNAL shape is a separate concern (not this classifier).</summary>
+    public static Refusal? ClassifyMember(MemberDeclarationSyntax member) => member switch
+    {
+        FieldDeclarationSyntax => null,
+        MethodDeclarationSyntax => null,
+        RecordDeclarationSyntax => null,
+        _ => new Refusal("FIL0001", "unsupported-member",
+            $"{Describe(member)} is not in the C# subset. @code admits FIELDS (state), METHODS " +
+            "(behaviour) and RECORDS (row shapes) only (spec 5). Refusing to emit rather than drop it " +
+            "silently -- a dropped member is a module that looks right and does less than the source says."),
+    };
+
     static string Describe(SyntaxNode n) =>
         n.Kind().ToString().Replace("Syntax", "") + " (`" + Trunc(n.ToString(), 40) + "`)";
 

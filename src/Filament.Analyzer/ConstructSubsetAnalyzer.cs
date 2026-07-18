@@ -1,19 +1,19 @@
-using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using System.Collections.Immutable;
 using Filament.Subset;
 
 namespace Filament.Analyzer;
 
 /// <summary>
-/// Author-time FIL0001 (statement kind): flags a statement whose kind is outside the Filament C#
-/// subset in any Blazor component's @code, using the SAME decision the generator uses
-/// (Filament.Subset.ConstructSubset.ClassifyStatement — decisions 53/61).
+/// Author-time FIL0001 (out-of-subset C# construct) over any Blazor component's @code, using the
+/// SAME decisions the generator uses (Filament.Subset.ConstructSubset — decisions 53/61). Covers
+/// member kinds and statement kinds; expression/call families are added incrementally.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
-public sealed class StatementSubsetAnalyzer : DiagnosticAnalyzer
+public sealed class ConstructSubsetAnalyzer : DiagnosticAnalyzer
 {
     public static readonly DiagnosticDescriptor Fil0001 = new(
         id: "FIL0001",
@@ -22,7 +22,7 @@ public sealed class StatementSubsetAnalyzer : DiagnosticAnalyzer
         category: "Filament.Subset",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "@code admits local declarations, assignment, if/else, for, foreach, return and calls to the component's own methods.");
+        description: "@code admits fields, methods and records; and in bodies: local declarations, assignment, if/else, for, foreach, return and calls to the component's own methods.");
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => ImmutableArray.Create(Fil0001);
 
@@ -30,24 +30,26 @@ public sealed class StatementSubsetAnalyzer : DiagnosticAnalyzer
     {
         context.EnableConcurrentExecution();
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.Analyze);
-        context.RegisterSymbolStartAction(OnTypeStart, SymbolKind.NamedType);
+        context.RegisterSyntaxNodeAction(OnClass, SyntaxKind.ClassDeclaration);
     }
 
-    static void OnTypeStart(SymbolStartAnalysisContext context)
+    static void OnClass(SyntaxNodeAnalysisContext context)
     {
-        if (!ComponentScope.IsComponent((INamedTypeSymbol)context.Symbol)) return;
-        context.RegisterSyntaxNodeAction(OnMethod, SyntaxKind.MethodDeclaration);
-    }
+        var decl = (ClassDeclarationSyntax)context.Node;
+        if (context.SemanticModel.GetDeclaredSymbol(decl, context.CancellationToken) is not { } symbol
+            || !ComponentScope.IsComponent(symbol)) return;
 
-    static void OnMethod(SyntaxNodeAnalysisContext context)
-    {
-        var body = ((MethodDeclarationSyntax)context.Node).Body;
-        if (body is not null) WalkBlock(body, context);
+        foreach (var member in decl.Members)
+        {
+            if (ConstructSubset.ClassifyMember(member) is { } refusal)
+                context.ReportDiagnostic(Diagnostic.Create(Fil0001, member.GetLocation(), refusal.Message));
+            else if (member is MethodDeclarationSyntax { Body: { } body })
+                WalkBlock(body, context);
+        }
     }
 
     // Mirror the generator's Statement()/Nest()/Body() traversal: recurse into supported
-    // containers, report and STOP at an unsupported statement (so a switch is flagged once,
-    // not also its inner break — matching the generator's first-hit refuse).
+    // containers, report and STOP at an unsupported statement.
     static void WalkBlock(BlockSyntax block, SyntaxNodeAnalysisContext context)
     {
         foreach (var s in block.Statements) Walk(s, context);
