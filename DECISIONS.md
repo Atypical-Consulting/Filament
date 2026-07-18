@@ -2754,3 +2754,76 @@ l'imbrication, le corps multi-nœud et le contrôle de flux à la racine restent
 IfElse.razor` contre `samples/IfElse/ifelse.js` → **ALPHA-ÉQUIVALENT**, `exit 0` ; `samples/If/If.razor` contre
 `samples/If/if.js` → toujours **ALPHA-ÉQUIVALENT** (`@if` non régressé) ; `cd src/filament-runtime && npm run
 verify` → vert, **1 943 o / 2 048 o**.
+
+## 83. Un ANALYSEUR au TEMPS D'ÉCRITURE pour le sous-ensemble de types (FIL0002) — la décision unique EXTRAITE, pas recopiée
+
+**Décision.** `Filament.Analyzer` naît : un `DiagnosticAnalyzer` Roslyn qui fait remonter le refus **FIL0002**
+(type hors sous-ensemble §5) comme un **diagnostic d'IDE au temps d'écriture** — le liseré rouge sous
+`private decimal x;` **avant** que le générateur ne tourne. La décision « ce type est-il dans le §5 ? » est
+**extraite** de `CSharpFrontEnd.CheckType` vers `Filament.Subset.TypeSubset.Classify`, une fonction pure sur un
+`ITypeSymbol`, que le générateur **et** l'analyseur appellent. Suite complète : **196 tests** (178 générateur
+inchangés + 14 `Filament.Subset.Tests` + 4 `Filament.Analyzer.Tests`), runtime **byte-inchangé** de `6572293` à
+HEAD.
+
+**LA CORRECTION D'OBJECTIF, consignée contre l'énoncé initial.** Le point de départ (« remplir Core/Analyzer,
+donner à `Filament.Core` de vrais `Signal<T>` C# ») reposait sur la n°22, **superseded** : le modèle d'auteur qui
+a réellement émergé en Phase 3 (n°62–72) écrit du **Blazor C# ordinaire** (`private int currentCount = 0;`) et
+c'est le générateur qui **lève** le champ en signal (`IsSignal => ReadByTemplate && AssignedOutsideConstruction`).
+**Rien ne consomme un `Signal<T>` C#** ; `Filament.Core` n'est donc **pas** créé (YAGNI assumé). Le « shim
+ambiant » de `461a0cc` est du **TypeScript** (`ifelse-answer-key.d.ts`), pas du C#. Ce qui manquait vraiment n'était
+ni une primitive ni un nouveau code de diagnostic (les codes FIL0001-3 existaient, corrects) — c'était l'**endroit**
+où le refus s'affiche : le générateur est un exécutable console (n°58), il ne parle pas à l'IDE. L'analyseur si.
+
+**INCRÉMENT 1a : FIL0002 SEUL, et pourquoi ce découpage n'est pas une facilité.** Le refus du générateur est
+**tissé dans la marche de traduction** (`Refuse()` entrelacé à l'émission ; hors-sous-ensemble = un `default:` de
+`switch`). Il n'y a **aucun prédicat séparable** à soulever d'un coup — l'extraction est un travail par catégorie.
+`CheckType` est la **seule** décision déjà isolée en méthode, donc la seule qui s'extrait proprement tout en
+exerçant la pile entière (module partagé → délégation générateur → analyseur → tests de vérification → garde de
+mutation). Les catégories FIL0001 (`unsupported-statement/-expression/-call/-member/-modifier/-generic`,
+`reserved-name`, `name-collision`, `not-csharp`) sont **l'incrément 1b**, un plan de suivi qui **réutilise** cette
+plomberie — même discipline « une tranche étanche à la fois » que n°81 (`@if`) puis n°82 (`@else`).
+
+**« EXTRAIRE » PLUTÔT QUE « PARITÉ TESTÉE » — et le RAFFINEMENT contre la lettre de la spec.** La spec approuvée
+disait « descendre `Diagnostic` et `SourceOffset` dans `Filament.Subset` ». **On ne l'a pas fait** : `Diagnostic`
+est un type de **formatage stderr** basé sur un `SourceSpan` Razor (`"fichier(l,c): CODE: [raison] message"`),
+propre au générateur ; l'analyseur veut des `Location` Roslyn. Ce qui honore réellement n°53/n°61, c'est de
+**mono-sourcer la décision** — et c'est `TypeSubset.Classify` qui le fait. Le module partagé n'expose donc que la
+décision (`Classify` + `TypeRefusal` span-agnostique + `ListElement`) ; `Diagnostic`/`SourceOffset`/`Refuse`
+restent côté générateur. Rien du sous-ensemble n'est décrit deux fois. `CheckType` devient un **adaptateur mince**
+qui garde ses appels `Refuse(...)` et son `at`, et prend la décision du module — le texte des raisons/messages a
+**migré** dans `Classify`, il n'a pas été **recopié**. Preuve que la migration préserve le comportement : les
+**178 tests gates** (Counter/Rows/If/IfElse alpha-équivalents + les 12 lignes FIL0002 de `CodeTests` à leur
+`(ligne,col)` exacte) restent **verts, inchangés**.
+
+**LA GARDE DE MUTATION EST LA PREUVE QUE LES DEUX PARTAGENT UNE SEULE RÈGLE, pas une copie (n°53).** On a fait
+accepter `decimal` par `Classify` (une ligne) : **`TypeDecimal.razor` du générateur ET `OutOfSubsetFieldType` de
+l'analyseur sont passés au ROUGE ensemble**, d'un seul changement du module partagé — puis revert, revert. Un
+backstop non testé est une revendication (n°61) ; celui-ci est mutation-testé.
+
+**LE VERROU DE VERSION ROSLYN, LEVÉ PAR UN SPIKE AVANT TOUT CODE RÉEL (risque n°1 de la spec).** Un
+`DiagnosticAnalyzer` doit cibler `netstandard2.0` et se charger sous le Roslyn de l'hôte IDE. Résolu par un spike
+jetable : **`Filament.Subset` et `Filament.Analyzer` épinglent `Microsoft.CodeAnalysis.CSharp` 4.8.0**
+(`PrivateAssets="all"` — le Roslyn ne **fuit pas** transitivement, chaque consommateur apporte le sien) ; le
+générateur **garde 5.6.0** (n°70) et build à 0 warning — les deux cohabitent. Les projets de **test** d'analyseur
+doivent **relever le plancher** Roslyn à 4.8.0 explicitement, sinon `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing`
+1.1.2 ne déclare qu'un **plancher** et NuGet résout l'antique 1.0.1 → l'analyseur (bâti sur 4.8.0) ne charge pas
+(`CS1705`). `Classify` n'utilise que de la surface Roslyn stable, satisfaite par 4.8.0 comme par 5.6.0.
+
+**LE `void` DE RETOUR : une SUR-REFUS DÉCOUVERTE PAR LE VÉRIFICATEUR, corrigée dans le SOURCE UNIQUE.** Le premier
+jet de l'analyseur signalait le type de retour `void` d'une méthode — le générateur, lui, **garde `void` à son site
+d'appel** (`SpecialType: not System_Void` avant `CheckType`). Le test de vérification a **semé la divergence** (esprit
+n°64/n°81 : la clé/le comportement attendu écrits avant de regarder la sortie) et l'a attrapée. Corrigé dans
+`Classify` — `void` y est admis (il ne peut atteindre `Classify` **que** comme type de retour ; aucun champ/local/
+paramètre ne peut être `void`), donc l'admettre ne peut **jamais** masquer un vrai refus, et les deux consommateurs
+restent cohérents depuis la source unique. Le garde du générateur reste en place, redondant mais sûr.
+
+**CIBLAGE : opt-in par projet entier.** Tout projet qui référence `Filament.Analyzer` fait vérifier **chaque**
+composant `ComponentBase`-dérivé (`RegisterSymbolStartAction` + actions de nœud imbriquées, `SemanticModel` en
+cache — pas de `RS1030`). Modèle « c'est un projet Filament, donc chaque composant doit être dans le sous-ensemble ».
+Pas d'attribut marqueur (`[FilamentComponent]` différé). `RS2008` traité proprement par des fichiers
+`AnalyzerReleases.{Shipped,Unshipped}.md`, pas par une suppression.
+
+**LE PLAFOND HONNÊTE NE BOUGE PAS.** Ceci est de l'**outillage** : aucun octet émis ne bouge, le sous-ensemble §5
+**ne s'élargit pas** (aucun construct nouveau accepté ; on **remonte** au temps d'écriture un refus qui existait
+déjà), et le verdict §8 tient — RADICAL reste « ni éliminée ni établie ». Ce que l'incrément ajoute, c'est où le
+refus s'affiche, pas ce que le compilateur accepte.

@@ -43,6 +43,16 @@ RADICAL stays "not eliminated, not established."
 
 ## Architecture — three projects
 
+> **Refinement recorded during implementation (DECISIONS #83).** Two things changed from the table
+> below, both in service of the spec's actual goal (single-source the *subset decision*): (1)
+> `Diagnostic` and `SourceOffset` were **kept generator-side, not moved down** — `Diagnostic` is a Razor-
+> `SourceSpan` stderr-formatting type, while the analyzer wants Roslyn `Location`s; the shared module
+> exposes only the decision (`TypeSubset.Classify` + a Location-agnostic `TypeRefusal`). (2) The first
+> increment implements **`FIL0002` (types) only** — a complete vertical slice — because the generator's
+> refusals are woven into its translation walk and extract cleanly only one category at a time;
+> `FIL0001` constructs are increment 1b. The shared type is `TypeSubset.Classify`, not a `SubsetValidator`
+> class (that name is reserved for the 1b construct work).
+
 | Project | TFM | Role |
 |---|---|---|
 | **`Filament.Subset`** *(new)* | `netstandard2.0` | The shared truth. Owns the `Diagnostic` record and `SourceOffset` (moved down from the generator) and a new `SubsetValidator` that walks `@code` C# against a `SemanticModel` and returns the `FIL0001`/`FIL0002` refusals **without translating**. References `Microsoft.CodeAnalysis.CSharp` with `PrivateAssets=all` — the consumer (generator host / analyzer host) provides Roslyn. |
