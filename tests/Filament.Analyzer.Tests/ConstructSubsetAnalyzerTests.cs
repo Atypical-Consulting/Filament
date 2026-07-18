@@ -99,4 +99,9 @@ public class ConstructSubsetAnalyzerTests
             "        int c = (int)dbl;\n" +
             "        int d = _rows[0];\n" +
             "        i++;").RunAsync();
+
+    [Fact]
+    public async Task DoubleDivision_IsNotFlagged()
+        // double / double is faithful in JS -> in §5 -> no diagnostic (single-sourced via ConstructSubset).
+        => await Body("        double x = dbl / 2.0;").RunAsync();
 }
