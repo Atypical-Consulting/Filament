@@ -3127,3 +3127,55 @@ frontière. `HARNESS_VERSION` 1.6.0 → 1.7.0, divulgué.
 (`composition-out-of-subset`), attribut d'enfant lié (`class="@x"` — les attributs réactifs ne sont pas encore
 dans le sous-ensemble de base, donc hors d'atteinte ici). Restent différées : enfant avec état, composition
 imbriquée, paramètre non-scalaire. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 91. Une app Filament exécutable — `examples/FilamentApp`, vrai projet .NET ouvrable dans Rider : le souci d'empaquetage §4.3, repris (DX, PAS une mesure)
+
+**Décision.** Le souci d'intégration MSBuild que `Program.cs` du générateur consignait comme **différé**
+(« a packaging concern that changes no emitted byte, so it is deferred, not skipped », §4.3) est **repris**, sous
+la forme d'`examples/FilamentApp` : **un** vrai projet web .NET (`Microsoft.NET.Sdk.Web`) qu'on ouvre dans Rider,
+dont le **Build** compile `App.razor` → JS via `Filament.Generator`, et dont le **Run (F5)** sert la sortie
+statique sur Kestrel et ouvre le navigateur sur le Counter. C'est la graine du futur `dotnet new filament` ; cette
+tranche livre le projet exécutable et ouvrable dont le template sera découpé. **Quatre choix du propriétaire**,
+verrouillés en amont : (1) **csproj intégré à MSBuild** — Build = compiler `.razor`→JS ; (2) **modules ES natifs,
+build pur-.NET** — le Build lance le générateur + copie un runtime prébâti + sert l'`index.html` committé, **sans
+Node/esbuild dans `dotnet build`** ; (3) **hôte de dev ASP.NET Core** (SDK.Web) — flèche verte / F5, Kestrel, le
+navigateur s'ouvre : la boucle de dev de Blazor WASM (« il faut que ça ressemble à un vrai projet .NET ») ;
+(4) **Counter** comme composant de démo.
+
+**LE MÉCANISME.** Deux cibles MSBuild `AfterTargets="Build"` — donc le générateur (`ProjectReference`,
+`ReferenceOutputAssembly=false`) est bâti AVANT qu'on invoque son DLL. `CompileFilament` exécute
+`dotnet <Filament.Generator.dll> App.razor wwwroot/App.g.js --runtime ./filament.js` (le drapeau `--runtime` fixe
+le spécificateur d'import ET contourne la recherche FIL-WIRING) ; `CopyFilamentRuntime` copie le
+`src/filament-runtime/dist/filament.js` prébâti dans `wwwroot/`. `Inputs`/`Outputs` rendent un `.razor` inchangé
+**no-op** (le second Build ne régénère rien). Le navigateur charge `index.html` → `App.g.js` → `filament.js` en
+**modules ES natifs**, sans bundler.
+
+**LE SDK RAZOR NE COMPILE PAS `App.razor`.** Un projet SDK.Web globerait `.razor` en `RazorComponent` et
+tenterait d'en faire un composant Blazor. Interdit : ici **Filament** possède `.razor` (produit du JS, pas un type
+.NET). `EnableDefaultRazorComponentItems=false` + `<None Include="App.razor" />` ; vérifié sur build propre —
+aucun `App.razor.g.cs`, aucun composant émis.
+
+**KESTREL EST DEV-ONLY — LA THÈSE TIENT.** L'artefact livré reste les fichiers statiques de `wwwroot/` (aucun .NET
+dans le navigateur) ; l'hôte Kestrel n'existe qu'en dev, exactement comme le serveur de dev d'un Blazor WASM
+autonome. Servir par un vrai hôte (et non `file://`) est aussi ce qui fait résoudre les imports de modules ES avec
+les bons types MIME.
+
+**L'ARBITRAGE DIVULGUÉ : aucun JS exécutable n'est committé.** `filament.js` n'existe qu'après un build TS
+(esbuild plie `__FILAMENT_STATS__`), et `dist/` est gitignoré — la règle du dépôt (« nothing runnable is
+committed ») tient. Conséquence assumée : l'app **copie** le runtime prébâti et **échoue avec un message
+actionnable** s'il manque (« Run 'npm ci && npm run build' in src/filament-runtime first ») ; bâtir le runtime une
+fois est un **prérequis documenté** (même palier qu'un `npm ci`). Le build de l'**app** reste pur-.NET. Pour le
+futur template, le runtime prébâti voyagera **dans le paquet**, donc l'utilisateur final ne lance jamais npm.
+
+**LE PARE-FEU (ce que ça ne touche pas).** **Aucun octet émis** par le générateur ne change (invoqué tel quel via
+sa CLI ; `--runtime` est déjà supporté). **Aucune entrée BENCH** — rien n'est *mesuré* : le bundling et la
+minification restent **exclusivement** dans le chemin mesuré (`bench/build-filament.sh` + `bench.mjs`), ce projet
+est un **viewer**, jamais pesé (même pare-feu que `demo/build.sh`). **Source du runtime intacte** (on copie sa
+sortie, on ne l'édite pas). **Aucun élargissement de §5/DECISIONS** — le Counter compile déjà ; suite de tests et
+mesures inchangées. Vérification fonctionnelle (fumée, PAS une mesure C1/C3/C4) : dans un vrai navigateur servi par
+Kestrel, le clic sur `#increment` fait passer `#counter-value` de `0` à `1` — le JS réactif émis s'exécute.
+
+**DIFFÉRÉ, comme suites naturelles.** Le **template `dotnet new`** lui-même (`.template.config/template.json`),
+rendu trivial par cette disposition ; l'empaquetage du générateur en **outil dotnet / cibles NuGet** (cette
+tranche utilise un `ProjectReference` in-repo) ; un bundle **minifié** de production pour les apps (hors chemin
+mesuré, volontairement) ; le **hot-reload** (`dotnet watch`) sur édition de `.razor`.
