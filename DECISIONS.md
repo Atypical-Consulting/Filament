@@ -2942,3 +2942,53 @@ une règle, deux consommateurs (n°53).
 
 **LE PLAFOND HONNÊTE NE BOUGE PAS.** Outillage : aucun octet émis ne bouge, §5 ne s'élargit pas, RADICAL reste « ni
 éliminée ni établie ».
+
+---
+
+# Phase 4 — élargissement du sous-ensemble (entrée `BENCH.md` n°9, 2026-07-18)
+
+## 87. La division `double` entre dans le §5 — l'admission SÉMANTIQUE (type du résultat), `int/int` refusé, et l'élargissement MESURÉ contre Blazor
+
+**Décision.** `/` entre dans le sous-ensemble compilé **exactement quand son résultat est `double`** (au moins un
+opérande `double` ; C# promeut `int/double` → `double`). `int/int` **reste refusé** : C# tronque (`7/2 == 3`) là où JS
+rend `3.5` — émettre `/` serait un **nombre silencieusement faux** (§10). C'est le **premier élargissement de §5**
+depuis le début des slices d'analyseur (#83–#86, qui étaient de l'outillage). Mono-sourcé : `ConstructSubset.IsFaithfulDivision`
++ une branche en tête de `ClassifyExpression` ; le générateur gagne **un** `case` d'émission dans `Expr()` ; l'analyseur
+change de **zéro ligne** (il appelle `ClassifyExpression`). Suite : **251 tests** (181 générateur + 53 subset + 17
+analyseur, +7 sur la n°86), runtime byte-inchangé.
+
+**LA DIVISION EST LE SEUL OPÉRATEUR DONT L'APPARTENANCE DÉPEND DU TYPE, PAS DE LA SYNTAXE — et c'est pourquoi la n°86
+avait raison de la laisser refusée.** La n°86 a nommé le piège : *« ajouter `DivideExpression => "/"` à `JsBinaryOperator`
+fait émettre à IntDivision »*. C'est **exactement** l'anti-correctif ici évité. `JsBinaryOperator` **reste purement
+syntaxique** — un bless syntaxique admettrait `int/int` aussi. La division est tranchée **sémantiquement**, à côté de la
+table d'opérateurs, exactement comme le cast `(int)double` → `Math.trunc` : `IsFaithfulDivision` demande
+`model.GetTypeInfo(b).Type?.SpecialType == System_Double`. Le `default:` de `Expr()` a fait son travail de filet
+pendant le développement : après l'admission côté `ClassifyExpression` et **avant** l'ajout du `case` d'émission, une
+division `double` a levé `FIL-WIRING: ClassifyExpression admitted DivideExpression but Expr() has no case for it` —
+la dérive attrapée par construction, pas par chance.
+
+**LE MESSAGE AUTO-CONTRADICTOIRE DE LA n°77 EST CORRIGÉ.** L'ancien refus disait « §5 admet les opérateurs
+arithmétiques » **en refusant une division** — un défaut de qualité de diagnostic que la n°77 avait divulgué. `int/int`
+nomme désormais la **troncature entière** (`C# tronque 7/2 à 3 où JS rend 3.5`). Slug inchangé (`unsupported-expression`)
+pour ne pas casser les assertions code+raison ; seul le texte est vrai maintenant. `IntegerDivision_IsRefused_LoudAndLocated`
+remplace la moitié `double` du théorème de faux positif divulgué (n°77), qui **rougit délibérément** à la fermeture.
+
+**MUTATION-TESTÉ À TRAVERS LA COUTURE, mesuré et non raisonné.** Une seule édition de `IsFaithfulDivision`
+(`System_Double` → `System_Single`) fait **rougir DEUX tests à la fois** : `Section5_DoubleDivision_CompilesClean`
+(générateur) **et** `DoubleDivision_IsNotFlagged` (analyseur) — la preuve qu'ils partagent une règle, pas une copie
+(n°53/61). Revert par Edit, pas `git checkout`.
+
+**L'ÉLARGISSEMENT EST MESURÉ CONTRE BLAZOR — l'appel du propriétaire, et le point qui compte.** Chaque élargissement
+antérieur était gaté par une alpha-équivalence contre une answer key. **Ni `counter.js` ni `rows.js` ne contiennent de
+division**, donc aucun artefact mesuré n'existait ; la n°77 l'avait pré-étiqueté « OWNER'S CALL ... neither answer key
+contains a division ». Le propriétaire a refusé l'argument d'identité IEEE-754 **seul** et a exigé un artefact mesuré.
+`baseline/Divide.Blazor` (`value / 2.0` sur `7.0`) et `filament-divide-gen` passent par le **même** oracle de contrat
+DOM (#29/#30) : **les deux rendent `7 → 3.5`** (entrée n°9). Le `3.5` — qu'une division **entière** ne peut jamais
+produire (`7/2 == 3`) — est ce qui fait de la mesure un test du **générateur** et non de l'arithmétique : un générateur
+émettant une sémantique entière rendrait `3`, et l'oracle le verrait. Correction seulement, pas de C1/C3/C4 (app
+triviale). **`HARNESS_VERSION` 1.3.0 → 1.4.0, divulgué** (branche `divide` + mode `--contract-only` dans `bench.mjs`,
+n°31/43/59).
+
+**LE PLAFOND HONNÊTE.** §5 s'élargit d'**un** construct. RADICAL reste **« ni éliminée ni établie comme architecture »** —
+la condition de viabilité §8 tenait déjà (n°80) ; ce qui bouge, c'est la largeur du sous-ensemble, d'un cran. Les deux
+autres faux positifs de la n°77 (composition de composants, contrôle de flux à la racine) restent **ouverts**.
