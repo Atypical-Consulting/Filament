@@ -1,3 +1,4 @@
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Filament POC
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Filament.Generator", "src\Filament.Generator\Filament.Generator.csproj", "{6E1B0A11-0000-4000-8000-000000000001}"
@@ -18,19 +19,61 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "demo", "demo", "{6E1B0A11-0
 		demo\index.html = demo\index.html
 	EndProjectSection
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Filament.Subset", "src\Filament.Subset\Filament.Subset.csproj", "{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
 		Release|Any CPU = Release|Any CPU
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{6E1B0A11-0000-4000-8000-000000000001}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6E1B0A11-0000-4000-8000-000000000001}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000001}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000001}.Debug|x64.Build.0 = Debug|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000001}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000001}.Debug|x86.Build.0 = Debug|Any CPU
 		{6E1B0A11-0000-4000-8000-000000000001}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6E1B0A11-0000-4000-8000-000000000001}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000001}.Release|x64.ActiveCfg = Release|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000001}.Release|x64.Build.0 = Release|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000001}.Release|x86.ActiveCfg = Release|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000001}.Release|x86.Build.0 = Release|Any CPU
 		{6E1B0A11-0000-4000-8000-000000000002}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6E1B0A11-0000-4000-8000-000000000002}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000002}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000002}.Debug|x64.Build.0 = Debug|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000002}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000002}.Debug|x86.Build.0 = Debug|Any CPU
 		{6E1B0A11-0000-4000-8000-000000000002}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6E1B0A11-0000-4000-8000-000000000002}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000002}.Release|x64.ActiveCfg = Release|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000002}.Release|x64.Build.0 = Release|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000002}.Release|x86.ActiveCfg = Release|Any CPU
+		{6E1B0A11-0000-4000-8000-000000000002}.Release|x86.Build.0 = Release|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Debug|x64.Build.0 = Debug|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Debug|x86.Build.0 = Debug|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Release|x64.ActiveCfg = Release|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Release|x64.Build.0 = Release|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Release|x86.ActiveCfg = Release|Any CPU
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528}.Release|x86.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{D1388AC8-8858-4AA1-BC5E-29DEEB2D4528} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal
