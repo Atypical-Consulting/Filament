@@ -2,7 +2,9 @@ using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Diagnostics;
+using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Linq;
 using Filament.Subset;
 
 namespace Filament.Analyzer;
@@ -62,6 +64,10 @@ public sealed class ConstructSubsetAnalyzer : DiagnosticAnalyzer
             context.ReportDiagnostic(Diagnostic.Create(Fil0001, s.GetLocation(), refusal.Message));
             return; // do not descend into an unsupported construct
         }
+
+        // This supported statement's OWN expressions (not those in nested statements).
+        foreach (var expr in OwnExpressions(s)) WalkExpr(expr, context);
+
         switch (s)
         {
             case BlockSyntax b: WalkBlock(b, context); break;
@@ -73,4 +79,57 @@ public sealed class ConstructSubsetAnalyzer : DiagnosticAnalyzer
             case ForEachStatementSyntax fe: Walk(fe.Statement, context); break;
         }
     }
+
+    static IEnumerable<ExpressionSyntax> OwnExpressions(StatementSyntax s)
+    {
+        switch (s)
+        {
+            case LocalDeclarationStatementSyntax d:
+                foreach (var v in d.Declaration.Variables)
+                    if (v.Initializer is { } init) yield return init.Value;
+                break;
+            case ExpressionStatementSyntax e: yield return e.Expression; break;
+            case IfStatementSyntax i: yield return i.Condition; break;
+            case ForStatementSyntax f:
+                if (f.Declaration is { } fd)
+                    foreach (var v in fd.Variables)
+                        if (v.Initializer is { } init) yield return init.Value;
+                foreach (var init in f.Initializers) yield return init;
+                if (f.Condition is { } c) yield return c;
+                foreach (var inc in f.Incrementors) yield return inc;
+                break;
+            case ForEachStatementSyntax fe: yield return fe.Expression; break;
+            case ReturnStatementSyntax r: if (r.Expression is { } re) yield return re; break;
+        }
+    }
+
+    // Report-and-stop over an expression tree, recursing only into VALUE sub-expressions (mirrors
+    // Expr()'s recursion) — so a cast's Type or a member name is never misread as a value expression.
+    static void WalkExpr(ExpressionSyntax e, SyntaxNodeAnalysisContext context)
+    {
+        if (ConstructSubset.ClassifyExpression(e, context.SemanticModel) is { } refusal)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(Fil0001, e.GetLocation(), refusal.Message));
+            return;
+        }
+        foreach (var sub in SubExpressions(e)) WalkExpr(sub, context);
+    }
+
+    static IEnumerable<ExpressionSyntax> SubExpressions(ExpressionSyntax e) => e switch
+    {
+        ParenthesizedExpressionSyntax p => new[] { p.Expression },
+        BinaryExpressionSyntax b => new[] { b.Left, b.Right },
+        PrefixUnaryExpressionSyntax p => new[] { p.Operand },
+        PostfixUnaryExpressionSyntax p => new[] { p.Operand },
+        ConditionalExpressionSyntax c => new[] { c.Condition, c.WhenTrue, c.WhenFalse },
+        AssignmentExpressionSyntax a => new[] { a.Left, a.Right },
+        CastExpressionSyntax c => new[] { c.Expression },
+        MemberAccessExpressionSyntax m => new[] { m.Expression },
+        ElementAccessExpressionSyntax ea =>
+            new[] { ea.Expression }.Concat(ea.ArgumentList.Arguments.Select(a => a.Expression)),
+        InvocationExpressionSyntax inv => inv.ArgumentList.Arguments.Select(a => a.Expression),
+        InterpolatedStringExpressionSyntax s =>
+            s.Contents.OfType<InterpolationSyntax>().Select(i => i.Expression),
+        _ => Enumerable.Empty<ExpressionSyntax>(),
+    };
 }

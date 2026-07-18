@@ -2896,3 +2896,49 @@ expression`, `unsupported-call`, `unsupported-modifier`/`-generic`, `reserved-na
 
 **LE PLAFOND HONNÊTE NE BOUGE PAS.** Outillage : aucun octet émis ne bouge, §5 ne s'élargit pas, RADICAL reste « ni
 éliminée ni établie ».
+
+## 86. `unsupported-expression` mono-sourcé — la récursivité résolue par valider-puis-`throw`, l'analyseur MIME la récursion de `Expr()`
+
+**Décision.** La famille FIL0001 la plus imbriquée (slice 1b-ii) est mono-sourcée : la décision « quelle **forme**
+d'expression le §5 admet » — le `default:` de `CSharpFrontEnd.Expr()` — passe à `ConstructSubset.ClassifyExpression`,
+et les trois aides d'opérateur (`JsBinaryOperator`/`JsPrefixOperator`/`JsAssignmentOperator`, **purement
+syntaxiques**) sont **déplacées** dans le module partagé, appelées par les `case` de `Expr()` **et** par
+`ClassifyExpression`. `Expr()` valide d'abord ; son `default:` devient un `throw` de câblage. Suite : **244 tests**
+(178 générateur + 50 subset + 16 analyseur), runtime byte-inchangé.
+
+**LA DIVISION EST REFUSÉE SYNTAXIQUEMENT, PAS SÉMANTIQUEMENT — et c'est ce qui rend l'extraction possible.**
+`JsBinaryOperator` n'inspecte que `b.Kind()` : `DivideExpression` est **absent**, donc `/` est refusé sur **tous**
+les opérandes (pas seulement `int/int`), sans `SemanticModel`. Seules deux gardes de `ClassifyExpression` ont besoin
+du modèle — le cast `(int)double` → `Math.trunc`, et l'indexation `_rows[i]` d'un **champ** de type `List<T>`
+(reproduit `ListReceiver` via `TypeSubset.ListElement`). Tout le reste est syntaxique.
+
+**LES 178 GATES SONT LE FILET DE PARITÉ.** `ClassifyExpression` doit bénir **exactement** ce que le `switch` de
+`Expr()` traduit, sinon le `default:` `throw` se déclenche sur du code valide. Il n'a pas été *raisonné* que les
+deux concordent : Counter (`currentCount++`, `currentCount + 1`), Rows (casts, indexation `_rows[i]`, ternaire,
+accès membre `row.Label`, interpolation) **exercent** chaque forme, et les 178 restent vertes après la bascule —
+donc la concordance est **mesurée**, pas supposée. C'est la même discipline que n°85, appliquée à un cas où
+l'erreur aurait été silencieuse sans le filet.
+
+**L'ANALYSEUR MIME LA RÉCURSION DE `Expr()`, IL NE MARCHE PAS À PLAT — sinon il sur-signale.** Une descente
+générique `DescendantNodes<ExpressionSyntax>` classerait le **type** d'un cast comme une expression-valeur :
+`(int)x` a pour enfant `int`, et `PredefinedTypeSyntax` est une `ExpressionSyntax` en Roslyn → faux positif
+`unsupported-expression` sur `int`. `SubExpressions` énumère donc, **par cas**, les seules sous-expressions-VALEUR
+que `Expr()` récurse (cast → l'opérande, jamais le type ; accès membre → le récepteur, jamais le nom ; invocation →
+les arguments). Report-and-stop : une division imbriquée `i / 2 + 1` signale `i / 2` **une fois**. Un test dédié
+(`SupportedExpressions_ProduceNoDiagnostics`, qui contient un cast) épingle l'absence de faux positif sur le type.
+
+**LA MARCHE A TROUVÉ UN TEST FAUX à moi.** `SupportedStatements_ProduceNoDiagnostics` (slice 1b-i) itérait
+`foreach (var y in new int[0])` comme exemple « supporté » — or `new int[0]` (création de tableau) **est** hors
+sous-ensemble (le générateur le refuse aussi comme itérable de `foreach`). Le test passait uniquement parce que
+l'analyseur ne parcourait pas encore les expressions. Corrigé pour itérer un champ `List<T>` réellement in-subset —
+la couverture a resserré une assertion, elle ne l'a pas relâchée (esprit n°77).
+
+**CE QUI RESTE CÔTÉ GÉNÉRATEUR, DÉLIBÉRÉMENT.** `ClassifyExpression` bénit la **forme** `Invocation`/`MemberAccess`/
+`Identifier` (rend `null`) ; leurs refus internes — `unsupported-call` (cible d'appel), accès membre hors record,
+`unresolved-name` — restent dans `Invocation()`/`MemberAccess()`/`Identifier()`, ce sont d'autres slices (1b-iii,
+noms). Garde de mutation : ajouter `DivideExpression => "/"` à `JsBinaryOperator` (l'aide partagée) fait émettre à
+IntDivision côté générateur (exit 0, module écrit → test rouge) **et** cesse de signaler `i / 2` côté analyseur —
+une règle, deux consommateurs (n°53).
+
+**LE PLAFOND HONNÊTE NE BOUGE PAS.** Outillage : aucun octet émis ne bouge, §5 ne s'élargit pas, RADICAL reste « ni
+éliminée ni établie ».

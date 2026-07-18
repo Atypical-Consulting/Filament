@@ -66,4 +66,56 @@ public class ConstructSubsetTests
         Assert.Equal("FIL0001", r!.Value.Code);
         Assert.Equal("unsupported-member", r.Value.Reason);
     }
+
+    static (Microsoft.CodeAnalysis.CSharp.Syntax.ExpressionSyntax e, Microsoft.CodeAnalysis.SemanticModel m)
+        ParseExpr(string exprSrc)
+    {
+        var tree = CSharpSyntaxTree.ParseText(
+            "using System.Collections.Generic;\n" +
+            "class C {\n" +
+            "  List<int> _rows = null;\n" +
+            "  double dbl = 0;\n" +
+            "  int i = 0;\n" +
+            "  async System.Threading.Tasks.Task M() { var _ = " + exprSrc + "; }\n" +
+            "}");
+        var comp = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create("t", new[] { tree },
+            new[] { Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(typeof(object).Assembly.Location) });
+        var model = comp.GetSemanticModel(tree);
+        var init = tree.GetRoot().DescendantNodes()
+            .OfType<Microsoft.CodeAnalysis.CSharp.Syntax.EqualsValueClauseSyntax>().Last().Value;
+        return (init, model);
+    }
+
+    [Theory]
+    [InlineData("42")]
+    [InlineData("i")]
+    [InlineData("i + 1")]
+    [InlineData("i % 2")]
+    [InlineData("i < 5")]
+    [InlineData("i == 3")]
+    [InlineData("!(i < 5)")]
+    [InlineData("-i")]
+    [InlineData("i > 0 ? 1 : 2")]
+    [InlineData("_rows[0]")]
+    [InlineData("(int)dbl")]
+    [InlineData("$\"n={i}\"")]
+    public void SupportedExpressionForms_ClassifyToNull(string exprSrc)
+    {
+        var (e, m) = ParseExpr(exprSrc);
+        Assert.Null(ConstructSubset.ClassifyExpression(e, m));
+    }
+
+    [Theory]
+    [InlineData("i / 2")]                                              // integer division
+    [InlineData("await System.Threading.Tasks.Task.FromResult(0)")]   // await
+    [InlineData("(long)i")]                                            // cast that is not int-from-double
+    [InlineData("new int[0]")]                                        // array creation
+    public void UnsupportedExpressionForms_ClassifyToUnsupportedExpression(string exprSrc)
+    {
+        var (e, m) = ParseExpr(exprSrc);
+        var r = ConstructSubset.ClassifyExpression(e, m);
+        Assert.NotNull(r);
+        Assert.Equal("FIL0001", r!.Value.Code);
+        Assert.Equal("unsupported-expression", r.Value.Reason);
+    }
 }

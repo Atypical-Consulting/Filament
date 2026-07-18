@@ -1685,6 +1685,15 @@ public sealed class CSharpFrontEnd
 
     string Expr(ExpressionSyntax e)
     {
+        // Expression-FORM decision single-sourced in Filament.Subset (decisions 53/61). Validate the
+        // current node first; a blessed form is guaranteed a case below. Call/member/name refusals
+        // INSIDE a blessed form still happen in Invocation()/MemberAccess()/Identifier().
+        if (Filament.Subset.ConstructSubset.ClassifyExpression(e, _model) is { } refusal)
+        {
+            Refuse(refusal.Reason, refusal.Message, e.SpanStart);
+            return "/*refused*/";
+        }
+
         switch (e)
         {
             case LiteralExpressionSyntax lit:
@@ -1696,10 +1705,10 @@ public sealed class CSharpFrontEnd
             case ParenthesizedExpressionSyntax p:
                 return $"({Expr(p.Expression)})";
 
-            case BinaryExpressionSyntax b when JsBinaryOperator(b) is { } op:
+            case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.JsBinaryOperator(b) is { } op:
                 return $"{Expr(b.Left)} {op} {Expr(b.Right)}";
 
-            case PrefixUnaryExpressionSyntax p when JsPrefixOperator(p) is { } op:
+            case PrefixUnaryExpressionSyntax p when Filament.Subset.ConstructSubset.JsPrefixOperator(p) is { } op:
                 return $"{op}{Expr(p.Operand)}";
 
             // currentCount++ -> currentCount.value++. One node in, one node out, no syntactic
@@ -1711,7 +1720,7 @@ public sealed class CSharpFrontEnd
             case ConditionalExpressionSyntax c:
                 return $"{Expr(c.Condition)} ? {Expr(c.WhenTrue)} : {Expr(c.WhenFalse)}";
 
-            case AssignmentExpressionSyntax a when JsAssignmentOperator(a) is { } op:
+            case AssignmentExpressionSyntax a when Filament.Subset.ConstructSubset.JsAssignmentOperator(a) is { } op:
                 return $"{Expr(a.Left)} {op} {Expr(a.Right)}";
 
             case InvocationExpressionSyntax inv:
@@ -1739,12 +1748,9 @@ public sealed class CSharpFrontEnd
                 return $"Math.trunc({Expr(cast.Expression)})";
 
             default:
-                Refuse("unsupported-expression",
-                    $"{Describe(e)} is not in the C# subset. Section 5 admits literals, arithmetic and " +
-                    "comparison operators, &&, ||, !, ternary, string interpolation, member access on a " +
-                    "local record, List<T> indexing, .Count, .Add and .RemoveAt. Refusing to emit.",
-                    e.SpanStart);
-                return "/*refused*/";
+                throw new GeneratorException(
+                    $"FIL-WIRING: ClassifyExpression admitted {e.Kind()} but Expr() has no case for it. " +
+                    "The subset decision and the translator have drifted. Refusing to emit.");
         }
     }
 
@@ -1895,49 +1901,8 @@ public sealed class CSharpFrontEnd
             "types are int and double. Refusing to emit.", lit.SpanStart, "FIL0002"),
     };
 
-    static string? JsBinaryOperator(BinaryExpressionSyntax b) => b.Kind() switch
-    {
-        SyntaxKind.AddExpression => "+",
-        SyntaxKind.SubtractExpression => "-",
-        SyntaxKind.MultiplyExpression => "*",
-        SyntaxKind.ModuloExpression => "%",
-        SyntaxKind.LessThanExpression => "<",
-        SyntaxKind.LessThanOrEqualExpression => "<=",
-        SyntaxKind.GreaterThanExpression => ">",
-        SyntaxKind.GreaterThanOrEqualExpression => ">=",
-        // === and !==, never == : C#'s == on the subset's types is value equality with no
-        // coercion, and that is what the strict operators mean. `==` would introduce JS
-        // coercion C# does not have ("1" == 1), i.e. a silent semantic change.
-        SyntaxKind.EqualsExpression => "===",
-        SyntaxKind.NotEqualsExpression => "!==",
-        SyntaxKind.LogicalAndExpression => "&&",
-        SyntaxKind.LogicalOrExpression => "||",
-        // DivideExpression is deliberately absent: C#'s int/int is INTEGER division and JS's /
-        // is not, so `7/2` is 3 in C# and 3.5 in JS. Emitting `/` would be a silent wrong
-        // answer -- section 10's forbidden mode -- and Math.trunc() around it is a mapping
-        // neither answer key states. Refused until it is decided.
-        _ => null,
-    };
-
-    static string? JsPrefixOperator(PrefixUnaryExpressionSyntax p) => p.Kind() switch
-    {
-        SyntaxKind.LogicalNotExpression => "!",
-        SyntaxKind.UnaryMinusExpression => "-",
-        SyntaxKind.UnaryPlusExpression => "+",
-        SyntaxKind.PreIncrementExpression => "++",
-        SyntaxKind.PreDecrementExpression => "--",
-        _ => null,
-    };
-
-    static string? JsAssignmentOperator(AssignmentExpressionSyntax a) => a.Kind() switch
-    {
-        SyntaxKind.SimpleAssignmentExpression => "=",
-        SyntaxKind.AddAssignmentExpression => "+=",
-        SyntaxKind.SubtractAssignmentExpression => "-=",
-        SyntaxKind.MultiplyAssignmentExpression => "*=",
-        SyntaxKind.ModuloAssignmentExpression => "%=",
-        _ => null, // /= : see JsBinaryOperator on integer division.
-    };
+    // JsBinaryOperator / JsPrefixOperator / JsAssignmentOperator moved to Filament.Subset.ConstructSubset
+    // (single source of the operator subset; decisions 53/61). Expr's cases call them there.
 
     // ---- names --------------------------------------------------------------
 

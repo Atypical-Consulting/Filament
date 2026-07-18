@@ -32,10 +32,11 @@ public class ConstructSubsetAnalyzerTests
 
     [Fact]
     public async Task SupportedStatements_ProduceNoDiagnostics()
-        => await Method(
+        // foreach iterates a List field (in-subset); `new int[0]` would itself be out of subset.
+        => await Body(
             "        int x = 0;\n" +
-            "        if (b) { x = 1; } else { x = 2; }\n" +
-            "        foreach (var y in new int[0]) { x = y; }\n" +
+            "        if (i > 0) { x = 1; } else { x = 2; }\n" +
+            "        foreach (var y in _rows) { x = y; }\n" +
             "        return;").RunAsync();
 
     [Fact]
@@ -64,4 +65,38 @@ public class ConstructSubsetAnalyzerTests
             "    private int x = 0;\n" +
             "    void M() { x = 1; }\n" +
             "    private record Row(int Id);").RunAsync();
+
+    // ---- expression forms ---------------------------------------------------
+
+    static Verify Body(string statements) => Component(
+        "    private int i = 0;\n" +
+        "    private double dbl = 0;\n" +
+        "    private System.Collections.Generic.List<int> _rows = null;\n" +
+        "    void M() {\n" + statements + "\n    }");
+
+    [Fact]
+    public async Task IntegerDivision_IsFlagged()
+        => await Body("        int x = {|FIL0001:i / 2|};").RunAsync();
+
+    [Fact]
+    public async Task Await_IsFlagged()
+        => await Component(
+            "    async System.Threading.Tasks.Task M() {\n" +
+            "        var x = {|FIL0001:await System.Threading.Tasks.Task.FromResult(0)|};\n" +
+            "    }").RunAsync();
+
+    [Fact]
+    public async Task DivisionNestedInSupportedExpression_IsFlaggedOnce()
+        // outer `+` is supported; only the `i / 2` sub-expression is flagged, once.
+        => await Body("        int x = {|FIL0001:i / 2|} + 1;").RunAsync();
+
+    [Fact]
+    public async Task SupportedExpressions_ProduceNoDiagnostics()
+        // includes a cast — its `int` TYPE must not be misread as a value expression.
+        => await Body(
+            "        int a = i + 1;\n" +
+            "        int b = i > 0 ? 1 : 2;\n" +
+            "        int c = (int)dbl;\n" +
+            "        int d = _rows[0];\n" +
+            "        i++;").RunAsync();
 }
