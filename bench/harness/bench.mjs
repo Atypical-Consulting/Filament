@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.3.0';
+export const HARNESS_VERSION = '1.4.0';   // 1.4.0: added the 'divide' contract (double-division correctness oracle).
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -298,6 +298,14 @@ const APPS = {
       button: '#increment',
       predicate: { kind: 'textEquals', args: { selector: '#counter-value', expected: '1' } },
     },
+  },
+  // Correctness-only (no timing/weight): verifyContract drives #halve and asserts
+  // #divide-value goes 7 -> 3.5. Its whole reason to exist is the double-division
+  // oracle, so it has no scenarios and is only ever run with --contract-only.
+  divide: {
+    readySelector: '#halve',
+    observeSelector: '#divide-value',
+    scenarios: [],
   },
 };
 
@@ -1482,6 +1490,36 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         out.observed.initialValue = document.querySelector('#counter-value').textContent.trim();
         if (out.observed.initialValue === '1') {
           out.problems.push('#counter-value already reads "1" before #increment; the predicate would be vacuous');
+        }
+        return out;
+      });
+    }
+
+    if (app === 'divide') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        for (const sel of ['#halve', '#divide-value']) {
+          if (!document.querySelector(sel)) out.problems.push(`missing required element: ${sel}`);
+        }
+        if (out.problems.length) return out;
+
+        const read = () => document.querySelector('#divide-value').textContent.trim();
+        out.observed.initial = read();
+        // 7.0 renders "7" in both C# (invariant culture) and JS. If it already read the
+        // post-click value, the assertion below would be vacuous.
+        if (out.observed.initial !== '7') {
+          out.problems.push(`#divide-value initial is "${out.observed.initial}", expected "7"`);
+          return out;
+        }
+        document.querySelector('#halve').click();
+        out.observed.afterHalve = read();
+        // THE MEASUREMENT: 7.0 / 2.0 = 3.5 (double division). Integer division would render "3".
+        // This is Blazor's OWN rendered value; the generated app must match it. A "3" here means
+        // integer-division semantics leaked into the emitted JS.
+        if (out.observed.afterHalve !== '3.5') {
+          out.problems.push(
+            `#divide-value after #halve is "${out.observed.afterHalve}", expected "3.5" ` +
+            `("3" would mean integer-division semantics leaked into the emitted JS)`);
         }
         return out;
       });
@@ -2814,6 +2852,7 @@ function parseArgs(argv) {
       case '--out': o.out = next(); break;
       case '--headed': o.headless = false; break;
       case '--headless': o.headless = true; break;
+      case '--contract-only': o.contractOnly = true; break;
       case '--aot': o.aot = inline === null ? true : inline !== 'false'; break;
       case '--no-aot': o.aot = false; break;
       case '--allow-service-workers': o.allowServiceWorkers = true; break;
@@ -3028,6 +3067,13 @@ export async function main(argv) {
       return 3;
     }
     process.stderr.write(`[bench] DOM contract OK: ${JSON.stringify(contract.observed)}\n\n`);
+
+    // Correctness-only mode: the contract IS the measurement (the divide oracle drives #halve and
+    // asserts 7 -> 3.5). No weight/timing runs -- a trivial app's C1/C4 carry no signal.
+    if (opts.contractOnly) {
+      process.stderr.write('[bench] --contract-only: contract met, skipping weight/timing.\n');
+      return 0;
+    }
 
     const weight = await measureWeight(browser, url, opts.app, opts, server);
 
