@@ -162,7 +162,7 @@ Expected: PASS. This confirms the version chosen for the analyzer does **not** f
 
 Edit this file: replace the placeholder below with the version that passed.
 
-> **RESOLVED (fill in):** `Filament.Subset` + `Filament.Analyzer` pin `Microsoft.CodeAnalysis.CSharp` **X.Y.Z**; `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing` **A.B.C**. `TypeSubset.Classify` uses only stable Roslyn surface (`ITypeSymbol`, `SpecialType`, `SymbolEqualityComparer`, `ToDisplayString`), so this version and the generator's `5.6.0` both satisfy it.
+> **RESOLVED:** `Filament.Subset` + `Filament.Analyzer` pin `Microsoft.CodeAnalysis.CSharp` **4.8.0** (`PrivateAssets="all"`). Analyzer **test** projects use `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing` **1.1.2** **plus** explicit `Microsoft.CodeAnalysis.CSharp` **4.8.0** and `Microsoft.CodeAnalysis.CSharp.Workspaces` **4.8.0** — the testing package declares only a Roslyn *floor*, so NuGet otherwise resolves the ancient `1.0.1` and the analyzer (built vs 4.8.0) fails to load with `CS1705`. The generator keeps `5.6.0` and builds clean (0 warnings), so 4.8.0 forces no generator change. **Because `Filament.Subset` marks Roslyn `PrivateAssets="all"`, its Roslyn does NOT flow transitively** — every consumer (generator, subset tests, analyzer) brings its own. `TypeSubset.Classify` uses only stable Roslyn surface (`ITypeSymbol`, `SpecialType`, `SymbolEqualityComparer`, `ToDisplayString`), satisfied by both 4.8.0 and 5.6.0.
 
 - [ ] **Step 7: Delete the spike, commit the recorded decision**
 
@@ -199,7 +199,7 @@ git commit -m "spike(analyzer): pin Roslyn version for netstandard2.0 analyzer (
     <RootNamespace>Filament.Subset</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="X.Y.Z" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
   </ItemGroup>
 </Project>
 ```
@@ -284,6 +284,9 @@ git commit -m "feat(subset): scaffold Filament.Subset shared module, referenced 
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <!-- Filament.Subset marks Roslyn PrivateAssets=all, so it does not flow transitively;
+         the tests construct real compilations and need their own Roslyn reference. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Filament.Subset/Filament.Subset.csproj" />
@@ -495,7 +498,7 @@ git commit -m "refactor(subset): single-source the FIL0002 type subset; generato
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="X.Y.Z" PrivateAssets="all" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" PrivateAssets="all" />
     <ProjectReference Include="../Filament.Subset/Filament.Subset.csproj" />
   </ItemGroup>
 </Project>
@@ -629,7 +632,11 @@ The verifier compiles **plain C#**, not Razor, so the tests model the generated 
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" Version="A.B.C" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" Version="1.1.2" />
+    <!-- Raise the Roslyn floor to the analyzer's 4.8.0; the testing package declares only a floor,
+         so NuGet otherwise resolves 1.0.1 and the analyzer fails to load (CS1705). Proven in Task 0. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.8.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Filament.Analyzer/Filament.Analyzer.csproj" />
@@ -699,9 +706,9 @@ public class TypeSubsetAnalyzerTests
 
 Note on the `List<long>` case: `Classify` refuses the **List type** at the `List<...>` position; the generator reports at the declaration's type. The analyzer reports at the `TypeSyntax` for the local's declared type. Run once (Step 4); if the span the verifier reports is the whole `List<long>` rather than `long`, move the `{|FIL0002:...|}` marker to wrap `System.Collections.Generic.List<long>` and keep the test — the location is read off the tool, never guessed (repo rule).
 
-- [ ] **Step 3: Fill the testing-package version**
+- [ ] **Step 3: Verify the testing-package versions**
 
-Set `A.B.C` (Task 0 Step 6) in the csproj above.
+Confirm the csproj above pins `Microsoft.CodeAnalysis.CSharp.Analyzer.Testing` `1.1.2` with the `4.8.0` floor-raising refs (Task 0 resolved these).
 
 - [ ] **Step 4: Run — expect pass**
 
