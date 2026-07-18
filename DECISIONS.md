@@ -2869,3 +2869,30 @@ expression` (Expr), `unsupported-call` (Invocation), `unsupported-member` (Membe
 
 **LE PLAFOND HONNÊTE NE BOUGE PAS.** Outillage : aucun octet émis ne bouge, le §5 **ne s'élargit pas** (on remonte
 au temps d'écriture un refus qui existait déjà), §8 tient — RADICAL reste « ni éliminée ni établie ».
+
+## 85. `unsupported-member` (sorte de membre) mono-sourcé, et l'analyseur FIL0001 consolidé
+
+**Décision.** Deuxième construct FIL0001 mono-sourcé (slice 1b-iv), même pattern que la n°84 : la décision « quelle
+**sorte** de membre `@code` admet » (champs, méthodes, records) passe de `CSharpFrontEnd.Member()` à
+`ConstructSubset.ClassifyMember`. `Member()` valide d'abord ; son `default:` devient un `throw` de câblage. Les
+`DiagnosticAnalyzer` FIL0001 (statements n°84 + membres ici) sont **fusionnés** en un seul `ConstructSubsetAnalyzer`
+qui parcourt, par composant, chaque membre direct (sorte de membre) puis, pour les méthodes, le corps (sortes de
+statements). `IsComponent` est extrait dans `ComponentScope`, partagé avec `TypeSubsetAnalyzer`. Suite : **224
+tests** (178 générateur + 34 subset + 12 analyseur), runtime byte-inchangé.
+
+**LE `default:` NE PEUT PAS ÊTRE ATTEINT PAR UN RECORD, et c'est pourquoi le `throw` est sûr.** Les records sont
+dispatchés **avant** `Member()` (`for … OfType<RecordDeclarationSyntax>` puis `if (member is RecordDeclaration)
+continue`), donc `Member()` ne voit jamais qu'un champ, une méthode, ou un membre hors sous-ensemble. `ClassifyMember`
+rend `null` pour un record malgré tout — pour que l'**analyseur**, qui lui parcourt *tous* les membres directs, ne
+signale pas un record (sorte admise) par erreur. Sorte non-admise (propriété, constructeur, classe imbriquée) →
+refus, aux emplacements exacts des fixtures `Property`/`Constructor`/`NestedClass` (5,5). Garde de mutation :
+faire accepter `PropertyDeclaration` par `ClassifyMember` passe au ROUGE `Property.razor` (générateur) **et**
+`Property_IsFlagged` (analyseur) — une règle, deux consommateurs (n°53).
+
+**LA FORME INTERNE D'UN RECORD RESTE HORS SLICE.** Les refus *dans* un record (record positionnel `record Row(int
+Id)`, membre non-propriété `Twice()` — sites de `Record()`) sont une décision distincte, non extraite ici ; l'analyseur
+ne descend pas dans un record. À faire dans une slice ultérieure, comme les familles restantes (`unsupported-
+expression`, `unsupported-call`, `unsupported-modifier`/`-generic`, `reserved-name`/`name-collision`).
+
+**LE PLAFOND HONNÊTE NE BOUGE PAS.** Outillage : aucun octet émis ne bouge, §5 ne s'élargit pas, RADICAL reste « ni
+éliminée ni établie ».
