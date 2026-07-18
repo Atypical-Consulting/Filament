@@ -3036,3 +3036,48 @@ refusés, loud et localisés : paramètre lié (`Name="@x"`, `bound-parameter`),
 état/événements ou multi-racine (`composition-out-of-subset`), frère absent (`unresolved-component`). §5
 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**. Reste le TROISIÈME faux positif de la
 n°77 : le contrôle de flux à la racine du template.
+
+## 89. Le contrôle de flux À LA RACINE entre dans le §5 — la région-méthode se mappe sur `target`, mapping GÉNÉRAL gardé par le re-parse, et l'élargissement MESURÉ — les TROIS faux positifs de la n°77 fermés
+
+**Décision.** Le TROISIÈME et DERNIER faux positif de la n°77 (contrôle de flux à la racine) est fermé : un
+`@foreach`/`@if` posé à la RACINE du composant — **sans élément qui l'enveloppe** — se mappe désormais sur
+`target`, le point de montage, au lieu de refuser `[template-code-at-root]`. Le refus keyait une région par
+son **élément conteneur** ; un contrôle de flux racine n'en a pas. Correction : **quand la racine elle-même
+porte du C# de template, la MÉTHODE est le conteneur de région** (`Collect(method)`), et ses ops s'émettent
+contre `target` via `EmitOps(_code.OpsFor(method), "target")` — exactement la même `list(target, …)` qu'une
+région intra-élément émet, seulement contre le point de montage au lieu d'un élément créé. Aucune primitive
+runtime nouvelle : `list(parent, …)` accepte déjà n'importe quel `Node` comme parent, et le parcours racine
+posait déjà `insert(target, …)`. Suite : **266 tests** (193 générateur + 55 subset + 18 analyseur).
+
+**GÉNÉRATEUR SEUL — PAS DE COUTURE `ConstructSubset`/ANALYSEUR, contrairement à #87/#88.** C'est un
+élargissement de **mapping Razar (FIL0003)**, pas une décision de sous-ensemble C#. L'analyseur travaille sur
+la **syntaxe C#** (FIL0001/FIL0002) et ne voit **jamais** les templates ; il est donc correctement **muet**
+ici, et ses 18 tests sont byte-pour-byte le même compte qu'à la #88 — la preuve mesurée du caractère
+générateur-seul. La source unique d'une décision de mapping FIL0003 EST `TemplateCompiler` ; le filet
+anti-dérive est le `throw` FIL-WIRING de `OpsFor` (les deux parcours doivent s'accorder sur le fichier).
+
+**LE MAPPING EST GÉNÉRAL, ET LE RE-PARSE EST SON PROPRE GARDE.** Pas de garde artificiel « contrôle de flux
+pur seulement » : `RegionOps` **refuse déjà** toute instruction qui n'est ni `@foreach` ni `@if`
+(`[unsupported-template-statement]`), donc le re-parse (décision #54) admet exactement ce qu'il sait mapper et
+refuse le reste. Corollaire : un `@{ … }` racine reste refusé, mais **avec un message plus précis** que
+l'ancien garde-bloc `template-code-at-root` — même esprit que #87 corrigeant le message auto-contradictoire de
+la division. Et un balisage racine mêlé au contrôle de flux (`<button @onclick>` frère du `@if`) marche par le
+même chemin (`EmitOps` en ordre source, `RefuseNestedCode` ne refuse QUE du C# imbriqué), ce qui rend l'app
+`@if` racine à bascule mesurable telle quelle.
+
+**L'ÉLARGISSEMENT EST MESURÉ CONTRE BLAZOR (entrée n°11), sur DEUX apps.** Aucune answer key n'a de contrôle de
+flux racine ; comme pour #87/#88, le propriétaire a exigé des artefacts mesurés, et cette fois **deux** (une
+par construction, choix explicite de fermer le faux positif en entier). `baseline/RootForeach.Blazor` et
+`filament-rootforeach-gen` : les deux réconcilient `[alpha, beta, gamma]` dans `#app` au clic (le `@foreach`
+racine exige une liste **réactive** — une liste jamais mutée est refusée, donc le clic la peuple, et le clic
+EST la mesure). `baseline/RootIf.Blazor` et `filament-rootif-gen` : les deux montent/démontent `#cond` sur
+`#app` à la bascule. Les deux paires passent par le **même** oracle de contrat DOM (#29/#30) et rendent à
+l'identique. `HARNESS_VERSION` 1.5.0 → 1.6.0, divulgué. Le nœud-commentaire ancre du `@if` racine est la même
+divergence +1-nœud DIVULGUÉE que la #20/if.js (ancrage next-sibling différé).
+
+**LE PLAFOND HONNÊTE.** §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie comme
+architecture »** (la largeur du sous-ensemble monte d'un cran, pas la viabilité §8). **Les TROIS faux positifs
+de la n°77 sont maintenant FERMÉS** — division `double` (#87), composition feuille-statique (#88), contrôle de
+flux racine (#89) — chacun fermé pour sa tranche et **mesuré**, le reste refusé loud+localisé ou différé avec
+raison. Restent différées comme suites naturelles, pas comme faux positifs : les sous-tranches de composition
+(paramètre lié, enfant avec état, imbriquée) et le reste de la famille `@if` (corps multi-nœuds, imbrication).
