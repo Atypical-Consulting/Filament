@@ -84,6 +84,11 @@ public sealed class CSharpFrontEnd
     /// parameter (`@Name`) folds to the constant — the static-leaf composition mapping (decision 88).</summary>
     readonly Dictionary<string, string> _paramEnv = new(StringComparer.Ordinal);
 
+    /// <summary>The subset of _paramEnv whose binding READS a parent signal, so `@Name` is a LIVE effect
+    /// on the parent's signal (decision 90) rather than a folded constant. Populated by BindParameters
+    /// from the parent's SlotIsReactive; consulted by IsReactive when it meets a bound [Parameter].</summary>
+    readonly HashSet<string> _paramReactive = new(StringComparer.Ordinal);
+
     /// <summary>Every method body, TRANSLATED DURING Compile() and cached. See _sealed.</summary>
     readonly Dictionary<string, List<string>> _bodies = new(StringComparer.Ordinal);
 
@@ -113,11 +118,16 @@ public sealed class CSharpFrontEnd
 
     public IReadOnlyList<Diagnostic> Diagnostics => _diagnostics;
 
-    /// <summary>Bind each [Parameter] to the JS CONSTANT the parent supplies at a composition site.
-    /// Call BEFORE Compile so a read of the parameter resolves to the constant. (Static-leaf slice.)</summary>
-    public void BindParameters(IReadOnlyDictionary<string, string> bindings)
+    /// <summary>Bind each [Parameter] to the JS the parent supplies at a composition site — a CONSTANT
+    /// for a static fold (#88) or a translated EXPRESSION for a bound param (decision 90). Call BEFORE
+    /// Compile so a read of the parameter resolves to it. `reactive` names the params whose binding
+    /// READS a parent signal: the child's @Name is then a LIVE effect (its IsReactive returns true)
+    /// rather than a folded constant. The child inlines into the parent's scope, so the effect
+    /// references the parent's signal directly. Static string folds pass an empty `reactive`.</summary>
+    public void BindParameters(IReadOnlyDictionary<string, string> bindings, IReadOnlyCollection<string>? reactive = null)
     {
         foreach (var kv in bindings) _paramEnv[kv.Key] = kv.Value;
+        if (reactive is not null) foreach (var n in reactive) _paramReactive.Add(n);
     }
 
     /// <summary>A LEAF DISPLAY child: only [Parameter] props, no state (fields/signals), no behaviour
@@ -125,13 +135,16 @@ public sealed class CSharpFrontEnd
     /// eventful child is refused rather than half-compiled (decision 88).</summary>
     public bool IsLeafDisplay => _fields.Count == 0 && _methods.Count == 0 && _records.Count == 0;
 
-    /// <summary>The name of the first BOUND parameter whose declared type is not `string`, or null.
-    /// The static-leaf slice supports string parameters only — a numeric/bool param would fold a JS
-    /// STRING where a number is meant, so it is refused (deferred), not silently mistranslated.</summary>
+    /// <summary>The name of the first STATICALLY-FOLDED parameter whose declared type is not `string`,
+    /// or null. A static fold splices a JS STRING literal into the child, so a numeric/bool param would
+    /// fold a string where a number is meant (refused, deferred). A REACTIVELY bound param carries its
+    /// own type — the parent's translated expression IS type-correct (`count.value` is a number), so it
+    /// is exempt (decision 90): a bound `int` counter displays faithfully.</summary>
     public string? FirstBoundNonStringParameter()
     {
         foreach (var name in _paramEnv.Keys)
-            if (_paramsByName.TryGetValue(name, out var p) && p.Type.SpecialType != SpecialType.System_String)
+            if (!_paramReactive.Contains(name)
+                && _paramsByName.TryGetValue(name, out var p) && p.Type.SpecialType != SpecialType.System_String)
                 return name;
         return null;
     }
@@ -1339,6 +1352,10 @@ public sealed class CSharpFrontEnd
             {
                 case IFieldSymbol fs when Field(fs) is { IsSignal: true }: return true;
                 case IPropertySymbol ps when PropAnywhere(ps) is { IsSignal: true }: return true;
+                // A bound [Parameter] a composition parent wired to a REACTIVE expression: the child's
+                // @Name is a live read of the parent's signal (decision 90). The reactivity is the
+                // PARENT's fact, carried in by BindParameters -- the child's own tables cannot see it.
+                case IPropertySymbol ps when _paramReactive.Contains(ps.Name): return true;
             }
         }
         return false;
@@ -1874,11 +1891,13 @@ public sealed class CSharpFrontEnd
             case IMethodSymbol m when _methodsByName.TryGetValue(m.Name, out var mi):
                 return mi.Js;
 
-            // A bound [Parameter] read, at a composition site: `@Name` folds to the constant the
-            // parent supplied (decision 88). A static leaf's whole reactivity is this fold — no signal,
-            // no effect (IsReactive already treats a constant as non-reactive).
-            case IPropertySymbol ps when _paramEnv.TryGetValue(ps.Name, out var constJs):
-                return constJs;
+            // A [Parameter] read, at a composition site: `@Name` resolves to the JS the parent supplied
+            // — a folded CONSTANT for a static leaf (`'World'`, decision 88), or a translated parent
+            // EXPRESSION for a bound param (`count.value`, decision 90). When that expression reads a
+            // parent signal, IsReactive (via _paramReactive) makes this a live effect; the child inlines
+            // into the parent's scope, so the signal it names is reachable.
+            case IPropertySymbol ps when _paramEnv.TryGetValue(ps.Name, out var boundJs):
+                return boundJs;
 
             default:
                 Refuse("unresolved-name",

@@ -267,6 +267,8 @@ public sealed class TemplateCompiler
         else
             foreach (var child in method.Children) Collect(child, plan);
 
+        CollectComponentBindings(method, plan);
+
         code.Compile(codeNodes, plan);
         _diagnostics.AddRange(code.Diagnostics);
 
@@ -461,6 +463,25 @@ public sealed class TemplateCompiler
         foreach (var kid in kids)
             if (kid is CSharpExpressionIntermediateNode or SetKeyIntermediateNode) plan.FreeSlots.Add(kid);
             else Collect(kid, plan);
+    }
+
+    /// <summary>
+    /// Component BOUND parameters (decision 90). A `&lt;Display Value="@count" /&gt;` carries C# inside an
+    /// attribute, which Collect() does not descend into (it filters HtmlAttributeIntermediateNode), so
+    /// #88's static leaf never needed it. A bound param DOES: the parent must COMPILE `@count` so it is
+    /// translated (`count.value`) AND counts as a template read -- the read is what lifts `count` to a
+    /// signal (the conjunction rule), without which the child's binding would subscribe to nothing.
+    /// Harvesting each into FreeSlots does exactly that; EmitComposition reads SlotJs/SlotIsReactive back
+    /// off the SAME node. The node is compiled but NOT emitted as a stray text node: the emit walk hits
+    /// the component element and EmitComposition consumes its translated JS instead of walking into it.
+    /// </summary>
+    void CollectComponentBindings(IntermediateNode node, TemplatePlan plan)
+    {
+        if (node is MarkupElementIntermediateNode el && LooksLikeComponent(el.TagName))
+            foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
+                foreach (var expr in attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>())
+                    plan.FreeSlots.Add(expr);
+        foreach (var child in node.Children) CollectComponentBindings(child, plan);
     }
 
     /// <summary>Every @expression and @key in a subtree, in document order.</summary>
@@ -812,19 +833,36 @@ public sealed class TemplateCompiler
             return null;
         }
 
-        // Static scalar bindings only. A value carrying a C# expression (Name="@x") is a BOUND
-        // parameter -- out of the static-leaf slice.
+        // Two kinds of binding. A STATIC scalar (Name="World") folds to a JS string literal (#88). A
+        // BOUND value (Value="@count") is the parent's translated EXPRESSION (decision 90): the parent
+        // already compiled it (CollectComponentBindings harvested it into FreeSlots), so SlotJs is its
+        // JS and SlotIsReactive says whether it reads a parent signal. The child inlines into the
+        // parent's scope, so a reactive binding references the parent's signal directly -- a live @Name.
         var bindings = new Dictionary<string, string>(StringComparer.Ordinal);
+        var reactive = new HashSet<string>(StringComparer.Ordinal);
         foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
         {
-            if (attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>().Any())
+            var bound = attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>().FirstOrDefault();
+            if (bound is not null)
             {
-                Diag("bound-parameter",
-                    $"the parameter '{attr.AttributeName}' on <{el.TagName}> is bound to an expression. The " +
-                    "static-leaf composition slice supports only STATIC scalar parameters; a bound parameter " +
-                    "needs parent->child reactive plumbing that is not implemented. Refusing to emit.",
-                    el.Source);
-                return null;
+                // The slice is REACTIVE binds: `@count` where count is parent state that changes. A bound
+                // value that is NOT reactive (a constant expression, or a never-mutated field) is the
+                // BIND-ONCE case -- deferred, refused rather than shipped as a value that silently never
+                // tracks. A truly constant display uses a STATIC attribute (Name="World", #88).
+                if (!_code.SlotIsReactive(bound))
+                {
+                    Diag("bound-parameter",
+                        $"the parameter '{attr.AttributeName}' on <{el.TagName}> is bound to '{Trunc(RawText(bound))}', " +
+                        "which is not reactive parent state. The bound-parameter slice wires a LIVE binding on a parent " +
+                        "signal (decision 90); a bind-once capture of a constant is deferred, and a genuinely static " +
+                        "value should use a static attribute (Name=\"...\"). Refusing to emit rather than ship a bound " +
+                        "parameter that silently never tracks its source.",
+                        el.Source);
+                    return null;
+                }
+                bindings[attr.AttributeName] = _code.SlotJs(bound);
+                reactive.Add(attr.AttributeName);
+                continue;
             }
             var value = string.Concat(attr.Children.OfType<HtmlAttributeValueIntermediateNode>()
                 .SelectMany(h => h.Children.OfType<IntermediateToken>()).Select(t => t.Content));
@@ -833,7 +871,7 @@ public sealed class TemplateCompiler
 
         var childParse = RazorFrontEnd.Parse(childPath);
         var childCode = new CSharpFrontEnd();
-        childCode.BindParameters(bindings);
+        childCode.BindParameters(bindings, reactive);
 
         var savedFile = _file;
         var savedCode = _code;
