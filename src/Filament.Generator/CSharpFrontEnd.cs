@@ -1705,6 +1705,12 @@ public sealed class CSharpFrontEnd
             case ParenthesizedExpressionSyntax p:
                 return $"({Expr(p.Expression)})";
 
+            // Double division: C#'s double `/` and JS's `/` are the same IEEE-754 op (int/int is
+            // refused upstream in ClassifyExpression). Faithful, so emit it verbatim. Decided
+            // semantically, exactly like the (int)double cast below -- JsBinaryOperator stays syntactic.
+            case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.IsFaithfulDivision(b, _model):
+                return $"{Expr(b.Left)} / {Expr(b.Right)}";
+
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.JsBinaryOperator(b) is { } op:
                 return $"{Expr(b.Left)} {op} {Expr(b.Right)}";
 

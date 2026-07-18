@@ -99,6 +99,9 @@ public class ConstructSubsetTests
     [InlineData("_rows[0]")]
     [InlineData("(int)dbl")]
     [InlineData("$\"n={i}\"")]
+    [InlineData("dbl / 2.0")]   // double / double -> double result: faithful
+    [InlineData("dbl / i")]     // double / int    -> double result: faithful
+    [InlineData("i / dbl")]     // int / double    -> double result: faithful
     public void SupportedExpressionForms_ClassifyToNull(string exprSrc)
     {
         var (e, m) = ParseExpr(exprSrc);

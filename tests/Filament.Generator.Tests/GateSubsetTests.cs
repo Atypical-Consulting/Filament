@@ -293,8 +293,9 @@ public class NegativeControls
 
     /// <summary>
     /// Section 5's expressions: arithmetic and comparison operators, &amp;&amp;, ||, !,
-    /// ternary, string interpolation. DIVISION IS ABSENT ON PURPOSE -- see
-    /// Division_IsADisclosedFalsePositive below, which is the reason it cannot be here.
+    /// ternary, string interpolation. Double division is covered by
+    /// Section5_DoubleDivision_CompilesClean; integer division stays refused
+    /// (IntegerDivision_IsRefused_LoudAndLocated).
     /// </summary>
     [Fact]
     public void Section5_Operators_CompileClean()
@@ -323,6 +324,32 @@ public class NegativeControls
         Assert.Contains("===", js);
         Assert.Contains("!==", js);
         Assert.Contains("`a=${", js);
+    }
+
+    /// <summary>
+    /// SECTION 5 ADMITS "arithmetic operators" AND DOUBLE DIVISION IS NOW ONE OF THEM.
+    /// C#'s double `/` and JS's `/` are the same IEEE-754 op, so `r / 2.0` compiles and emits `/`.
+    /// The divergent-input measurement (baseline/Divide.Blazor: 7.0/2.0 = 3.5, a value integer
+    /// division could never produce) is what proves the emitted `/` renders Blazor's number; this
+    /// control only pins that it IS emitted, not refused.
+    /// </summary>
+    [Fact]
+    public void Section5_DoubleDivision_CompilesClean()
+    {
+        var js = Compiles(
+            """
+            <p><span id="a">@r</span></p>
+            <button id="go" @onclick="Go">go</button>
+
+            @code {
+                private double r = 7.0;
+                private void Go() { r = r / 2.0; }
+            }
+            """);
+        // The division is emitted as faithful JS `/` on the lifted signal, not refused. The `2.0`
+        // literal normalises to `2`; JS `/` is float division either way (7 / 2 === 3.5).
+        Assert.Contains("r.value / 2", js);
+        Assert.DoesNotContain("Math.trunc", js);   // NOT integer division
     }
 
     /// <summary>Section 5's List&lt;T&gt;: indexing, .Count, .Add, .RemoveAt -- all four.</summary>
@@ -546,42 +573,35 @@ public class NegativeControls
     // reported, not banked.
 
     /// <summary>
-    /// SECTION 5 ADMITS "arithmetic operators" AND THE GENERATOR REFUSES `/`.
+    /// INTEGER DIVISION IS REFUSED, AND CORRECTLY: C#'s int/int truncates (7/2 == 3) where JS's `/`
+    /// yields 3.5, so emitting `/` would be a silently wrong NUMBER -- section 10's forbidden mode.
+    /// Loud and located, writes no file.
     ///
-    /// For int/int the refusal has a real motive, stated in JsBinaryOperator: C#'s int/int
-    /// truncates and JS's `/` does not, so `7/2` is 3 in C# and 3.5 in JS -- emitting `/`
-    /// would be a silently wrong NUMBER, section 10's forbidden mode.
-    ///
-    /// FOR DOUBLE/DOUBLE THAT MOTIVE DOES NOT APPLY AND THE REFUSAL STANDS ANYWAY. C#'s
-    /// double division and JS's `/` are the same IEEE-754 operation; there is no mismatch
-    /// to protect against. DivideExpression is simply absent from the operator table, so
-    /// both are refused by the same missing case.
-    ///
-    /// The message is also self-contradicting, which is a diagnostic-quality defect in its
-    /// own right: it refuses `r / 2.0` and then says "Section 5 admits ... arithmetic and
-    /// comparison operators". OWNER'S CALL, disclosed, not fixed here -- deciding the double
-    /// mapping is a mapping decision and neither answer key contains a division.
+    /// DOUBLE division is NOT here anymore: it ENTERED §5 (see Section5_DoubleDivision_CompilesClean),
+    /// because for double operands C#'s `/` and JS's `/` are the same IEEE-754 op and there is no
+    /// mismatch to protect against. Closing that disclosed false positive is what this change is.
+    /// The refusal message is also fixed: it no longer claims "Section 5 admits ... arithmetic
+    /// operators" while refusing a division -- it names the integer-truncation mismatch instead.
     /// </summary>
-    [Theory]
-    [InlineData("private int n = 0;", "n = n / 2;")]
-    [InlineData("private double r = 1.0;", "r = r / 2.0;")]
-    public void Division_IsADisclosedFalsePositive_ButIsLoudAndLocated(string field, string stmt)
+    [Fact]
+    public void IntegerDivision_IsRefused_LoudAndLocated()
     {
         var (exit, stderr, wrote) = Compile(
-            $$"""
-              <p><span id="a">@{{(field.Contains("int") ? "n" : "r")}}</span></p>
-              <button id="go" @onclick="Go">go</button>
+            """
+            <p><span id="a">@n</span></p>
+            <button id="go" @onclick="Go">go</button>
 
-              @code {
-                  {{field}}
-                  private void Go() { {{stmt}} }
-              }
-              """);
+            @code {
+                private int n = 0;
+                private void Go() { n = n / 2; }
+            }
+            """);
 
         Assert.NotEqual(0, exit);
         Assert.False(wrote, "a refusal must write no file");
         Assert.Contains("FIL0001: [unsupported-expression]", stderr);
-        Assert.Contains("DivideExpression", stderr);
+        Assert.Contains("DivideExpression", stderr);       // still named, via Describe(bin)
+        Assert.Contains("integer division", stderr);        // the true reason, not the old self-contradiction
         // loud and located, never silent: that is what keeps this off the blocking list.
         Assert.Matches(@"\(\d+,\d+\): FIL0001", stderr);
     }

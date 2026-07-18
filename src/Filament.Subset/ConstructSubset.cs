@@ -81,11 +81,31 @@ public static class ConstructSubset
         _ => null,
     };
 
+    /// <summary>Division is the one operator whose subset membership depends on operand TYPES, not
+    /// syntax: C#'s int/int truncates and JS's `/` does not (7/2 = 3 vs 3.5), but C#'s double
+    /// division and JS's `/` are the same IEEE-754 op. So `/` is admitted exactly when its RESULT
+    /// is double. Kept OUT of the JsBinaryOperator table on purpose — a syntactic bless would admit
+    /// int/int too. Decided semantically here, exactly like the (int)double cast.</summary>
+    public static bool IsFaithfulDivision(BinaryExpressionSyntax b, SemanticModel model) =>
+        b.IsKind(SyntaxKind.DivideExpression) &&
+        model.GetTypeInfo(b).Type?.SpecialType == SpecialType.System_Double;
+
     /// <summary>null = the expression FORM is in §5; non-null = the FIL0001 refusal — the decision
     /// behind Expr()'s default. Call-, member- and name-level refusals INSIDE a blessed form
     /// (invocation target, member access, identifier resolution) are separate concerns, not this.</summary>
     public static Refusal? ClassifyExpression(ExpressionSyntax e, SemanticModel model)
     {
+        // Division: the one operator whose admission is TYPE-dependent, and whose refusal deserves a
+        // TRUE reason rather than the generic "arithmetic operators are admitted" text (decision 77).
+        if (e is BinaryExpressionSyntax bin && bin.IsKind(SyntaxKind.DivideExpression))
+        {
+            if (IsFaithfulDivision(bin, model)) return null;               // double result: in §5
+            return new Refusal("FIL0001", "unsupported-expression",         // int/int: refused, truthfully
+                $"{Describe(bin)} is integer division: C# truncates 7/2 to 3 where JS's `/` yields 3.5, " +
+                "so emitting `/` would be a silently wrong number (spec 10). Section 5's `/` requires a " +
+                "double operand. Refusing to emit.");
+        }
+
         var supported = e switch
         {
             LiteralExpressionSyntax => true,
