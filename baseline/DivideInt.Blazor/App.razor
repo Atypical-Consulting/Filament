@@ -1,0 +1,19 @@
+@* Integer division (BENCH n°20): value halved by INT division. C# truncates 7/2 to 3; JS `/` yields
+   3.5, so the generator must emit Math.trunc(...) -- the "3" the oracle asserts proves it did. Mirrors
+   Divide.Blazor's DOM contract: the blank lines between the three siblings are part of the contract
+   (Blazor ships them as "\n\n" text nodes; so does the generator; so does divideint.js). *@
+
+<h1 id="title">DivideInt</h1>
+
+<p>Value: <span id="divide-value">@value</span></p>
+
+<button id="halve" @onclick="Halve">Halve</button>
+
+@code {
+    private int value = 7;
+
+    private void Halve()
+    {
+        value = value / 2;
+    }
+}
