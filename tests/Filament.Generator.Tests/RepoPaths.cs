@@ -180,6 +180,11 @@ public static class RepoPaths
 
     /// <summary>The T[]-array SPEC (decisions 51/117). Never edited to make a gate pass.</summary>
     public static string ArrayIndexAnswerKey => Path.Combine(Root, "samples", "ArrayIndex", "arrayindex.js");
+
+    public static string DictLookupRazor => Path.Combine(Root, "baseline", "DictLookup.Blazor", "App.razor");
+
+    /// <summary>The Dictionary-as-Map SPEC (decisions 51/118). Never edited to make a gate pass.</summary>
+    public static string DictLookupAnswerKey => Path.Combine(Root, "samples", "DictLookup", "dictlookup.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
