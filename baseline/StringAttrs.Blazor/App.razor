@@ -1,0 +1,19 @@
+@* Reactive string attribute names widening (BENCH n°16): title/href/aria-label as reactive values,
+   the same composed emission as `class`. Blank line between siblings is a "\n\n" text node. *@
+
+<a id="link" href="@url" title="@tip" aria-label="@label">Go</a>
+
+<button id="toggle" @onclick="Toggle">Toggle</button>
+
+@code {
+    private string url = "/a";
+    private string tip = "first";
+    private string label = "one";
+
+    private void Toggle()
+    {
+        url = "/b";
+        tip = "second";
+        label = "two";
+    }
+}

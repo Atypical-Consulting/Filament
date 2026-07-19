@@ -74,6 +74,12 @@ public static class RepoPaths
 
     /// <summary>The mixed-attribute SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string MixedAttrAnswerKey => Path.Combine(Root, "samples", "MixedAttr", "mixedattr.js");
+
+    /// <summary>Reactive string attribute names (title/href/aria-label on an &lt;a&gt;) — the file Blazor compiles.</summary>
+    public static string StringAttrsRazor => Path.Combine(Root, "baseline", "StringAttrs.Blazor", "App.razor");
+
+    /// <summary>The string-attribute-names SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string StringAttrsAnswerKey => Path.Combine(Root, "samples", "StringAttrs", "stringattrs.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
