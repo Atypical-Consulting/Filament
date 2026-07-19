@@ -619,10 +619,20 @@ public sealed class CSharpFrontEnd
                 continue;
             }
 
+            // A LOCAL DECLARATION in a template code block (@{ int x = 5; }) declares a value the template
+            // reads. It runs ONCE in mount() -- where the tree is built -- so it is not "a statement with no
+            // place to run"; it is a one-time const. Translate it and carry it as a CodeOp; the read (@x)
+            // resolves to the local. Any OTHER statement stays refused (it would need a re-render to matter).
+            if (s is LocalDeclarationStatementSyntax ld)
+            {
+                ops.Add(new CodeOp(Statement(ld)));
+                continue;
+            }
+
             Refuse("unsupported-template-statement",
-                $"{Describe(s)} in the template is not in the subset. The template admits @foreach (spec 5) " +
-                "and markup; C# STATEMENTS in a template have no place to run -- a Filament module builds its " +
-                "tree once and never re-renders, so there is no render method for them to be part of. " +
+                $"{Describe(s)} in the template is not in the subset. The template admits @foreach and @if " +
+                "(spec 5), a local declaration in a @{{ }} code block, and markup; any OTHER C# STATEMENT in a " +
+                "template has no place to run -- a Filament module builds its tree once and never re-renders. " +
                 "Refusing to emit.",
                 s.SpanStart);
         }

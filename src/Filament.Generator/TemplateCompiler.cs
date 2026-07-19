@@ -1174,6 +1174,11 @@ public sealed class TemplateCompiler
         foreach (var op in ops)
             switch (op)
             {
+                case CodeOp code:
+                    // A @{ } local declaration: emit the one-time `const x = …;` before the markup that
+                    // reads it (ops are in document order, so this lands ahead of the reader).
+                    _create.AddRange(code.Lines);
+                    break;
                 case MarkupOp m:
                     var c = EmitNode(m.Node, parent: container);
                     if (c is not null) _create.Add($"insert({container}, {c});");

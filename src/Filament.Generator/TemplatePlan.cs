@@ -99,6 +99,12 @@ public abstract record TemplateOp;
 /// <summary>Emit this markup node as a child of the container, exactly as if no C# were there.</summary>
 public sealed record MarkupOp(IntermediateNode Node) : TemplateOp;
 
+/// <summary>A one-time C# statement from a template code block (`@{ int x = 5; }`) — a LOCAL declaration,
+/// already translated to JS. It runs ONCE in mount() (where the tree is built), which is exactly where a
+/// declaration belongs, so it emits into _create before the markup that reads the local. Only local
+/// declarations become a CodeOp; any other template statement stays refused.</summary>
+public sealed record CodeOp(IReadOnlyList<string> Lines) : TemplateOp;
+
 /// <summary>
 /// `@foreach (Row row in _rows) { &lt;tr @key="row.Id"&gt;...&lt;/tr&gt; }` -> `list(...)`.
 /// Everything here is read off the RE-PARSED tree and resolved against real symbols.
