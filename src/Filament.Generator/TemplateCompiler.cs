@@ -1143,37 +1143,57 @@ public sealed class TemplateCompiler
         _create.Add($"insert({container}, {anchor});");
         _used.Add("list");
 
-        // #81 FAST PATH: a plain @if with a single-node body. Byte-for-byte the #81 emission (a
-        // constant key and the body function passed directly), so the @if gate and snapshot hold.
-        if (op.Branches.Count == 1 && op.Branches[0].Body.Count == 1)
+        // #81 FAST PATH: a plain @if whose body is a single markup node. Byte-for-byte the #81 emission
+        // (a constant key and the body function passed directly), so the @if gate and snapshot hold.
+        if (op.Branches.Count == 1 && op.Branches[0].Body is [MarkupOp only])
         {
             var fn = Unique("ifBody");
-            if (!EmitBranchFn(op.Branches[0].Body[0], fn)) return; // body refused; nothing emitted
+            if (!EmitBranchFn(only.Node, fn)) return; // body refused; nothing emitted
             _bindings.Add($"list({container}, () => ({op.Branches[0].Cond}) ? [0] : [], () => 0, {fn}, {anchor});");
             return;
         }
 
-        // GENERAL: each branch owns a contiguous range of GLOBAL NODE INDICES; the active branch's
-        // whole range is the source, keyed by identity, so flipping the condition swaps all of that
-        // branch's nodes (in order). Covers a single-branch multi-node body AND a multi-branch chain
-        // with any node counts. One node per branch is the degenerate range [i..i], which emits #82's
-        // exact bytes. Names carry `id` so two @if ops in one module never collide.
+        // GENERAL: recursively flatten the whole nested @if/@else structure into ONE list(). Every leaf
+        // markup node gets a global index + builder (DFS source order); the source is the decision tree
+        // over all conditions; the key is the global index. No nesting reproduces #82/#98 bytes exactly.
         var fns = new List<string>();
-        var ranges = new List<IReadOnlyList<int>>();
-        for (var b = 0; b < op.Branches.Count; b++)
+        var src = IfExpr(op, id, fns);
+        if (src is null) return;   // a leaf body was refused; nothing emitted
+        _bindings.Add($"list({container}, () => {src}, (i) => i, {IfCreate(fns)}, {anchor});");
+    }
+
+    /// <summary>Recursive decision-tree expr for one @if: `(c0) ? &lt;b0&gt; : (c1) ? &lt;b1&gt; : &lt;bN&gt;` — a
+    /// trailing @else has no test; a chain with no @else ends `: []`. Fills <paramref name="fns"/> with
+    /// leaf builders in DFS source order. Returns null if a leaf body was refused. One markup node per
+    /// branch with no nesting reproduces the pre-nesting `(c0) ? [0] : …` form exactly.</summary>
+    string? IfExpr(IfOp op, int id, List<string> fns)
+    {
+        var parts = new List<string>();
+        for (var i = 0; i < op.Branches.Count; i++)
         {
-            var body = op.Branches[b].Body;
-            var idxs = new List<int>();
-            for (var n = 0; n < body.Count; n++)
-            {
-                var fn = Unique($"ifBody{id}_{fns.Count}");
-                if (!EmitBranchFn(body[n], fn)) return;
-                idxs.Add(fns.Count);
-                fns.Add(fn);
-            }
-            ranges.Add(idxs);
+            if (BranchExpr(op.Branches[i], id, fns) is not { } b) return null;
+            if (op.Branches[i].Cond is { } c) parts.Add($"({c}) ? {b} : ");
+            else return string.Concat(parts) + b;   // trailing @else
         }
-        _bindings.Add($"list({container}, {IfSourceRanges(op.Branches, ranges)}, (i) => i, {IfCreate(fns)}, {anchor});");
+        return string.Concat(parts) + "[]";
+    }
+
+    /// <summary>A branch's active-index expr: its global leaf indices `[i, …]` if markup-only, or the
+    /// parenthesized nested decision tree if its sole content is a nested @if.</summary>
+    string? BranchExpr(IfBranch branch, int id, List<string> fns)
+    {
+        if (branch.Body is [IfOp nested])                              // single nested @if
+            return IfExpr(nested, id, fns) is { } e ? $"({e})" : null;
+
+        var idxs = new List<int>();                                   // markup-only (slices 1/2)
+        foreach (var op in branch.Body)
+        {
+            var fn = Unique($"ifBody{id}_{fns.Count}");
+            if (!EmitBranchFn(((MarkupOp)op).Node, fn)) return null;
+            idxs.Add(fns.Count);
+            fns.Add(fn);
+        }
+        return "[" + string.Join(", ", idxs) + "]";
     }
 
     /// <summary>
@@ -1203,21 +1223,6 @@ public sealed class TemplateCompiler
         lines.Add($"return {root};");
         _bindings.Add($"function {fnName}() {{\n" + string.Join("\n", lines.Select(l => "  " + l)) + "\n}");
         return true;
-    }
-
-    /// <summary>`() => (c0) ? [r0…] : (c1) ? [r1…] : [rN…]` — each branch's whole global-index range; a
-    /// trailing @else is `: [rN…]`, a chain with no @else ends `: []`. One index per branch reproduces
-    /// the pre-multi-node form (`? [i] :`) exactly, so #82 stays byte-identical.</summary>
-    static string IfSourceRanges(IReadOnlyList<IfBranch> branches, IReadOnlyList<IReadOnlyList<int>> ranges)
-    {
-        var parts = new List<string>();
-        for (var i = 0; i < branches.Count; i++)
-        {
-            var keys = string.Join(", ", ranges[i]);
-            if (branches[i].Cond is { } c) parts.Add($"({c}) ? [{keys}] : ");
-            else return "() => " + string.Concat(parts) + $"[{keys}]";   // trailing @else
-        }
-        return "() => " + string.Concat(parts) + "[]";
     }
 
     /// <summary>`(i) => i === 0 ? f0() : i === 1 ? f1() : fN()` — the last branch needs no test.</summary>

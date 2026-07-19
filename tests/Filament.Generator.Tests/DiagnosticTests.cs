@@ -72,7 +72,7 @@ public class DiagnosticTests
     /// </summary>
     [Theory]
     [InlineData("Foreach.razor", 2, 20, "unsupported-foreach")]
-    [InlineData("IfNested.razor", 2, 1, "unsupported-if-body")]
+    [InlineData("IfNestedMixed.razor", 2, 1, "unsupported-if-body")]
     public void ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation(
         string fixture, int line, int col, string reason)
     {
@@ -109,7 +109,7 @@ public class DiagnosticTests
     /// A single-branch @if with a MULTI-NODE body now COMPILES: the plain-@if lowering generalized to
     /// one list() item per body node (a source over the condition yielding [0, 1], an identity key).
     /// It used to be refused [unsupported-if-body] -- a DELIBERATE deferral at #81, now closed for the
-    /// branch-less case. IfNested stays refused (nested control flow); see
+    /// branch-less case. A branch mixing markup with a nested @if (IfNestedMixed) stays refused; see
     /// ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation.
     /// </summary>
     [Fact]
@@ -133,7 +133,7 @@ public class DiagnosticTests
     /// An @if/@else where a branch has a MULTI-NODE body now COMPILES: the multi-branch lowering
     /// generalized to per-branch global-index ranges (the @if branch = [0], the @else branch = [1, 2]),
     /// keyed by identity. It used to be refused [unsupported-if-body] @ (6,1) -- now closed for every
-    /// branch of a chain. IfNested (nested control flow in a branch) stays refused; see
+    /// branch of a chain. A branch MIXING markup with a nested @if (IfNestedMixed) stays refused; see
     /// ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation.
     /// </summary>
     [Fact]
@@ -149,6 +149,30 @@ public class DiagnosticTests
             Assert.Contains("? [0] :", js);             // the @if branch's range
             Assert.Contains("[1, 2]", js);              // the @else branch's range (two nodes)
             Assert.Contains("(i) => i", js);            // identity key
+            Assert.DoesNotContain("[unsupported-if-body]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A NESTED @if inside an @if branch now COMPILES: the whole nested structure flattens to one list()
+    /// whose source is a DECISION TREE ((show.value) ? ((other.value) ? [0] : []) : []). It used to be
+    /// refused [unsupported-if-body] @ (2,1). A branch MIXING markup with a nested @if (IfNestedMixed)
+    /// stays refused; see ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation.
+    /// </summary>
+    [Fact]
+    public void IfNested_NowCompiles_ToADecisionTreeConditionalList()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfNested.razor"), outPath);
+
+            Assert.True(exit == 0, $"a nested @if in a branch should compile now:\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains("(show.value) ?", js);       // outer condition
+            Assert.Contains("(other.value) ?", js);      // nested condition
+            Assert.Contains("? [0] :", js);              // the leaf, gated by both
             Assert.DoesNotContain("[unsupported-if-body]", js);
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
@@ -578,7 +602,7 @@ public class DiagnosticTests
     // decision 89 -- see IfAtRoot_NowCompiles_ToAConditionalAgainstTarget. IfMultiBody.razor is NOT
     // here either: a single-branch @if with a multi-node body COMPILES now -- see
     // IfMultiBody_NowCompiles_ToAMultiNodeConditionalList.)
-    [InlineData("IfNested.razor")]
+    [InlineData("IfNestedMixed.razor")]
     public void ARefusalWritesNoFile(string fixture)
     {
         var outPath = InRepo();

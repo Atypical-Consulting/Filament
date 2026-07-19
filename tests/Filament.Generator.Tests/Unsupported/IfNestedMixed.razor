@@ -1,0 +1,6 @@
+<div id="w">@if (show)
+{
+    <p id="x">x</p>@if (other) { <span id="a">a</span> }
+}</div>
+
+@code { private bool show = true, other = true; void T() { show = !show; other = !other; } }

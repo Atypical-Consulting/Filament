@@ -107,6 +107,6 @@ public sealed record IfOp(IReadOnlyList<IfBranch> Branches) : TemplateOp;
 
 /// <param name="Cond">the branch condition, already translated to JS (e.g. "n.value === 0"),
 /// or null for the trailing @else</param>
-/// <param name="Body">the markup node(s) this branch produces — exactly one for a branch that is
-/// part of an if/else chain, one OR MORE for a branch-less @if (the multi-node body slice)</param>
-public sealed record IfBranch(string? Cond, IReadOnlyList<IntermediateNode> Body);
+/// <param name="Body">the ops this branch produces: one or more markup nodes (each a leaf of the
+/// conditional list), OR a single nested @if (an IfOp, flattened into the decision-tree source).</param>
+public sealed record IfBranch(string? Cond, IReadOnlyList<TemplateOp> Body);

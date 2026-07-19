@@ -653,29 +653,32 @@ public sealed class CSharpFrontEnd
     }
 
     /// <summary>
-    /// One @if/@else branch body -> the markup node(s) it produces, or null (a located refusal
-    /// already emitted). A branch body may be ONE OR MORE elements (each becomes a list() item; the
-    /// active branch owns a contiguous global-index range). Non-markup ops (nested control flow, a
-    /// stray text node) stay refused — ops.Count must equal markup.Count.
+    /// One @if/@else branch body -> the ops it produces, or null (a located refusal already emitted).
+    /// A branch body may be ONE OR MORE markup elements (each a leaf of the conditional list), OR a
+    /// single nested @if (an IfOp, flattened into the decision-tree source by EmitIf). Mixing markup
+    /// with a nested @if, multiple nested @ifs, a @foreach in a branch, or a stray text node is not in
+    /// the subset (deferred).
     /// </summary>
-    IReadOnlyList<IntermediateNode>? BranchBody(StatementSyntax stmt, IReadOnlyDictionary<string, IntermediateNode> markers)
+    IReadOnlyList<TemplateOp>? BranchBody(StatementSyntax stmt, IReadOnlyDictionary<string, IntermediateNode> markers)
     {
         // The ORIGINAL statement nodes, never a SyntaxFactory copy (see ForEach).
         IEnumerable<StatementSyntax> body = stmt is BlockSyntax b ? b.Statements : [stmt];
         var ops = RegionOps(body, markers);
-        var markup = ops.OfType<MarkupOp>().ToList();
 
-        if (markup.Count < 1 || ops.Count != markup.Count)
+        var allMarkup = ops.Count >= 1 && ops.All(o => o is MarkupOp);
+        var singleNestedIf = ops.Count == 1 && ops[0] is IfOp;
+
+        if (!allMarkup && !singleNestedIf)
         {
             Refuse("unsupported-if-body",
-                $"a template @if / @else branch body must be one or more elements and nothing else; this one " +
-                $"produces {ops.Count} thing(s). @if lowers to a conditional list() whose create() returns one " +
-                "root node per item, so a body with a stray text node or nested control flow has no single thing " +
-                "to insert and remove. Refusing to emit.",
+                $"a template @if / @else branch body must be one or more elements, OR a single nested @if, and " +
+                $"nothing else; this one produces {ops.Count} thing(s). Mixing markup with nested control flow, " +
+                "multiple nested @ifs, a @foreach in a branch, or a stray text node is not in the subset. " +
+                "Refusing to emit.",
                 stmt.SpanStart);
             return null;
         }
-        return markup.Select(m => m.Node).ToList();
+        return ops;
     }
 
     static IntermediateNode? KeyOf(IntermediateNode markup) =>
