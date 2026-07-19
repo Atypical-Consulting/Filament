@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.14.0';   // 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.15.0';   // 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -303,6 +303,14 @@ const APPS = {
   // #divide-value goes 7 -> 3.5. Its whole reason to exist is the double-division
   // oracle, so it has no scenarios and is only ever run with --contract-only.
   divide: {
+    readySelector: '#halve',
+    observeSelector: '#divide-value',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #halve and asserts #divide-value goes 7 -> 3 (INTEGER
+  // division truncates). A generator that emitted a bare `/` would render 3.5. The measurement of the
+  // integer-division widening (BENCH n°20).
+  divideint: {
     readySelector: '#halve',
     observeSelector: '#divide-value',
     scenarios: [],
@@ -1743,6 +1751,34 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
           out.problems.push(
             `#divide-value after #halve is "${out.observed.afterHalve}", expected "3.5" ` +
             `("3" would mean integer-division semantics leaked into the emitted JS)`);
+        }
+        return out;
+      });
+    }
+
+    if (app === 'divideint') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        for (const sel of ['#halve', '#divide-value']) {
+          if (!document.querySelector(sel)) out.problems.push(`missing required element: ${sel}`);
+        }
+        if (out.problems.length) return out;
+
+        const read = () => document.querySelector('#divide-value').textContent.trim();
+        out.observed.initial = read();
+        if (out.observed.initial !== '7') {
+          out.problems.push(`#divide-value initial is "${out.observed.initial}", expected "7"`);
+          return out;
+        }
+        document.querySelector('#halve').click();
+        out.observed.afterHalve = read();
+        // THE MEASUREMENT: 7 / 2 = 3 (INTEGER division truncates toward zero). This is Blazor's OWN
+        // rendered value; the generated app must match it. A "3.5" here means the generator emitted a
+        // bare `/` instead of Math.trunc(...) -- the silently-wrong number spec 10 refuses.
+        if (out.observed.afterHalve !== '3') {
+          out.problems.push(
+            `#divide-value after #halve is "${out.observed.afterHalve}", expected "3" ` +
+            `("3.5" would mean the generator emitted a bare / instead of Math.trunc)`);
         }
         return out;
       });

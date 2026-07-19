@@ -3345,3 +3345,70 @@ raisonné.
 ---
 
 *Fin de l'entrée n°19. Ne pas modifier — ajouter une entrée n°20 pour toute rectification.*
+
+---
+
+## Entrée n°20 — 2026-07-19 — Phase 4 : la division ENTIÈRE (`int/int` via `Math.trunc`) mesurée contre Blazor (CORRECTION)
+
+**Réserve de la n°9/décision #87 fermée** : `int / int` rejoint le §5 avec un abaissement **fidèle par troncature**
+— `a / b` (résultat int) → `Math.trunc(a / b)`, qui tronque vers zéro **exactement** comme la division entière de
+C# (`7/2 → 3`, `-7/2 → -3`). La n°87 admettait la division `double` (`/` verbatim, même op IEEE-754) mais
+**refusait `int/int`** faute d'abaissement fidèle — `/` nu aurait rendu `3.5` là où C# rend `3` (nombre
+silencieusement faux, §10). `Math.trunc` répare cela ; pour des int 32 bits le quotient est exact dans un double
+JS. Générateur seul, **runtime INCHANGÉ** (`Math.trunc` est un builtin JS). Ceci est une tranche du **sous-ensemble
+C#** (première de la frontière IntDivision → While → Switch → DoWhile), pas du contrôle de flux template.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/DivideInt.Blazor` (calqué sur `Divide.Blazor` mais `int`) : `value = 7`, `Halve()` fait `value = value /
+2`. C# tronque à `3` ; un générateur émettant `/` nu rendrait `3.5`. Le générateur émet `value.value =
+Math.trunc(value.value / 2)`. L'admission est **dépendante du TYPE** (`IsIntegerDivision`, résultat Int32),
+mono-sourcée dans `ConstructSubset` — donc l'analyseur suit (le témoin `IntegerDivision_IsFlagged` devient
+`IntegerDivision_IsNotFlagged`, mesuré au temps d'écriture).
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.15.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`). La branche `divideint` de `verifyContract` lit `#divide-value`,
+exige l'initial `"7"`, clique `#halve` et exige `"3"` (troncature entière). Un `"3.5"` signalerait un `/` nu au
+lieu de `Math.trunc`.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/DivideInt.Blazor -c Release -o bench/publish/blazor-divideint
+./bench/build-filament.sh filament-divideint-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-divideint/wwwroot --app divideint --label blazor-divideint       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-divideint-gen   --app divideint --label filament-divideint-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#divide-value` : initial → `#halve` | verdict |
+|---|---|---|
+| **blazor-divideint** (autorité) | `7` → `3` | contrat OK |
+| **filament-divideint-gen** (générateur) | `7` → `3` | contrat OK |
+
+**Les deux rendent `7 → 3`, à l'identique.** La division entière tronque, `Math.trunc` se comporte comme la
+division `int/int` de C# — l'abaissement fidèle est **mesuré**, pas raisonné.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (app triviale, décision du propriétaire).
+- **`HARNESS_VERSION` 1.14.0 → 1.15.0, DIVULGUÉ.** `bench.mjs` a changé (branche `divideint` + entrée `APPS`).
+- **RUNTIME INCHANGÉ.** `Math.trunc` est un builtin JS ; `git diff -- src/filament-runtime` est vide.
+- **DIVISION PAR ZÉRO DIVULGUÉE.** C# `int/0` **lève** `DivideByZeroException` ; JS `Math.trunc(a/0)` donne
+  `Infinity`. Même catégorie que la divergence de débordement pré-existante `int`→`number` (les doubles JS ne
+  bouclent pas à 2^31). Le comportement mesuré (opérandes normaux) est fidèle ; le chemin exceptionnel est un bord
+  divulgué et accepté.
+- **TRANCHE ÉTROITE.** Seules les divisions `int` et `double`. `long`/`decimal` restent refusées (types hors §5).
+  §8 inchangé : RADICAL reste « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°20. Ne pas modifier — ajouter une entrée n°21 pour toute rectification.*
