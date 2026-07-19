@@ -3435,3 +3435,49 @@ divulgué.
 **LE PLAFOND HONNÊTE — FAIBLE NOUVEAUTÉ, DIVULGUÉE.** Aucune forme d'émission nouvelle : la valeur est la **preuve
 mesurée** que la liste blanche chaîne se généralise. Seuls `title`/`href`/`aria-label` ; restent différés : `data-*`,
 `style`, `value`, autres noms. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 98. Le corps MULTI-NŒUD d'un `@if` (branche unique) entre dans le §5 — l'abaissement plain-`@if` généralisé de « un nœud par branche » à « un item de liste par nœud du corps »
+
+**Décision.** La réserve que la n°81 posait **délibérément** (`[unsupported-if-body]` : le corps multi-nœud est
+« voulu, pas un bug à corriger vers le support ») est **fermée pour le cas sans `@else`**. Un `@if (cond) { <a><b> }` —
+une branche unique dont le corps est **plus d'un élément** — rejoint le sous-ensemble compilé. L'abaissement plain-`@if`
+est **généralisé** de « un nœud par **branche** » à « un item de liste par **nœud du corps** » :
+`list(c, () => cond ? [0, 1] : [], (i) => i, (i) => i===0 ? f0() : f1(), anchor)`. C'est la machinerie multi-branche de
+la n°82 (`IfCreate`, source à clé), un cran plus bas — par nœud du corps au lieu de par branche. Suite : **288 tests**
+(215 générateur + 55 subset + 18 analyseur), runtime 214.
+
+**AUCUNE PRIMITIVE DE RUNTIME NOUVELLE — RÉEMPLOI DE `list()`.** Comme la n°81, le corps multi-nœud n'ajoute rien au
+runtime : chaque nœud du corps devient un item de liste, `list()` les monte/démonte ensemble sur la condition, dans
+l'ordre source, devant l'ancre-commentaire. `git diff -- src/filament-runtime` est **vide** ; le test d'invariant
+runtime-fermé (`EmittedIfMultiBody_OnlyCallsClosedRuntimePrimitives_NoNewExport`) l'épingle. L'ancre-commentaire reste la
+seule divergence `+1` nœud divulguée d'avec Blazor (n°81/20).
+
+**LES ÉMISSIONS DE LA n°81 ET DE LA n°82 RESTENT OCTET POUR OCTET.** Le chemin neuf ne s'active que pour `Body.Count > 1`
+sur un `@if` **sans `else`** : `IfBranch.Body` devient une **liste** de nœuds ; `BranchBody` prend un drapeau
+`allowMulti` **levé seulement quand `ifs.Else is null`** (plain `@if`), et toute branche d'une chaîne `if/else` le passe
+`false`. Donc le cas nœud-unique (n°81, `() => cond ? [0] : []`, clé `() => 0`, fn directe) et le cas multi-branche
+(n°82, `IfSource`/`IfCreate`) émettent les octets qu'ils émettaient déjà — snapshots `If`/`IfElse`/`RootIf`/`RootForeach`
+inchangés. Un nœud non-markup (contrôle de flux imbriqué, nœud texte) reste refusé **des deux côtés** (`ops.Count !=
+markup.Count`), mutation-testé.
+
+**LES TÉMOINS DE BORD RESTENT, LOCALISÉS.** `IfElseMultiBody.razor` (corps multi-nœud dans un `@else`) reste refusé
+`[unsupported-if-body]` à `(6,1)` ; `IfNested.razor` (contrôle de flux imbriqué dans une branche) reste refusé à `(2,1)` ;
+`Foreach.razor` reste refusé `[unsupported-foreach]`. Le témoin `IfMultiBody.razor`, lui, **bascule de refusé à compilé**
+(`IfMultiBody_NowCompiles_ToAMultiNodeConditionalList`, motif de la n°89 pour `IfAtRoot`) — retiré des deux théories de
+refus, remplacé par un fait de compilation.
+
+**VALIDITÉ BLAZOR VÉRIFIÉE EN AMONT (la leçon RZ9979, n°97).** `dotnet build baseline/IfMultiBody.Blazor` **réussit** ; le
+`BuildRenderTree` (lu depuis `App_razor.g.cs`, méthode n°64) donne le contrat : **deux `AddMarkupContent` (seq 6, 7)**
+dans `if (show)`, deux `<span>` adjacents, enfants directs de `#w`, ordre a→b, **sans conteneur**, **sans nœud texte
+intercalé**. La clé de réponse `samples/IfMultiBody/ifmulti.js` en descend, pas d'une supposition.
+
+**MESURÉ CONTRE BLAZOR (entrée n°17), TRIPLE.** (1) Porte `canon` : le module généré depuis `App.razor` est
+**alpha-équivalent** à `ifmulti.js`. (2) Snapshot octet-exact. (3) Oracle Playwright : `baseline/IfMultiBody.Blazor` et
+`filament-ifmulti-gen` rendent **`a,b → «» → a,b`** au double clic, à l'identique — les deux `<span>` montent/démontent
+ensemble, dans l'ordre. Cela ferme aussi le « À RE-MESURER si `@if` entre dans une app mesurée » de la n°81.
+`HARNESS_VERSION` 1.11.0 → 1.12.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Première tranche de la frontière « complétude du contrôle de flux » (IfMultiBody → IfElseMultiBody
+→ IfNested → Foreach). Branche unique seulement ; restent différés : corps multi-nœud d'un `@else` (`IfElseMultiBody`),
+contrôle de flux imbriqué (`IfNested`), nœuds texte intercalés, `@foreach`. §5 s'élargit d'un cran ; RADICAL reste
+**« ni éliminée ni établie »**.
