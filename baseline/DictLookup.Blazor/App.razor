@@ -1,0 +1,21 @@
+@* Dictionary<K,V> (BENCH n°37, decision 118): a Dictionary maps to a JS Map, admitted READ-ONLY. `labels`
+   is a constant map {1:"one", 2:"two", 3:"three"}; `key` is a signal, and #next advances it, so @labels[key]
+   looks up the map. #value goes "one" -> "two" -> "three" -> "one", exactly as Blazor indexes the same C#
+   Dictionary. Construction -> new Map([[k,v],…]); @labels[key] -> labels.get(key); .Count -> .size;
+   .ContainsKey -> .has. labels is read but never mutated -> a plain Map; key is read AND assigned -> a signal.
+   (An entry write labels[k]=v is REFUSED: a Dictionary is read-only here, no reactive version.) *@
+
+<p>Label: <span id="value">@labels[key]</span></p>
+
+<button id="next" @onclick="Next">next</button>
+
+@code {
+    private System.Collections.Generic.Dictionary<int, string> labels =
+        new System.Collections.Generic.Dictionary<int, string> { { 1, "one" }, { 2, "two" }, { 3, "three" } };
+    private int key = 1;
+
+    private void Next()
+    {
+        key = key % 3 + 1;
+    }
+}
