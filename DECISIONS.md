@@ -3481,3 +3481,47 @@ ensemble, dans l'ordre. Cela ferme aussi le « À RE-MESURER si `@if` entre dans
 → IfNested → Foreach). Branche unique seulement ; restent différés : corps multi-nœud d'un `@else` (`IfElseMultiBody`),
 contrôle de flux imbriqué (`IfNested`), nœuds texte intercalés, `@foreach`. §5 s'élargit d'un cran ; RADICAL reste
 **« ni éliminée ni établie »**.
+
+## 99. Le corps MULTI-NŒUD d'une branche `@if`/`@else` entre dans le §5 — l'émission multi-branche généralisée aux PLAGES d'indices globaux par branche
+
+**Décision.** La n°98 n'admettait le corps multi-nœud que pour un `@if` **sans `else`** (`allowMulti` levé
+seulement quand `ifs.Else is null`). Cette entrée l'admet dans **n'importe quelle** branche d'une chaîne
+`@if`/`@else if`/`@else` : `@if (show) { <a> } else { <b><c> }` compile. L'émission multi-branche est
+**généralisée** de « un item par **branche** (index `i`) » à « un item par **nœud**, chaque branche possédant une
+**plage d'indices globaux contigus** » : `list(c, () => (show.value) ? [0] : [1, 2], (i) => i, (i) => i===0 ?
+f0() : i===1 ? f1() : f2(), anchor)`. Suite : **291 tests** (218 générateur + 55 subset + 18 analyseur),
+runtime 214.
+
+**LA n°82 ET LA n°98 RESTENT OCTET POUR OCTET — LA PLAGE `[i..i]` EST LE CAS DÉGÉNÉRÉ.** Le nouveau `IfSourceRanges`
+émet la plage entière de chaque branche ; un seul nœud par branche donne la plage `[i]`, soit exactement l'ancien
+`IfSource` (`? [i] :`). Donc la n°82 (`IfElse`, trois branches × un nœud) réémet
+`() => (n.value === 0) ? [0] : (n.value === 1) ? [1] : [2]` — **vérifié identique** au snapshot. La n°98 (branche
+unique × deux nœuds) réémet `() => (show.value) ? [0, 1] : []` par le **même** chemin général — donc le bloc
+multi-nœud spécifique de la n°98 est **supprimé** (subsumé), et le drapeau `allowMulti` de la n°98, désormais
+vacant (toute branche admet le multi-nœud), est **retiré**. Seul reste spécial le **chemin rapide n°81**
+(`Branches.Count == 1 && Body.Count == 1` → `? [0] : []`, clé `() => 0`, fn directe) — la seule forme que le chemin
+général ne reproduirait pas.
+
+**AUCUNE PRIMITIVE DE RUNTIME NOUVELLE.** Chaque nœud de la branche active est un item de `list()` ; l'échange de
+branche est un changement de clés (`[0]` ↔ `[1, 2]`), donc `reconcile` démonte l'ancienne branche et monte la
+nouvelle, dans l'ordre. `git diff -- src/filament-runtime` **vide** ; l'ancre-commentaire reste la seule
+divergence `+1` divulguée (n°81/20).
+
+**LES TÉMOINS DE BORD.** `IfNested.razor` (contrôle de flux imbriqué dans une branche : `markup.Count == 0`, un op
+non-markup) reste refusé `[unsupported-if-body]` à `(2,1)` ; `Foreach.razor` reste refusé `[unsupported-foreach]` ;
+les nœuds texte intercalés restent refusés (`ops.Count != markup.Count`, mutation-testé). `IfElseMultiBody.razor`
+**bascule de refusé à compilé** (`IfElseMultiBody_NowCompiles_ToARangedConditionalList`).
+
+**VALIDITÉ BLAZOR VÉRIFIÉE EN AMONT (n°97).** `dotnet build baseline/IfElseMultiBody.Blazor` réussit ; le
+`BuildRenderTree` donne le contrat (`@if` → un `AddMarkupContent` `<span a>` ; `else` → deux `<span b>`/`<span c>`,
+adjacents, sans conteneur ni texte intercalé). La clé `ifelsemulti.js` en descend.
+
+**MESURÉ CONTRE BLAZOR (entrée n°18), TRIPLE.** (1) Porte `canon` (alpha-équivalent). (2) Snapshot octet-exact.
+(3) Oracle Playwright : `baseline/IfElseMultiBody.Blazor` et `filament-ifelsemulti-gen` rendent **`a → b,c → a`**
+au double clic, à l'identique — la branche entière s'échange, dans l'ordre. `HARNESS_VERSION` 1.12.0 → 1.13.0,
+divulgué.
+
+**LE PLAFOND HONNÊTE.** Deuxième tranche de la frontière « complétude du contrôle de flux » (IfMultiBody ✓ →
+IfElseMultiBody ✓ → IfNested → Foreach). Restent différés : contrôle de flux **imbriqué** dans une branche
+(`IfNested`, tranche 3), `@foreach` en élément (tranche 4), nœuds texte intercalés. §5 s'élargit d'un cran ;
+RADICAL reste **« ni éliminée ni établie »**.
