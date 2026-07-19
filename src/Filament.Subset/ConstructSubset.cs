@@ -139,6 +139,15 @@ public static class ConstructSubset
         return false;
     }
 
+    /// <summary>`new Row(...)` or `new Row { … }` where `Row` is a LOCAL record (declared in source) — a data
+    /// shape that compiles to an object literal (rows.js decision 2). Admitted in expression position so a
+    /// record can be constructed INLINE (in a list literal, a `.Add(...)`, a local): the generator maps the
+    /// positional args or the object-initialiser assignments to the object's properties. A record from the BCL
+    /// or another assembly (no source declaration) has no such mapping and stays refused.</summary>
+    public static bool IsLocalRecordCreation(ObjectCreationExpressionSyntax oc, SemanticModel model) =>
+        model.GetTypeInfo(oc).Type is INamedTypeSymbol { IsRecord: true } t &&
+        t.DeclaringSyntaxReferences.Length > 0;
+
     /// <summary>null = the expression FORM is in §5; non-null = the FIL0001 refusal — the decision
     /// behind Expr()'s default. Call-, member- and name-level refusals INSIDE a blessed form
     /// (invocation target, member access, identifier resolution) are separate concerns, not this.</summary>
@@ -171,15 +180,15 @@ public static class ConstructSubset
             ElementAccessExpressionSyntax ea => IsListFieldIndex(ea, model),
             InterpolatedStringExpressionSyntax => true,
             CastExpressionSyntax c => IsIntFromDouble(c, model),
-            ObjectCreationExpressionSyntax oc => IsExceptionCreation(oc, model),
+            ObjectCreationExpressionSyntax oc => IsExceptionCreation(oc, model) || IsLocalRecordCreation(oc, model),
             _ => false,
         };
         if (supported) return null;
         return new Refusal("FIL0001", "unsupported-expression",
             $"{Describe(e)} is not in the C# subset. Section 5 admits literals, arithmetic and " +
             "comparison operators, &&, ||, !, ternary, string interpolation, member access on a " +
-            "local record, List<T> indexing, .Count, .Add, .RemoveAt, .Clear and `new Exception(...)`. " +
-            "Refusing to emit.");
+            "local record, List<T> indexing, .Count, .Add, .RemoveAt, .Clear, `new Exception(...)` and " +
+            "`new Record(...)` for a local record. Refusing to emit.");
     }
 
     // Matches the generator's ListReceiver: indexing a field whose type is List<T> (one argument).

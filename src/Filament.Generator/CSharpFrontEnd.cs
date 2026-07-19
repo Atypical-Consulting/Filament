@@ -974,22 +974,32 @@ public sealed class CSharpFrontEnd
             return;
         }
 
-        if (rec.ParameterList is not null)
-        {
-            Refuse("unsupported-member",
-                $"record '{rec.Identifier.Text}' has a positional parameter list. A positional record's members " +
-                "are init-only and it carries a compiler-generated constructor, Equals, GetHashCode and " +
-                "Deconstruct -- none of which a Filament module has anywhere to put. Declare the properties in " +
-                "a body instead. Refusing to emit.",
-                rec.Identifier.SpanStart);
-            return;
-        }
-
         var info = new RecordInfo
         {
             Name = rec.Identifier.Text,
             Symbol = (INamedTypeSymbol)_model.GetDeclaredSymbol(rec)!,
         };
+
+        // POSITIONAL record: `record Row(int Id, string Name)` (decision 111). Each primary-constructor
+        // parameter is an (init-only) property -- the SAME data shape a body record declares, written
+        // shorter -- so it compiles to the SAME object literal. The compiler-generated ctor/Equals/
+        // GetHashCode/Deconstruct are simply unused: a read-only shape needs only the literal, and the
+        // subset admits neither value-equality nor deconstruction. Construction maps the positional ARGS
+        // to these props by order (Expr's RecordLiteral). A positional param is never assigned outside
+        // construction, so it is never a signal.
+        if (rec.ParameterList is { } pl)
+            foreach (var param in pl.Parameters)
+            {
+                var ptype = _model.GetTypeInfo(param.Type!).Type;
+                if (!CheckType(ptype, param.Type!.SpanStart, allowList: false)) return;
+                info.Props.Add(new PropInfo
+                {
+                    Name = param.Identifier.Text,
+                    Js = JsName(param.Identifier.Text),
+                    Init = DefaultOf(ptype!),
+                    Symbol = info.Symbol.GetMembers(param.Identifier.Text).OfType<IPropertySymbol>().First(),
+                });
+            }
 
         foreach (var member in rec.Members)
         {
@@ -1927,6 +1937,30 @@ public sealed class CSharpFrontEnd
         return "{ " + string.Join(", ", parts) + " }";
     }
 
+    /// <summary>An INLINE `new Row(...)` / `new Row { … }` (decision 111) -> one object literal, in property
+    /// declaration order. Positional args bind to props by CONSTRUCTOR ORDER (which is the order Record()
+    /// added them); object-initialiser assignments bind by NAME. A prop neither positioned nor initialised
+    /// falls to its declared default. Signal props (a body record read+assigned elsewhere) are wrapped, exactly
+    /// as the construction-site fold does -- so an inline construction and a folded one agree byte for byte.</summary>
+    string RecordLiteral(ObjectCreationExpressionSyntax oc, RecordInfo rec)
+    {
+        var byName = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        if (oc.ArgumentList is { } al)
+            for (var i = 0; i < al.Arguments.Count && i < rec.Props.Count; i++)
+                byName[rec.Props[i].Js] = Wrap(rec.Props[i], Expr(al.Arguments[i].Expression));
+
+        if (oc.Initializer is { } init)
+            foreach (var e in init.Expressions)
+                if (e is AssignmentExpressionSyntax { Left: IdentifierNameSyntax id } asg &&
+                    rec.Props.FirstOrDefault(p => p.Name == id.Identifier.Text) is { } p)
+                    byName[p.Js] = Wrap(p, Expr(asg.Right));
+
+        var parts = rec.Props.Select(p =>
+            $"{p.Js}: {(byName.TryGetValue(p.Js, out var v) ? v : Wrap(p, p.Init))}");
+        return "{ " + string.Join(", ", parts) + " }";
+    }
+
     string Wrap(PropInfo p, string js)
     {
         if (!p.IsSignal) return js;
@@ -2051,6 +2085,12 @@ public sealed class CSharpFrontEnd
                 // `new Exception(msg)` -> `new Error(msg)`: the one object creation in §5, for `throw`.
                 // C#'s Exception.Message and JS's Error.message carry the same string.
                 return $"new Error({string.Join(", ", oc.ArgumentList?.Arguments.Select(a => Expr(a.Expression)) ?? Enumerable.Empty<string>())})";
+
+            case ObjectCreationExpressionSyntax oc when _model.GetTypeInfo(oc).Type is { } rt && RecordOf(rt) is { } rec:
+                // INLINE record construction (decision 111) -> an object literal. This is the expression-
+                // position sibling of the construction-site fold (ObjectLiteral): a positional `new Row(a, b)`
+                // maps its args to the props by order; an object-initialiser `new Row { X = a }` maps by name.
+                return RecordLiteral(oc, rec);
 
             default:
                 throw new GeneratorException(

@@ -87,13 +87,14 @@ public class CodeTests
     // place a subset boundary can be tested once the middle works:
     //   List<long>       the CONTAINER is in the subset, the ELEMENT is not
     //   List<int> = null the type is in the subset, the C# default has no array to be
-    //   record Row(int)  positional: an init-only shape with a compiler-generated ctor,
-    //                    Equals, GetHashCode and Deconstruct -- none of which an object
-    //                    literal has anywhere to put
     //   a method in a record: a data SHAPE cannot carry behaviour
+    //
+    // `record Row(int)` positional LEFT this list at decision 111 (it compiles now -> the
+    // PositionalRecord_NowCompiles test below): a positional record is the SAME object-literal data
+    // shape as a body record, written shorter, and its generated ctor/Equals/GetHashCode/Deconstruct
+    // are simply unused. A method in a record STAYS refused -- that is behaviour, not shape.
     [InlineData("TypeList.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeListNull.razor", 5, 50, "FIL0001", "unsupported-expression")]
-    [InlineData("RecordDecl.razor", 5, 20, "FIL0001", "unsupported-member")]
     [InlineData("RecordMember.razor", 8, 9, "FIL0001", "unsupported-member")]
     public void OutOfSubsetCsharp_IsRefused_AtItsExactLocation_NeverSilentlyEmitted(
         string fixture, int line, int col, string code, string reason)
@@ -183,6 +184,26 @@ public class CodeTests
             var js = File.ReadAllText(outPath);
             Assert.Contains(expected, js);
             Assert.DoesNotContain("[unsupported-statement]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A POSITIONAL record now COMPILES (decision 111, closing the RecordDecl deferral): `record Row(int Id)`
+    /// is the SAME object-literal data shape a body record declares, written shorter -- its generated
+    /// ctor/Equals/GetHashCode/Deconstruct are simply unused. It used to be refused [unsupported-member] @ (5,20).
+    /// A record carrying a METHOD (RecordMember.razor) STAYS refused: that is behaviour, not shape.
+    /// </summary>
+    [Fact]
+    public void PositionalRecord_NowCompiles()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "RecordDecl.razor"), outPath);
+
+            Assert.True(exit == 0, $"a positional record should compile now (decision 111):\n{stderr}");
+            Assert.DoesNotContain("[unsupported-member]", File.ReadAllText(outPath));
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }
