@@ -201,6 +201,7 @@ ALL_LABELS=(
   filament-decimalcounter-gen
   filament-datetimecounter-gen
   filament-linq-gen
+  filament-arrayindex-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -241,6 +242,7 @@ project_for() {
     filament-decimalcounter-gen)                     echo "samples/filament-decimalcounter-gen" ;;
     filament-datetimecounter-gen)                    echo "samples/filament-datetimecounter-gen" ;;
     filament-linq-gen)                               echo "samples/filament-linq-gen" ;;
+    filament-arrayindex-gen)                         echo "samples/filament-arrayindex-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -250,7 +252,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -300,6 +302,7 @@ razor_for() {
     filament-decimalcounter-gen)                     echo "$REPO_ROOT/baseline/DecimalCounter.Blazor/App.razor" ;;
     filament-datetimecounter-gen)                    echo "$REPO_ROOT/baseline/DateTimeCounter.Blazor/App.razor" ;;
     filament-linq-gen)                               echo "$REPO_ROOT/baseline/Linq.Blazor/App.razor" ;;
+    filament-arrayindex-gen)                         echo "$REPO_ROOT/baseline/ArrayIndex.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -342,6 +345,7 @@ generated_js_for() {
     filament-decimalcounter-gen)                     echo "App.g.js" ;;
     filament-datetimecounter-gen)                    echo "App.g.js" ;;
     filament-linq-gen)                               echo "App.g.js" ;;
+    filament-arrayindex-gen)                         echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -380,6 +384,7 @@ title_for() {
     filament-decimalcounter-gen)                     echo "DecimalCounter" ;;
     filament-datetimecounter-gen)                    echo "DateTimeCounter" ;;
     filament-linq-gen)                               echo "Linq" ;;
+    filament-arrayindex-gen)                         echo "ArrayIndex" ;;
     *) return 1 ;;
   esac
 }
@@ -421,6 +426,7 @@ blazor_label_for() {
     filament-decimalcounter-gen)                     echo "blazor-decimalcounter" ;;
     filament-datetimecounter-gen)                    echo "blazor-datetimecounter" ;;
     filament-linq-gen)                               echo "blazor-linq" ;;
+    filament-arrayindex-gen)                         echo "blazor-arrayindex" ;;
     *) return 1 ;;
   esac
 }
@@ -470,6 +476,7 @@ css_for() {
     filament-decimalcounter-gen)                     echo "$REPO_ROOT/baseline/DecimalCounter.Blazor/wwwroot/css/app.css" ;;
     filament-datetimecounter-gen)                    echo "$REPO_ROOT/baseline/DateTimeCounter.Blazor/wwwroot/css/app.css" ;;
     filament-linq-gen)                               echo "$REPO_ROOT/baseline/Linq.Blazor/wwwroot/css/app.css" ;;
+    filament-arrayindex-gen)                         echo "$REPO_ROOT/baseline/ArrayIndex.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }

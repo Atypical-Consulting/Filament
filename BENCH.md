@@ -4130,3 +4130,44 @@ reste de LINQ restent refusés (`Code/Linq.razor` : Range → une locale `IEnume
 ---
 
 *Fin de l'entrée n°35. Ne pas modifier — ajouter une entrée n°36 pour toute rectification.*
+
+---
+
+## Entrée n°36 — 2026-07-20 — Phase 4 : le tableau `T[]` (indexation) mesuré contre Blazor (CORRECTION)
+
+**Le type tableau `T[]`** (décision #117) rejoint le §5, mappé sur le MÊME tableau JS qu'une `List<T>` — la seule
+différence est la mutabilité : un tableau est de taille fixe, donc admis EN LECTURE SEULE (indexation, `.Length`,
+itération ; l'assignation d'élément `arr[i] = v` est REFUSÉE — une collection mutable est une `List<T>`, dont
+l'écriture d'élément incrémente la version réactive). Un littéral `new int[]{…}` → un littéral tableau JS
+`[…]` ; `@items[i]` → `items[i]` (l'indexeur propre du tableau) ; `.Length` → `.length`. **AUCUNE primitive
+runtime** : indexation et `.length` sont celles du tableau JS. Tableaux dimensionnés `new int[n]` (sans
+initialiseur) et multi-dimensionnels différés.
+
+### Ce qui est mesuré
+
+`baseline/ArrayIndex.Blazor` : `items = new int[]{10,20,30}` (tableau constant) indexé par `i` (un signal) ;
+`#next` avance `i` (mod `items.Length`), donc `@items[i]` parcourt le tableau. `items` est lu mais jamais muté →
+tableau nu ; `i` est lu ET assigné → signal. La branche `arrayindex` de `verifyContract` clique `#next` et exige
+`#value` : `"10" → "20" → "30" → "10"`. **`HARNESS_VERSION` 1.30.0 → 1.31.0**, divulgué.
+
+```
+dotnet publish baseline/ArrayIndex.Blazor -c Release -o bench/publish/blazor-arrayindex
+./bench/build-filament.sh filament-arrayindex-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-arrayindex/wwwroot --app arrayindex --label blazor-arrayindex       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-arrayindex-gen   --app arrayindex --label filament-arrayindex-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#value` | verdict |
+|---|---|---|
+| **blazor-arrayindex** (autorité) | `"10" → "20" → "30" → "10"` | contrat OK |
+| **filament-arrayindex-gen** (générateur) | `"10" → "20" → "30" → "10"` | contrat OK |
+
+**Les deux parcourent `10 → 20 → 30 → 10`, à l'identique.** `@items[i]` indexe le tableau `[10,20,30]` par l'index
+réactif — Blazor indexe le même tableau C#. `git diff -- src/filament-runtime` vide (indexeur JS natif). Le témoin
+`Code/TypeArray.razor` bascule de refusé à compilé ; `object`/`Dictionary` restent refusés. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°36. Ne pas modifier — ajouter une entrée n°37 pour toute rectification.*

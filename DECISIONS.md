@@ -4081,3 +4081,33 @@ helper émis. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°35) :
 (`_nums.Where(x=>x>0).Count()` sur `[-2,3,-1,5,0]`) et `filament-linq-gen` rendent `#value` `"0" → "2"`, à
 l'identique. Le témoin `Gate/Linq.razor` bascule refusé → compilé. `HARNESS_VERSION` 1.29.0 → 1.30.0, divulgué. §5
 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 117. Le type tableau `T[]` entre dans le §5 — le même tableau JS qu'une List<T>, en LECTURE SEULE ; supersède le refus « pas de mapping §5 »
+
+**Décision.** Le type tableau `T[]` (rang 1) rejoint le §5, mappé sur le MÊME tableau JS qu'une `List<T>` (décision
+rows.js 1). Il était refusé (`unsupported-type`). Mais un `T[]` EST un tableau : un littéral `new int[]{10,20,30}` →
+`[10, 20, 30]`, `@items[i]` → `items[i]` (l'indexeur propre), `items.Length` → `items.length`. `TypeSubset` admet
+un `IArrayTypeSymbol { Rank: 1 }` dont l'élément est un scalaire/record (`ArrayElement`) ; `IsIndexableFieldIndex`
+et `.Length` généralisent les règles List-only de rows.js. Suite : **358 tests** (280 générateur / 60 subset / 18
+analyzer), runtime 214. **LEÇON (7e over-refus corrigé) : « pas de mapping §5 » était faux — un tableau EST le
+mapping.**
+
+**ADMIS EN LECTURE SEULE — l'écriture d'élément est REFUSÉE.** La seule différence entre `T[]` et `List<T>` ici est
+la mutabilité. Une `List<T>` porte un signal de VERSION (son `.Add`/`[i]=` incrémente la version, ce qui re-rend le
+`@foreach`). Un tableau n'a pas ce plombage. Donc `arr[i] = v` est REFUSÉ (`unsupported-expression`, placé AVANT le
+cas d'assignation général pour qu'aucune écriture d'élément ne file en `=` nu) — l'émettre en assignation plate que
+nul effet ne verrait serait un affichage périmé, le résultat silencieusement faux que §10 interdit. Indexation,
+`.Length`, itération et réassignation en gros (`arr = new[]{…}`, qui fait du champ un signal) sont admises ; une
+collection mutable élément par élément est une `List<T>`. Divulgué.
+
+**LES LITTÉRAUX ADMIS, LES TABLEAUX DIMENSIONNÉS DIFFÉRÉS.** `new int[]{…}` (ArrayCreation avec initialiseur) et
+`new[]{…}` (ImplicitArrayCreation) → un littéral tableau JS. `new int[n]` (dimensionné, SANS initialiseur) est
+refusé — il faut un tableau de n valeurs par défaut, différé. Le classifieur exige un initialiseur pour que la
+décision et l'émission concordent (sinon `new int[0]` serait admis au classifieur mais refusé à l'émission).
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** L'indexation et `.length` sont celles du tableau JS natif — aucune primitive
+runtime, aucun helper. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°36) : `baseline/ArrayIndex.Blazor`
+(`items = [10,20,30]`, `@items[i]` par un index réactif) et `filament-arrayindex-gen` rendent `#value`
+`"10" → "20" → "30" → "10"`, à l'identique. Le témoin `Code/TypeArray.razor` bascule refusé → compilé ;
+`object`/`Dictionary` restent refusés. `HARNESS_VERSION` 1.30.0 → 1.31.0, divulgué. §5 s'élargit d'un cran ; RADICAL
+reste **« ni éliminée ni établie »**.
