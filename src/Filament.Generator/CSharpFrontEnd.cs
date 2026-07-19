@@ -291,6 +291,14 @@ public sealed class CSharpFrontEnd
         _fieldsByName.TryGetValue(name, out var f) && f.IsSignal &&
         f.Symbol.Type.SpecialType == SpecialType.System_Boolean;
 
+    /// <summary>An `int` field that is already a signal — for `@bind` on a number/text input. Unlike bool
+    /// and string, this DOES parse: the change handler mirrors int.TryParse (NumberStyles.Integer + invariant)
+    /// with a regex + int32-range check + revert-on-invalid, so an unparseable/overflowing entry keeps the
+    /// field and re-renders the old value, exactly as Blazor's BindConverter does.</summary>
+    public bool IsIntSignal(string name) =>
+        _fieldsByName.TryGetValue(name, out var f) && f.IsSignal &&
+        f.Symbol.Type.SpecialType == SpecialType.System_Int32;
+
     /// <summary>The JS name of a field (e.g. `text`), so a signal read is `{FieldJs}.value`.</summary>
     public string? FieldJs(string name) => _fieldsByName.TryGetValue(name, out var f) ? f.Js : null;
     public IEnumerable<string> DeclaredNames => _fieldsByName.Keys.Concat(_methodsByName.Keys);

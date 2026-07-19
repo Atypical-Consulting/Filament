@@ -1006,14 +1006,19 @@ public sealed class TemplateCompiler
 
         var field = BoundField(bound);
         var isCheckbox = checkedAttr is not null;
-        var ok = field is not null && (isCheckbox ? _code.IsBoolSignal(field) : _code.IsStringSignal(field));
-        if (!ok)
+        // The bound field's kind decides the emission: bool (checkbox), string (verbatim), or int (parsed).
+        var kind = field is null ? null
+            : isCheckbox && _code.IsBoolSignal(field) ? "bool"
+            : !isCheckbox && _code.IsStringSignal(field) ? "string"
+            : !isCheckbox && _code.IsIntSignal(field) ? "int"
+            : null;
+        if (kind is null)
         {
             Diag("unsupported-bind",
                 $"@bind on <{el.TagName}> binds '{Trunc(field ?? "?")}', which is not a " +
-                $"{(isCheckbox ? "bool" : "string")} field that is already a signal. The @bind slice binds a " +
-                "STRING field (text input) or a BOOL field (checkbox) the component also reads and assigns (so " +
-                "it is reactive); other types need BindConverter parsing, and a pure @bind-only field needs its " +
+                $"{(isCheckbox ? "bool" : "string or int")} field that is already a signal. @bind binds a STRING " +
+                "or INT field (text input) or a BOOL field (checkbox) the component also reads and assigns (so it " +
+                "is reactive); other types need their own BindConverter, and a pure @bind-only field needs its " +
                 "reactivity marked from the template -- both deferred. Refusing to emit.",
                 bound.Source);
             return [bound, changeAttr];   // consumed: the located refusal above is the one diagnostic
@@ -1022,17 +1027,32 @@ public sealed class TemplateCompiler
         var js = _code.FieldJs(field!);
         _used.Add("effect");
         _used.Add("listen");
-        if (isCheckbox)
+        switch (kind)
         {
-            // A checkbox: the .checked PROPERTY is the two-way surface, and it is already a bool -- no
-            // BindConverter parsing, so no parse-failure edge.
-            _bindings.Add($"effect(() => {{ {v}.checked = {js}.value; }});");
-            _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.checked; }});");
-        }
-        else
-        {
-            _bindings.Add($"effect(() => {{ {v}.value = {js}.value; }});");
-            _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.value; }});");
+            case "bool":
+                // A checkbox: the .checked PROPERTY is the two-way surface, already a bool -- no parsing.
+                _bindings.Add($"effect(() => {{ {v}.checked = {js}.value; }});");
+                _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.checked; }});");
+                break;
+            case "string":
+                _bindings.Add($"effect(() => {{ {v}.value = {js}.value; }});");
+                _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.value; }});");
+                break;
+            case "int":
+                // int/int32: format as a string; parse the change back mirroring int.TryParse (invariant,
+                // NumberStyles.Integer) -- regex for the accepted shape, int32 range, and revert-on-invalid
+                // so an unparseable/overflowing entry keeps the field and re-renders the old value (Blazor).
+                _bindings.Add($"effect(() => {{ {v}.value = String({js}.value); }});");
+                _events.Add(
+                    $"listen({v}, 'change', (e) => {{\n" +
+                    "    const _s = e.target.value;\n" +
+                    "    if (/^\\s*[+-]?\\d+\\s*$/.test(_s)) {\n" +
+                    "      const _n = parseInt(_s, 10);\n" +
+                    $"      if (_n >= -2147483648 && _n <= 2147483647) {{ {js}.value = _n; return; }}\n" +
+                    "    }\n" +
+                    $"    {v}.value = String({js}.value);\n" +
+                    "  });");
+                break;
         }
         return [bound, changeAttr];
     }
