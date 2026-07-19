@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.8.0';   // 1.8.0: 'reactiveattr' contract (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.9.0';   // 1.9.0: 'boolattr' contract (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -341,6 +341,14 @@ const APPS = {
   reactiveattr: {
     readySelector: '#increment',
     observeSelector: '#status',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #toggle and asserts a BOOLEAN `disabled` attribute on
+  // #target goes present->absent (hasAttribute AND the .disabled IDL property), against Blazor's own
+  // rendered DOM. The measurement of the boolean-`disabled` widening (BENCH n°14).
+  boolattr: {
+    readySelector: '#toggle',
+    observeSelector: '#target',
     scenarios: [],
   },
 };
@@ -1564,6 +1572,40 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         }
         if (out.observed.afterText !== '1') {
           out.problems.push(`#counter-value after #increment is "${out.observed.afterText}", expected "1"`);
+        }
+        return out;
+      });
+    }
+
+    if (app === 'boolattr') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        for (const sel of ['#toggle', '#target']) {
+          if (!document.querySelector(sel)) out.problems.push(`missing required element: ${sel}`);
+        }
+        if (out.problems.length) return out;
+
+        const target = () => document.querySelector('#target');
+        out.observed.initialHasAttr = target().hasAttribute('disabled');
+        out.observed.initialProp = target().disabled;
+        // Blazor's own initial render: locked=true -> #target disabled present. If it already read the
+        // post-click (absent) state the assertions below would be vacuous.
+        if (out.observed.initialHasAttr !== true || out.observed.initialProp !== true) {
+          out.problems.push(`#target initial disabled is {hasAttr:${out.observed.initialHasAttr}, prop:${out.observed.initialProp}}, expected both true`);
+          return out;
+        }
+        document.querySelector('#toggle').click();
+        out.observed.afterHasAttr = target().hasAttribute('disabled');
+        out.observed.afterProp = target().disabled;
+        // THE MEASUREMENT: a boolean binding REMOVES the attribute when false (removeAttribute) -- the
+        // path a string attribute never takes -- against Blazor's OWN rendered DOM. A still-present
+        // attribute here means the false value was written as a string (disabled="false"/"") instead of
+        // removing it.
+        if (out.observed.afterHasAttr !== false) {
+          out.problems.push(`#target disabled after #toggle still present (hasAttribute), expected absent`);
+        }
+        if (out.observed.afterProp !== false) {
+          out.problems.push(`#target .disabled after #toggle is ${out.observed.afterProp}, expected false`);
         }
         return out;
       });

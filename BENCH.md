@@ -2881,3 +2881,83 @@ au clic, en phase avec la liaison de texte — la réactivité d'attribut est **
 ---
 
 *Fin de l'entrée n°13. Ne pas modifier — ajouter une entrée n°14 pour toute rectification.*
+
+---
+
+## Entrée n°14 — 2026-07-19 — Phase 4 : l'attribut booléen `disabled` (présence/absence) mesuré contre Blazor (CORRECTION)
+
+**Sous-tranche différée de la n°13 fermée** : un **attribut booléen `disabled`** (`disabled="@locked"`) entre dans le
+sous-ensemble (décision #95). La n°13 refusait explicitement « attributs booléens présence/absence (`disabled`) » ; c'est
+cette réserve-là qui tombe. Un attribut booléen est une **sémantique différente** de la n°13 : Blazor rend `<button disabled>`
+quand la valeur est vraie et **omet l'attribut** quand elle est fausse — jamais `disabled="true"` ni `disabled="false"`. La
+primitive présence/absence **existe déjà** dans le runtime : `setAttr(el, name, v)` fait `removeAttribute` quand `v == null`
+(« null/undefined le retire — c'est ainsi qu'un compilateur exprime "absent" »). L'émission mappe donc le booléen vers
+`('' | null)` — `vrai → '' → setAttribute` (présent), `faux → null → removeAttribute` (absent) — via un ternaire au-dessus de
+`setAttr`. **Aucun octet de runtime ne change**, l'élargissement est **générateur seul** ; l'artefact est **fabriqué et
+mesuré** — même protocole que les n°9→13.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/BoolAttr.Blazor` : deux boutons, `<button id="target" disabled="@locked">` et `<button id="toggle" @onclick="Toggle">`,
+avec `locked` (vrai) inversé au clic. `locked` est **lu par le template** (l'attribut `disabled`) ET **assigné hors
+construction** (dans `Toggle`) : il est donc **hissé en signal**, et la liaison devient
+`effect(() => setAttr(_el0, 'disabled', locked.value ? '' : null))` — la MÊME règle réactive que la n°13, la valeur passant
+par le ternaire présence/absence. `locked` démarre **vrai** : le premier run de l'effect (dans l'arbre détaché, avant
+attach) écrit `setAttribute` → `#target` disabled présent, sans MutationRecord ; le clic bascule à faux → l'effect ré-exécute
+→ **`removeAttribute`** → `#target` disabled absent (le chemin qu'un attribut chaîne ne prend JAMAIS). Un générateur qui aurait
+écrit `setAttr(_el0, 'disabled', locked.value)` naïvement laisserait `disabled="false"` (présent) au clic — et l'oracle le
+verrait.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.9.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`, aucun run de poids/vitesse). La branche `boolattr` de `verifyContract` lit
+`#target` (doit avoir `disabled` présent — `hasAttribute` ET la propriété IDL `.disabled` toutes deux vraies), clique
+`#toggle`, et exige l'attribut **absent** (les deux fausses). L'oracle vérifie les DEUX : la sérialisation DOM
+(`hasAttribute`) et la propriété `.disabled`, pour épingler ce que Blazor fait *réellement*, pas ce qu'on suppose. L'interaction
+est LA mesure : elle prouve que le booléen **retire** l'attribut à faux (`removeAttribute`), ce qu'un rendu initial seul ne
+montrerait pas.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/BoolAttr.Blazor -c Release -o bench/publish/blazor-boolattr
+./bench/build-filament.sh filament-boolattr-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-boolattr/wwwroot --app boolattr --label blazor-boolattr       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-boolattr-gen   --app boolattr --label filament-boolattr-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#target` disabled `{hasAttr, prop}` : initial → `#toggle` | verdict |
+|---|---|---|
+| **blazor-boolattr** (autorité) | `{true, true}` → `{false, false}` | contrat OK |
+| **filament-boolattr-gen** (générateur) | `{true, true}` → `{false, false}` | contrat OK |
+
+**Les deux rendent `présent → absent`, à l'identique** (`hasAttribute` ET `.disabled`). L'attribut `disabled`, lié au signal
+`locked`, passe de présent à absent au clic via `removeAttribute` — la sémantique booléenne présence/absence est **mesurée**,
+pas raisonnée.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (app triviale, décision du propriétaire).
+- **`HARNESS_VERSION` 1.8.0 → 1.9.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (branche `boolattr` + entrée `APPS`),
+  donc son hash change ; le numéro monte. Aucune mesure de poids antérieure n'est invalidée.
+- **RUNTIME INCHANGÉ.** `setAttr` et sa branche `null → removeAttribute` existaient déjà ; l'élargissement n'a touché QUE le
+  générateur (un ternaire `? '' : null`). `git diff -- src/filament-runtime` est vide.
+- **TRANCHE ÉTROITE — `disabled` seulement, valeur `@expr` pure.** L'émission booléenne est réservée à une **deuxième liste
+  blanche** disjointe (`BooleanAttributes = { disabled }`, à côté de `{ class }`) : tout autre nom reste refusé
+  `dynamic-attribute` (dont `value=` de `@bind`, test `Bind`, et les booléens hors liste comme `hidden`, test
+  `NonAllowedBooleanAttribute`). Liste **fondée sur le nom** car le générateur ne fait aucune inférence de type : `disabled`
+  est **engagé** vers présence/absence — un `disabled` de type chaîne est donc différé, distinct. Restent différés : autres
+  noms booléens (`checked`/`readonly`/`hidden`), `disabled` chaîne, valeur mixte littéral+expression (`class="box @x"`).
+  §8 inchangé : RADICAL reste « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°14. Ne pas modifier — ajouter une entrée n°15 pour toute rectification.*
