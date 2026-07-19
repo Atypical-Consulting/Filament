@@ -150,6 +150,11 @@ public static class RepoPaths
 
     /// <summary>The positional-record SPEC (decisions 51/111). Never edited to make a gate pass.</summary>
     public static string PositionalRecordAnswerKey => Path.Combine(Root, "samples", "PositionalRecord", "positionalrecord.js");
+
+    public static string LongCounterRazor => Path.Combine(Root, "baseline", "LongCounter.Blazor", "App.razor");
+
+    /// <summary>The long-via-BigInt SPEC (decisions 51/112). Never edited to make a gate pass.</summary>
+    public static string LongCounterAnswerKey => Path.Combine(Root, "samples", "LongCounter", "longcounter.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

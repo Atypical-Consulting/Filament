@@ -56,6 +56,7 @@ samples/filament-ifelsemulti-gen/App.g.js
 samples/filament-ifnested-gen/App.g.js
 samples/filament-trylock-gen/App.g.js
 samples/filament-positionalrecord-gen/App.g.js
+samples/filament-longcounter-gen/App.g.js
 
 # examples/FilamentApp: emitted/copied at build, never committed (same rule as samples/*.g.js).
 examples/FilamentApp/wwwroot/App.g.js
