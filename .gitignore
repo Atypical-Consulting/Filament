@@ -40,6 +40,7 @@ samples/filament-rootif-gen/App.g.js
 samples/filament-boundcompose-gen/App.g.js
 samples/filament-reactiveattr-gen/App.g.js
 samples/filament-boolattr-gen/App.g.js
+samples/filament-mixedattr-gen/App.g.js
 
 # examples/FilamentApp: emitted/copied at build, never committed (same rule as samples/*.g.js).
 examples/FilamentApp/wwwroot/App.g.js

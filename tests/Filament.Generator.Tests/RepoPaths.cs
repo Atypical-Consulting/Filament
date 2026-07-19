@@ -68,6 +68,12 @@ public static class RepoPaths
 
     /// <summary>The boolean-attribute SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string BoolAttrAnswerKey => Path.Combine(Root, "samples", "BoolAttr", "boolattr.js");
+
+    /// <summary>Mixed literal+expression `class` value (a counter whose #status class is composed) — the file Blazor compiles.</summary>
+    public static string MixedAttrRazor => Path.Combine(Root, "baseline", "MixedAttr.Blazor", "App.razor");
+
+    /// <summary>The mixed-attribute SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string MixedAttrAnswerKey => Path.Combine(Root, "samples", "MixedAttr", "mixedattr.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

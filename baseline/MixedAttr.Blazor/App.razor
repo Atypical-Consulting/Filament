@@ -1,0 +1,21 @@
+@* Mixed literal+expression `class` widening (BENCH n°15). #status carries
+   class="badge @statusClass rounded" -- a leading literal, a reactive expression, and a trailing
+   literal -- so the whole class string is composed and updates with state. Blank lines between the
+   three siblings are "\n\n" text nodes -- the shared DOM contract. *@
+
+<h1 id="title">Counter</h1>
+
+<p id="status" class="badge @statusClass rounded">Current count: <span id="counter-value">@currentCount</span></p>
+
+<button id="increment" @onclick="Increment">Click me</button>
+
+@code {
+    private int currentCount = 0;
+    private string statusClass = "zero";
+
+    private void Increment()
+    {
+        currentCount++;
+        statusClass = "counting";
+    }
+}
