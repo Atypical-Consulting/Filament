@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.27.0';   // 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.28.0';   // 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -467,6 +467,14 @@ const APPS = {
   // Blazor's own DOM. The measurement of the float widening (BENCH n°32): 0.1f + 0.2f = 0.3f in single
   // precision, where a JS-number-backed float would render "0.30000000000000004".
   floatcounter: {
+    readySelector: '#add',
+    observeSelector: '#value',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #add and asserts #value goes "1.10" -> "2.15" -> "3.20", against
+  // Blazor's own DOM. The measurement of the decimal widening (BENCH n°33): base-10 exactness AND scale-preserved
+  // trailing zeros -- neither of which a binary float can do (a number would render "1.1" then 3.2000000000000002).
+  decimalcounter: {
     readySelector: '#add',
     observeSelector: '#value',
     scenarios: [],
@@ -1953,6 +1961,28 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         document.querySelector('#go').click();
         out.observed.afterSecond = read();
         if (read() !== '12') out.problems.push(`#count after 2nd #go is "${read()}", expected "12"`);
+        return out;
+      });
+    }
+
+    if (app === 'decimalcounter') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#add') || !document.querySelector('#value')) {
+          out.problems.push('missing required element: #add/#value'); return out;
+        }
+        const read = () => document.querySelector('#value').textContent.trim();
+        out.observed.initial = read();
+        // THE MEASUREMENT: 1.10m keeps its trailing zero ("1.10", not "1.1" -- scale is part of the value), and
+        // 1.10m + 1.05m = 2.15m then 3.20m EXACTLY in base 10 (a double would give 3.2000000000000002). A
+        // number-backed decimal fails at "1.10" already; the boxed { m, s } + base-10 helpers make it match Blazor.
+        if (read() !== '1.10') { out.problems.push(`#value initial is "${read()}", expected "1.10" (a number-backed decimal would show "1.1")`); return out; }
+        document.querySelector('#add').click();
+        out.observed.afterAdd = read();
+        if (read() !== '2.15') { out.problems.push(`#value after #add is "${read()}", expected "2.15"`); return out; }
+        document.querySelector('#add').click();
+        out.observed.afterSecond = read();
+        if (read() !== '3.20') out.problems.push(`#value after 2nd #add is "${read()}", expected "3.20" (trailing zero + base-10 exactness)`);
         return out;
       });
     }

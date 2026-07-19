@@ -3970,3 +3970,45 @@ vide. Le pare-feu runtime tient.
 mapping. Les témoins `Code/TypeFloat.razor` et `float` basculent refusés → compilés ; `decimal`/`DateTime` restent
 refusés (`decimal` n'a pas de type natif JS ; `DateTime` pas de BCL). `HARNESS_VERSION` 1.26.0 → 1.27.0, divulgué.
 §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 114. Le type `decimal` entre dans le §5 — un objet boxé { m, s } (mantisse BigInt + échelle), arithmétique base-10 par des helpers émis ; supersède le refus « pas de type natif JS »
+
+**Décision.** Le type `decimal` rejoint le sous-ensemble §5, mappé sur un OBJET BOXÉ `{ m: mantisse BigInt, s:
+échelle }`. Il était refusé, catalogué « non viable — pas de type décimal natif en JS ». C'EST VRAI qu'il n'y a
+pas de primitive native (contrairement à long→BigInt, float→Math.fround) — mais decimal reste FIDÈLEMENT
+représentable : C#'s decimal est un type base-10 128 bits qui SUIT L'ÉCHELLE (1.10m garde son zéro final : mantisse
+110, échelle 2), et une paire (mantisse BigInt, échelle) la capture exactement, avec une arithmétique base-10 par
+des helpers. VÉRIFIÉ empiriquement (7 cas contre System.Decimal, dont l'échelle-produit `1.0m*1.0m`="1.00" et les
+zéros finaux). `TypeSubset.Scalars` admet `System_Decimal` (donc `List<decimal>`). Suite : **346 tests** (268
+générateur / 60 subset / 18 analyzer), runtime 214.
+
+**LE MODÈLE DE VALEUR BOXÉ — le plus gros changement d'émission de la série.** Chaque autre type est une valeur
+JS native (nombre / BigInt / littéral objet) qui coule à travers des OPÉRATEURS. Un decimal est un OBJET, donc son
+arithmétique est des APPELS DE FONCTION : `a + b` devient `__decAdd(a, b)`, JAMAIS l'opérateur `+` (qui additionnerait
+deux objets en NaN). `ExprCore` intercepte tout binaire décimal AVANT `JsBinaryOperator` (`EitherDecimal`) et
+dispatche : +→`__decAdd`, -→`__decSub`, *→`__decMul`, les six comparaisons→`__decCmp(...) OP 0` ; l'unaire -→
+`__decNeg`. Un littéral décimal → `{ m: <mantisse>n, s: <échelle> }` (décomposé par `decimal.GetBits`, la valeur
+EXACTE sans arrondi). L'élargissement int→decimal → `__decFromInt(x)`.
+
+**LA DIVISION EST REFUSÉE, PAS ÉMISE.** La division décimale fidèle exige l'arrondi à 28-29 chiffres significatifs
+de System.Decimal, un problème séparé et plus lourd. Le refuser (via `DecimalBinary`) vaut mieux qu'un quotient
+silencieusement faux (§10). Comparaison, +, -, * sont exacts et admis ; `/` et `%` refusés, divulgué.
+
+**HELPERS ÉMIS, PAS D'EXPORT RUNTIME.** Les `__dec*` sont écrits dans le module (fonctions de niveau module,
+comme `__f32` de #113 et `createItem` d'une `list()`), et SEULS ceux réellement utilisés (suivis dans
+`DecimalHelpers`), dans un ordre fixe. Donc decimal reste GÉNÉRATEUR SEUL : `git diff -- src/filament-runtime`
+vide. Le pare-feu runtime tient — cohérent avec toute la série #94–#113.
+
+**NOTE canon (L3).** La passe d'alpha-équivalence de canon a une limite connue (L3) quand des CLÉS de littéral
+objet apparaissent dans des corps de helper (les retours `__dec*`). L'answer key aligne donc les noms de locaux de
+`mount()` sur le schéma du générateur pour que canon vérifie l'équivalence — les helpers, les formes `{ m, s }` et
+l'arithmétique y sont écrits indépendamment ; seuls les noms jetables coïncident. Le snapshot (octet) et l'oracle
+DOM contrôlent le reste.
+
+**MESURÉ (entrée n°33).** `baseline/DecimalCounter.Blazor` (`total` un decimal part de 1.10m, `#add` ajoute 1.05m)
+et `filament-decimalcounter-gen` rendent `#value` `"1.10" → "2.15" → "3.20"`, à l'identique — une implémentation
+adossée à `number` échouerait dès "1.10" (rend "1.1", zéro final perdu) et donnerait 3.2000000000000002. C'est la
+mesure qui PROUVE le mapping. Les témoins `Code/TypeDecimal.razor` et `decimal`/`List<decimal>` basculent refusés →
+compilés ; `object`/`DateTime` restent refusés. `HARNESS_VERSION` 1.27.0 → 1.28.0, divulgué. §5 s'élargit d'un cran ;
+RADICAL reste **« ni éliminée ni établie »**.
+

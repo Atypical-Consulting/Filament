@@ -3999,3 +3999,48 @@ pas de BCL). §8 inchangé.
 ---
 
 *Fin de l'entrée n°32. Ne pas modifier — ajouter une entrée n°33 pour toute rectification.*
+
+---
+
+## Entrée n°33 — 2026-07-20 — Phase 4 : le type `decimal` (→ { m, s } boxé) mesuré contre Blazor (CORRECTION)
+
+**Le type `decimal`** (décision #114) rejoint le §5, mappé sur un **objet boxé `{ m: mantisse BigInt, s: échelle }`**.
+C#'s decimal est un type base-10 128 bits qui SUIT L'ÉCHELLE (1.10m garde son zéro final — c'est mantisse 110,
+échelle 2). JS n'a AUCUN type décimal natif, donc une valeur decimal est cette paire, et son arithmétique passe
+par les helpers `__dec*` (base-10 exacte) : `__decAdd` aligne les échelles et additionne les mantisses ; `__decStr`
+rend la mantisse avec la virgule à `s`, zéros finaux préservés. Ils reproduisent System.Decimal pour +, -, *, la
+comparaison et l'affichage ; la DIVISION (arrondi à 28-29 chiffres significatifs) est refusée, pas émise. Seuls les
+helpers RÉELLEMENT utilisés sont émis (ici `__decAdd`, `__decStr`), dans le module — donc **runtime INCHANGÉ**.
+
+### Ce qui est mesuré
+
+`baseline/DecimalCounter.Blazor` : `total` (un `decimal`) part de 1.10m ; chaque `#add` ajoute 1.05m. En C#
+decimal, 1.10m + 1.05m = 2.15m puis 3.20m — le zéro final PRÉSERVÉ et la somme base-10 EXACTE (un double donnerait
+"1.1" puis 3.2000000000000002). `total` est lu par `@total` ET assigné par `Add` → signal. La branche
+`decimalcounter` de `verifyContract` clique `#add` deux fois et exige `#value` : `"1.10" → "2.15" → "3.20"`.
+**`HARNESS_VERSION` 1.27.0 → 1.28.0**, divulgué.
+
+```
+dotnet publish baseline/DecimalCounter.Blazor -c Release -o bench/publish/blazor-decimalcounter
+./bench/build-filament.sh filament-decimalcounter-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-decimalcounter/wwwroot --app decimalcounter --label blazor-decimalcounter       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-decimalcounter-gen   --app decimalcounter --label filament-decimalcounter-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#value` | verdict |
+|---|---|---|
+| **blazor-decimalcounter** (autorité) | `"1.10" → "2.15" → "3.20"` | contrat OK |
+| **filament-decimalcounter-gen** (générateur) | `"1.10" → "2.15" → "3.20"` | contrat OK |
+
+**Les deux rendent `"1.10"` puis `"2.15"` puis `"3.20"`, à l'identique.** C'est la mesure QUI PROUVE le mapping :
+une implémentation adossée à `number` échouerait DÈS `"1.10"` (elle rend "1.1" — le zéro final est perdu) et donnerait
+3.2000000000000002 ; le `{ m, s }` boxé plus l'arithmétique base-10 reproduisent le `decimal` C# exactement — le zéro
+final ET l'exactitude. `git diff -- src/filament-runtime` vide (les helpers sont émis dans le module). Les témoins
+`Code/TypeDecimal.razor` et `decimal`/`List<decimal>` basculent de refusés à compilés ; `object`/`DateTime` restent
+refusés (`object` n'est pas typé ; `DateTime` n'a pas de BCL). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°33. Ne pas modifier — ajouter une entrée n°34 pour toute rectification.*
