@@ -1,0 +1,17 @@
+@* Boolean-`disabled` widening (BENCH n°14). #target's `disabled` attribute is present when
+   `locked` is true and absent when false -- Blazor's boolean-attribute contract. `locked`
+   starts true (rendered disabled), the toggle flips it. Blank line between the buttons is a
+   "\n\n" text node -- the shared DOM contract. *@
+
+<button id="target" disabled="@locked">Target</button>
+
+<button id="toggle" @onclick="Toggle">Toggle</button>
+
+@code {
+    private bool locked = true;
+
+    private void Toggle()
+    {
+        locked = !locked;
+    }
+}
