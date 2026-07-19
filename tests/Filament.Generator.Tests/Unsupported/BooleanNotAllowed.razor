@@ -1,0 +1,10 @@
+<p id="box" hidden="@isHidden">hello</p>
+
+@code {
+    private bool isHidden = true;
+
+    private void Touch()
+    {
+        isHidden = !isHidden;
+    }
+}

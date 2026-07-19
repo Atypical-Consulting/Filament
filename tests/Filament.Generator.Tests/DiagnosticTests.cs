@@ -155,6 +155,22 @@ public class DiagnosticTests
     }
 
     /// <summary>
+    /// The boolean allowlist is a MEASURED boundary, not folklore: a boolean attribute that is NOT
+    /// `disabled` (here `hidden`) still refuses `[dynamic-attribute]` at its exact location, and the
+    /// message now names BOTH allowlists (reactive string: class; boolean present/absent: disabled).
+    /// </summary>
+    [Fact]
+    public void NonAllowedBooleanAttribute_IsRefused_AtItsExactLocation()
+    {
+        var d = Refused("BooleanNotAllowed.razor");
+
+        Assert.Contains("BooleanNotAllowed.razor(1,12): FIL0003: [dynamic-attribute]", d);
+        Assert.Contains("disabled", d);  // the message names the boolean allowlist
+        Assert.Contains("class", d);     // and still names the string allowlist
+        Assert.Contains("isHidden", d);  // and echoes the refused expression
+    }
+
+    /// <summary>
     /// DECISION 53's backstop, from the input side. An attribute that still carries its
     /// '@' never resolved to a directive attribute. The cause is either an
     /// out-of-subset directive attribute or -- and this is the one that matters -- the
