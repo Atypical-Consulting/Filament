@@ -3038,3 +3038,78 @@ composition est **mesurée**, pas raisonnée.
 ---
 
 *Fin de l'entrée n°15. Ne pas modifier — ajouter une entrée n°16 pour toute rectification.*
+
+---
+
+## Entrée n°16 — 2026-07-19 — Phase 4 : les NOMS d'attributs chaîne réactifs (title/href/aria-label) mesurés contre Blazor (CORRECTION)
+
+**Sous-tranche différée des n°13/n°15 fermée** : trois **noms d'attributs chaîne réactifs** — `title`, `href`,
+`aria-label` — rejoignent la liste blanche `DynamicAttributes` (décision #97). Les n°13→15 réservaient « autres noms
+d'attributs » ; c'est cette réserve-là qui tombe (pour ce lot représentatif). Comme la récolte et l'émission sont déjà
+**agnostiques au nom**, l'admission est un **changement d'une ligne** ; chaque nom compile vers la MÊME émission composée
+que `class` (`effect(() => setAttr(el, nom, x.value))`, `aria-label` avec tiret inclus). Générateur seul ; artefact
+**fabriqué et mesuré**.
+
+### Validité Blazor vérifiée EN AMONT (la leçon RZ9979)
+
+Avant toute conception, `dotnet build` d'une app `<a href="@url" title="@tip" aria-label="@label" data-testid="@tid">`
+**réussit** — les attributs chaîne réactifs, tirets compris, sont du Blazor valide (contrairement au contrôle de flux
+dans un attribut, retiré par RZ9979, cf. l'entrée précédente non enregistrée). La leçon : construire l'app Blazor de
+base pour confirmer la validité de la source AVANT de concevoir.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/StringAttrs.Blazor` : un `<a id="link" href="@url" title="@tip" aria-label="@label">` dont les trois champs
+(`url`/`tip`/`label`) sont réassignés au clic. Chacun est **lu par le template** ET **assigné hors construction** (dans
+`Toggle`), donc **hissé en signal** ; les trois liaisons sont trois `effect(() => setAttr(a, nom, x.value))` en ordre
+document (href, title, aria-label). `Toggle` écrit trois champs → handler `batch()`. Un générateur qui n'aurait pas fait
+suivre un attribut (ou aurait mal géré le nom à tiret `aria-label`) laisserait une valeur périmée — l'oracle le verrait.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.11.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`, aucun run de poids/vitesse). La branche `stringattrs` de `verifyContract`
+lit les trois attributs de `#link` (`getAttribute`), exige l'initial `{href:"/a", title:"first", aria:"one"}`, clique
+`#toggle`, et exige `{href:"/b", title:"second", aria:"two"}`. Vérifier les TROIS est la mesure.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/StringAttrs.Blazor -c Release -o bench/publish/blazor-stringattrs
+./bench/build-filament.sh filament-stringattrs-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-stringattrs/wwwroot --app stringattrs --label blazor-stringattrs       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-stringattrs-gen   --app stringattrs --label filament-stringattrs-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#link` href/title/aria-label : initial → `#toggle` | verdict |
+|---|---|---|
+| **blazor-stringattrs** (autorité) | `/a·first·one` → `/b·second·two` | contrat OK |
+| **filament-stringattrs-gen** (générateur) | `/a·first·one` → `/b·second·two` | contrat OK |
+
+**Les deux rendent `/a·first·one → /b·second·two`, à l'identique.** Les trois attributs chaîne réactifs suivent l'état
+en phase — la généralisation de la liste blanche chaîne est **mesurée**, pas raisonnée.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (app triviale, décision du propriétaire).
+- **`HARNESS_VERSION` 1.10.0 → 1.11.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (branche `stringattrs` + entrée
+  `APPS`), donc son hash change ; le numéro monte. Aucune mesure de poids antérieure n'est invalidée.
+- **RUNTIME INCHANGÉ.** `setAttr` prend n'importe quel nom d'attribut ; l'admission n'a touché QUE la liste blanche du
+  générateur. `git diff -- src/filament-runtime` est vide.
+- **FAIBLE NOUVEAUTÉ, DIVULGUÉE.** Aucune forme d'émission nouvelle — la valeur est la **preuve mesurée** que la liste
+  blanche chaîne se généralise à d'autres noms, et la fermeture de la réserve « autres noms ».
+- **TRANCHE ÉTROITE.** Seuls `title`/`href`/`aria-label`. `value` est **délibérément exclu** (garde `@bind` refusé, test
+  `Bind` inchangé) ; le témoin de refus a **migré `title → role`** (`DynamicRole`/`MixedNonAllowed`, toujours refusés à
+  `(1,12)`). Restent différés : `data-*`, `style`, `value`, autres noms. §8 inchangé : RADICAL reste « ni éliminée ni
+  établie ».
+
+---
+
+*Fin de l'entrée n°16. Ne pas modifier — ajouter une entrée n°17 pour toute rectification.*

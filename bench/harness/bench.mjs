@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.10.0';   // 1.10.0: 'mixedattr' contract (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.11.0';   // 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -358,6 +358,14 @@ const APPS = {
   mixedattr: {
     readySelector: '#increment',
     observeSelector: '#status',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #toggle and asserts three reactive string attributes on
+  // #link (href/title/aria-label) track state, against Blazor's own rendered DOM. The measurement of the
+  // reactive-string-attribute-names widening (BENCH n°16).
+  stringattrs: {
+    readySelector: '#toggle',
+    observeSelector: '#link',
     scenarios: [],
   },
 };
@@ -1654,6 +1662,34 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         if (out.observed.afterText !== '1') {
           out.problems.push(`#counter-value after #increment is "${out.observed.afterText}", expected "1"`);
         }
+        return out;
+      });
+    }
+
+    if (app === 'stringattrs') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        for (const sel of ['#toggle', '#link']) {
+          if (!document.querySelector(sel)) out.problems.push(`missing required element: ${sel}`);
+        }
+        if (out.problems.length) return out;
+
+        const attr = (name) => document.querySelector('#link').getAttribute(name);
+        const snap = () => ({ href: attr('href'), title: attr('title'), aria: attr('aria-label') });
+        out.observed.initial = snap();
+        // Blazor's own initial render. If it already read the post-click values the assertions below
+        // would be vacuous.
+        if (out.observed.initial.href !== '/a' || out.observed.initial.title !== 'first' || out.observed.initial.aria !== 'one') {
+          out.problems.push(`#link initial is ${JSON.stringify(out.observed.initial)}, expected {href:"/a",title:"first",aria:"one"}`);
+          return out;
+        }
+        document.querySelector('#toggle').click();
+        out.observed.after = snap();
+        // THE MEASUREMENT: three reactive string attributes (including the hyphenated aria-label) update
+        // in lockstep, against Blazor's OWN rendered DOM. A stale value means the attribute did not track.
+        if (out.observed.after.href !== '/b') out.problems.push(`#link href after #toggle is "${out.observed.after.href}", expected "/b"`);
+        if (out.observed.after.title !== 'second') out.problems.push(`#link title after #toggle is "${out.observed.after.title}", expected "second"`);
+        if (out.observed.after.aria !== 'two') out.problems.push(`#link aria-label after #toggle is "${out.observed.after.aria}", expected "two"`);
         return out;
       });
     }
