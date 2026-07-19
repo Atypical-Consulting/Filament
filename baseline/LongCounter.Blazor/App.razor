@@ -1,0 +1,20 @@
+@* long -> BigInt (BENCH n°31, decision 112): a `long` field whose value crosses 2^53, where a naive JS
+   number would silently lose precision. `total` starts at 9007199254740990 (just under 2^53 =
+   9007199254740992); each #add adds 3, so after one click it is 9007199254740993 -- a value a JS double
+   CANNOT hold (it rounds to ...992). BigInt holds it exactly, and the DOM coerces a BigInt to its exact
+   decimal string, so #value renders "...993" then "...996", exactly as Blazor renders the same C# long.
+   The click IS the measurement: a number-backed implementation would show "...992"/"...994" (wrong). total
+   is read by @total AND assigned by Add -> a signal (of BigInt). *@
+
+<p><span id="value">@total</span></p>
+
+<button id="add" @onclick="Add">add</button>
+
+@code {
+    private long total = 9007199254740990;
+
+    private void Add()
+    {
+        total = total + 3;
+    }
+}
