@@ -1,0 +1,21 @@
+@* DateTime -> BigInt ticks + __dtStr display (BENCH n°34, decision 115): a `DateTime` that does real date
+   arithmetic and formats faithfully. `when` starts at new DateTime(2026, 7, 20); each #add advances it by 5
+   days. A DateTime is a BigInt count of ticks (100ns since 0001-01-01): construction is computed from the
+   constant args at generate-time, .AddDays(5) adds 5·TicksPerDay, and the display renders C#'s default
+   "MM/dd/yyyy HH:mm:ss" through an emitted formatter. So #value goes "07/20/2026 00:00:00" -> "07/25/..." ->
+   "07/30/...", exactly as Blazor renders the same C# DateTime -- including calendar-correct day rollover.
+   `when` is read by @when AND assigned by Add -> a signal. (DateTime.Now is deferred: non-deterministic, so it
+   cannot be measured against Blazor; only explicit construction + AddDays + comparison are in the subset.) *@
+
+<p><span id="value">@when</span></p>
+
+<button id="add" @onclick="Add">add</button>
+
+@code {
+    private System.DateTime when = new System.DateTime(2026, 7, 20);
+
+    private void Add()
+    {
+        when = when.AddDays(5);
+    }
+}
