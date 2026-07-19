@@ -3255,3 +3255,54 @@ une app fraîchement générée en 0.1.1 (donc la `<Watch>` fournie PAR le SDK m
 **LE PARE-FEU.** Aucun octet du générateur, aucune source du runtime, **aucune entrée BENCH** : `<Watch>` est une
 métadonnée de build inerte hors de `dotnet watch`, le Build normal est intact, **270 tests verts**. Différé : faire
 marcher `dotnet watch` **sans** le drapeau ; surveiller plusieurs `.razor` (va avec la tranche multi-composants).
+
+## 94. L'attribut `class` RÉACTIF entre dans le §5 — la MÊME règle que la liaison de texte (`setAttr` au lieu de `setText`), gardée par une liste blanche d'attributs, et l'élargissement MESURÉ contre Blazor
+
+**Décision.** La sous-tranche que la n°90 refusait explicitement — « attribut d'enfant lié (`class="@x"`) — les
+attributs réactifs ne sont pas encore dans le sous-ensemble de base » — est **fermée** : un attribut `class` **réactif**
+(`class="@statusClass"`) entre dans le sous-ensemble (côté template du §5). La règle est **exactement** celle de la
+liaison de TEXTE (`EmitBinding`), la cible d'écriture étant un attribut (`setAttr`) au lieu d'un nœud texte
+(`setText`) : `SlotJs` donne la traduction du front end (jamais un splice), `SlotIsReactive` décide effect-vs-écriture
+au montage. Suite : **274 tests** (201 générateur + 55 subset + 18 analyseur).
+
+**RUNTIME INCHANGÉ — l'élargissement est GÉNÉRATEUR SEUL.** `setAttr(el, name, v)` **existe déjà** (rows.js l'émet en
+statique : `setAttr(td, 'class', 'col-md-1')`) et il est déjà dans `RuntimeExports`. La liaison réactive est donc
+`effect(() => setAttr(_el, 'class', statusClass.value))` — un primitif qui ship déjà, enveloppé dans un effect. Aucune
+source de `src/filament-runtime` ne bouge (`git diff` vide, 214 tests runtime byte-identiques). L'effect atterrit dans
+`_bindings` (avant l'attache), donc son premier `setAttr` écrit dans l'arbre DÉTACHÉ et ne produit aucun
+`MutationRecord` : l'invariant « attache en dernier » / C3 tient sans y toucher.
+
+**LE VRAI TRAVAIL : RÉCOLTER L'EXPRESSION D'ATTRIBUT DANS `plan.FreeSlots`.** `SlotJs`/`SlotIsReactive` ne répondent
+que pour un nœud compilé, i.e. récolté dans `FreeSlots` ; or `Collect()` filtre `HtmlAttributeIntermediateNode`, donc
+une expression d'attribut sur un élément ordinaire n'était jamais récoltée (seul `CollectComponentBindings` le faisait,
+pour les composants — n°90). `CollectDynamicAttributes` récolte la valeur d'un attribut **admis** dans `FreeSlots` — la
+MÊME récolte que pour un paramètre de composant lié — pour que `EmitAttribute` relise `SlotJs`/`SlotIsReactive` sur le
+MÊME nœud. Deux gardes tiennent le reste dehors, toutes deux dans `DynamicValue`, **l'unique prédicat** que la récolte
+ET l'émission consultent (n°53 : une plomberie décrite deux fois dérive, donc la seconde description ne doit pas
+pouvoir mentir) : valeur = **une seule** `@`-expression pure (pas de partie littérale — une concaténation
+`class="box @x"` reste refusée) ET **pas** un gestionnaire d'événement (sa valeur se déballe en `EventCallback` → il
+garde sa voie `listen()`).
+
+**LA LISTE BLANCHE D'ATTRIBUTS EST LA FRONTIÈRE MESURÉE.** `DynamicAttributes = { class }` (comme `PropertyAttributes`
+et `AllowedDirectives`) : `class` est le nom MESURÉ (entrée n°13) ; **tout autre nom** garde le refus
+`dynamic-attribute`. C'est précisément ce qui maintient le `value=` de `@bind` refusé avec son message exact (le
+`value` lowered `BindConverter.FormatValue(…)` n'est pas admis, donc jamais compilé — le test `Bind` passe INCHANGÉ,
+`BindConverter` toujours cité). Sans la liste blanche, `@bind` aurait produit un FIL0001 « BindConverter introuvable »
+au lieu du FIL0003 clair. Élargir cette liste est une NOUVELLE tranche mesurée à chaque fois : un attribut booléen
+présence/absence (`disabled`) demande une émission DIFFÉRENTE (présent/absent, pas `setAttr` de « true »), il ne
+s'admet donc pas en ajoutant un nom ici.
+
+**GÉNÉRATEUR SEUL — l'analyseur ne bouge pas** (18 tests, byte-identique à la n°90) : la réactivité d'attribut est une
+affaire de template (`TemplateCompiler`/`CSharpFrontEnd`), invisible à l'analyseur de syntaxe C#. Aucun élargissement
+du sous-ensemble C# non plus : l'app de démo n'utilise que du C# déjà admis (champs `int`/`string`, réassignation de
+littéral, `++`).
+
+**MESURÉ CONTRE BLAZOR (entrée n°13).** `baseline/ReactiveAttr.Blazor` et `filament-reactiveattr-gen` : les deux
+rendent `#status` class / `#counter-value` `zero`/`0` → `counting`/`1` au clic de `#increment` — l'attribut `class`
+suit le signal `statusClass`, en phase avec la liaison de texte. `HARNESS_VERSION` 1.7.0 → 1.8.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Seul `class`, valeur `@expr` pure, réactif OU (par symétrie) non-réactif (écriture au montage),
+entre. Restent refusés loud+localisés : les **autres noms d'attributs** (`dynamic-attribute` nommant la liste blanche),
+les attributs **booléens** présence/absence, la valeur **mixte** littéral+expression (`class="box @x"`), le contrôle
+de flux dans une valeur d'attribut. Différés : attributs booléens, autres noms, valeurs concaténées. §5 s'élargit d'un
+cran ; RADICAL reste **« ni éliminée ni établie »**.
