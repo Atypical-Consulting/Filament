@@ -3903,3 +3903,38 @@ bascule refusé → compilé (`PositionalRecord_NowCompiles`).
 **GÉNÉRATEUR SEUL.** `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°30) : `baseline/PositionalRecord.Blazor`
 et `filament-positionalrecord-gen` rendent `#list` `["alpha: 1"] → ["alpha: 1", "beta: 2"]`, à l'identique.
 `HARNESS_VERSION` 1.24.0 → 1.25.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 112. Le type `long` entre dans le §5 — son foyer JS est BigInt (exact au-delà de 2⁵³), pas `number` ; supersède le refus #77-adjacent « non viable par la précision »
+
+**Décision.** Le type `long` (Int64) rejoint le sous-ensemble §5, mappé sur **BigInt** et non sur `number`. Il était
+refusé (`unsupported-type`), catalogué « non viable par la précision de `number` » — un OVER-refus, exactement comme
+le record positionnel #111. `long` a un foyer JS FIDÈLE : (1) l'affichage entier de BigInt est EXACT au-delà de
+2⁵³ (= 9007199254740992), là où un double perd de la précision ; (2) la division BigInt tronque vers zéro
+EXACTEMENT comme `long`/`long` en C# (`7n / 2n` = 3n, `-7n / 2n` = -3n), et n'a PAS besoin de `Math.trunc` (un
+BigInt n'a pas de partie fractionnaire). `TypeSubset.Scalars` admet `System_Int64` (donc `List<long>` aussi).
+Suite : **337 tests** (260 générateur / 59 subset / 18 analyzer), runtime 214.
+
+**LES LITTÉRAUX ET LES ÉLARGISSEMENTS.** Un littéral entier en contexte `long` devient un littéral BigInt :
+`NumericLiteral` consulte `ConvertedType` — Int64 → suffixe `n` (`5` dans `long x = 5` → `5n` ; un `5L` → `5n` ;
+une valeur au-delà de la plage int → `…n`). Les conversions numériques implicites de C# qui FRANCHISSENT la
+frontière BigInt de JS sont épelées (JS ne peut mélanger BigInt et number) : int→long devient `BigInt(x)`,
+long→double devient `Number(x)` (`Expr` enveloppe le résultat de `ExprCore` selon `Type`/`ConvertedType`, en
+sautant les littéraux que `NumericLiteral` a déjà émis dans leur forme convertie). Inerte pour tout app existant :
+aucune conversion des types pré-#112 (int et double sont tous deux `number`) ne franchit la frontière.
+
+**LA DIVISION LONG.** `IsLongDivision` (résultat Int64) est admise et émise en `/` NU sur des BigInt (troncature).
+Distincte de `IsIntegerDivision` (int → `Math.trunc`) et `IsFaithfulDivision` (double → `/` verbatim) — la
+troisième division du §5, décidée par le TYPE du résultat comme les deux autres.
+
+**LE BORD DIVULGUÉ : le débordement à 2⁶³.** BigInt est de précision arbitraire ; C# `long` boucle à 2⁶³. Donc
+`long.MaxValue + 1` diverge (C# → `long.MinValue`, BigInt → 2⁶³). Bord extrême, divulgué et non mesuré — cohérent
+avec la façon dont `int` traite déjà ses propres bords (entrée n°27).
+
+**GÉNÉRATEUR SEUL** — le DOM coerce un BigInt en sa chaîne décimale exacte quand `setText` assigne `node.data`,
+donc aucune nouvelle primitive runtime. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°31) :
+`baseline/LongCounter.Blazor` et `filament-longcounter-gen` rendent `#value` `9007199254740990 → …993 → …996`, à
+l'identique — la valeur FRANCHIT 2⁵³, donc une implémentation adossée à `number` aurait rendu `…992` et échoué le
+contrat contre Blazor. C'est la mesure qui PROUVE le mapping. Les témoins `Code/TypeLong.razor` et `List<long>`
+basculent refusés → compilés ; `float`/`decimal`/`DateTime` restent refusés (pas de représentation JS fidèle :
+`float` exigerait un formateur simple précision, `decimal` n'a pas de type natif, `DateTime` pas de BCL).
+`HARNESS_VERSION` 1.25.0 → 1.26.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.

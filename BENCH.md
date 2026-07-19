@@ -3909,3 +3909,48 @@ portant une MÉTHODE (`Code/RecordMember.razor`) reste refusé (c'est du comport
 ---
 
 *Fin de l'entrée n°30. Ne pas modifier — ajouter une entrée n°31 pour toute rectification.*
+
+---
+
+## Entrée n°31 — 2026-07-20 — Phase 4 : le type `long` (→ BigInt) mesuré contre Blazor (CORRECTION)
+
+**Le type `long`** (décision #112) rejoint le §5, dont le foyer JS est **BigInt**, pas `number`. Deux raisons de
+fidélité : (1) l'affichage entier de BigInt est EXACT au-delà de 2⁵³ (= 9007199254740992), là où un double JS
+perd de la précision ; (2) la division BigInt tronque vers zéro EXACTEMENT comme `long`/`long` en C# (`7n / 2n`
+= 3n, `-7n / 2n` = -3n). Un littéral entier en contexte long devient un littéral BigInt (`5` → `5n`) ; l'élargissement
+implicite int→long devient `BigInt(x)`, long→double devient `Number(x)` (JS ne peut mélanger BigInt et number).
+Le DOM COERCE un BigInt en sa chaîne décimale exacte quand `setText` assigne `node.data` — donc **runtime INCHANGÉ**
+(`setText` existe déjà). Générateur seul. Bord divulgué : le débordement à 2⁶³ (C# boucle, BigInt non).
+
+### Ce qui est mesuré
+
+`baseline/LongCounter.Blazor` : `total` (un `long`) part de 9007199254740990 (juste sous 2⁵³) ; chaque `#add`
+ajoute 3, donc après un clic `total` vaut 9007199254740993 — une valeur qu'un double NE PEUT PAS tenir (il
+l'arrondirait à …992). `total` est lu par `@total` ET assigné par `Add` → signal (de BigInt). La branche
+`longcounter` de `verifyContract` clique `#add` deux fois et exige `#value` :
+`9007199254740990 → 9007199254740993 → 9007199254740996`. **`HARNESS_VERSION` 1.25.0 → 1.26.0**, divulgué.
+
+```
+dotnet publish baseline/LongCounter.Blazor -c Release -o bench/publish/blazor-longcounter
+./bench/build-filament.sh filament-longcounter-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-longcounter/wwwroot --app longcounter --label blazor-longcounter       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-longcounter-gen   --app longcounter --label filament-longcounter-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#value` | verdict |
+|---|---|---|
+| **blazor-longcounter** (autorité) | `…990 → …993 → …996` | contrat OK |
+| **filament-longcounter-gen** (générateur) | `…990 → …993 → …996` | contrat OK |
+
+**Les deux rendent `9007199254740993` puis `…996`, à l'identique.** C'est la mesure QUI PROUVE le mapping : la
+valeur franchit 2⁵³, donc une implémentation adossée à `number` aurait rendu `9007199254740992` (le double le plus
+proche) et ÉCHOUÉ le contrat contre Blazor — BigInt la rend exactement, comme le `long` C# de Blazor. `git diff --
+src/filament-runtime` vide (le DOM coerce le BigInt lui-même). Les témoins `Code/TypeLong.razor` (champ long) et
+`TypeSubset`/`List<long>` basculent de refusés à compilés ; `float`/`decimal`/`DateTime` restent refusés (pas de
+représentation JS fidèle). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°31. Ne pas modifier — ajouter une entrée n°32 pour toute rectification.*
