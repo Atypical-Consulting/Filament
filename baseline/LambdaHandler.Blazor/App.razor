@@ -1,0 +1,11 @@
+@* Lambda event handler (BENCH n°24): @onclick is an inline `() => count++` lambda, not a named
+   method. The lambda body is translated (count -> count.value) through the same machinery @code
+   methods use, so the click IS the measurement -- #count goes 0 -> 1 -> 2. *@
+
+<p>Count: <span id="count">@count</span></p>
+
+<button id="inc" @onclick="() => count++">Increment</button>
+
+@code {
+    private int count = 0;
+}
