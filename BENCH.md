@@ -4171,3 +4171,43 @@ réactif — Blazor indexe le même tableau C#. `git diff -- src/filament-runtim
 ---
 
 *Fin de l'entrée n°36. Ne pas modifier — ajouter une entrée n°37 pour toute rectification.*
+
+---
+
+## Entrée n°37 — 2026-07-20 — Phase 4 : le `Dictionary<K,V>` (→ Map JS) mesuré contre Blazor (CORRECTION)
+
+**Le type `Dictionary<K,V>`** (décision #118) rejoint le §5, mappé sur une **`Map` JS**, admis EN LECTURE SEULE
+(comme un tableau : pas de signal de version, donc l'écriture d'entrée `d[key] = v` est REFUSÉE). Construction
+`new Dictionary<K,V>(){ {k,v}, … }` → `new Map([[k, v], …])` ; `@d[key]` → `d.get(key)` ; `.Count` → `.size` ;
+`.ContainsKey(k)` → `.has(k)`. Admis quand K et V sont des scalaires (clé scalaire : `Map` utilise SameValueZero,
+qui correspond au défaut C# pour les types primitifs ; une clé record diverge par identité). **AUCUNE primitive
+runtime** : `Map` est un builtin JS. Add/Remove/TryGetValue différés.
+
+### Ce qui est mesuré
+
+`baseline/DictLookup.Blazor` : `labels = {1:"one", 2:"two", 3:"three"}` (Map constante) indexée par `key` (un
+signal) ; `#next` avance `key`, donc `@labels[key]` parcourt la Map. `labels` lu mais jamais muté → Map nue ;
+`key` lu ET assigné → signal. La branche `dictlookup` de `verifyContract` clique `#next` et exige `#value` :
+`"one" → "two" → "three" → "one"`. **`HARNESS_VERSION` 1.31.0 → 1.32.0**, divulgué.
+
+```
+dotnet publish baseline/DictLookup.Blazor -c Release -o bench/publish/blazor-dictlookup
+./bench/build-filament.sh filament-dictlookup-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-dictlookup/wwwroot --app dictlookup --label blazor-dictlookup       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-dictlookup-gen   --app dictlookup --label filament-dictlookup-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#value` | verdict |
+|---|---|---|
+| **blazor-dictlookup** (autorité) | `"one" → "two" → "three" → "one"` | contrat OK |
+| **filament-dictlookup-gen** (générateur) | `"one" → "two" → "three" → "one"` | contrat OK |
+
+**Les deux parcourent `one → two → three → one`, à l'identique.** `@labels[key]` fait `labels.get(key)` sur la Map —
+Blazor indexe le même `Dictionary` C#. `git diff -- src/filament-runtime` vide (Map est un builtin JS). Le témoin
+`Code/TypeDict.razor` bascule de refusé à compilé ; `object` reste refusé. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°37. Ne pas modifier — ajouter une entrée n°38 pour toute rectification.*

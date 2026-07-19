@@ -4111,3 +4111,26 @@ runtime, aucun helper. `git diff -- src/filament-runtime` vide. MESURÉ (entrée
 `"10" → "20" → "30" → "10"`, à l'identique. Le témoin `Code/TypeArray.razor` bascule refusé → compilé ;
 `object`/`Dictionary` restent refusés. `HARNESS_VERSION` 1.30.0 → 1.31.0, divulgué. §5 s'élargit d'un cran ; RADICAL
 reste **« ni éliminée ni établie »**.
+
+## 118. Le type `Dictionary<K,V>` entre dans le §5 — une Map JS, en LECTURE SEULE ; supersède le refus « pas de mapping §5 »
+
+**Décision.** Le type `Dictionary<K,V>` rejoint le §5, mappé sur une **`Map` JS** (décision 118), quand K et V sont
+des scalaires. Il était refusé. Mais un Dictionary EST une Map : construction `new Dictionary<K,V>(){ {k,v}, … }`
+→ `new Map([[k, v], …])` ; `@d[key]` → `d.get(key)` ; `.Count` → `.size` ; `.ContainsKey(k)` → `.has(k)`.
+`TypeSubset.DictionaryTypes` extrait (K, V) ; la clé DOIT être scalaire (`Map` utilise SameValueZero, qui
+correspond au défaut C# pour les types primitifs ; une clé record utiliserait l'identité de référence et
+divergerait). Suite : **358 tests** (280 générateur / 60 subset / 18 analyzer), runtime 214. **LEÇON (8e over-refus
+corrigé) : « pas de mapping §5 » était encore faux — une Map EST le mapping.**
+
+**ADMIS EN LECTURE SEULE — l'écriture d'entrée est REFUSÉE.** Comme un tableau (#117), un Dictionary n'a pas de
+signal de version. Donc `d[key] = v` est REFUSÉ (`unsupported-expression`, placé AVANT le cas d'assignation
+général), et les méthodes de mutation (`Add`/`Remove`/`TryGetValue`) tombent sur le refus de `DictionaryMethod` —
+une écriture que nul effet ne verrait serait un affichage périmé (§10). Indexation, `.Count`, `.ContainsKey` et la
+réassignation en gros sont admises. Divulgué.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `Map`, `.get`, `.size`, `.has` sont des builtins JS — aucune primitive runtime.
+`git diff -- src/filament-runtime` vide. MESURÉ (entrée n°37) : `baseline/DictLookup.Blazor` (`labels` une Map
+`{1:one,2:two,3:three}`, `@labels[key]` par une clé réactive) et `filament-dictlookup-gen` rendent `#value`
+`"one" → "two" → "three" → "one"`, à l'identique. Le témoin `Code/TypeDict.razor` bascule refusé → compilé ;
+`object` reste refusé. `HARNESS_VERSION` 1.31.0 → 1.32.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste
+**« ni éliminée ni établie »**.
