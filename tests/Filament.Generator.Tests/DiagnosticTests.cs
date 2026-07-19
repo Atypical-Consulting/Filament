@@ -209,11 +209,12 @@ public class DiagnosticTests
     }
 
     /// <summary>
-    /// THE ALLOWLIST IS A MEASURED BOUNDARY, NOT FOLKLORE. `class` compiles (ReactiveAttrTests); every
-    /// OTHER dynamic attribute stays refused [dynamic-attribute]. `title="@caption"` reads reactive state
-    /// exactly as `class` would, and setAttr would be correct for it -- but no measurement covers it, so it
-    /// is refused with a message that names the allowlist. This is what keeps the widening honest: a name
-    /// is admitted only when a BENCH entry measures it.
+    /// THE ALLOWLIST IS A MEASURED BOUNDARY, NOT FOLKLORE. `class`/`title`/`href`/`aria-label`/`role`/`style`
+    /// and `data-*` compile (ReactiveAttr/StringAttr/MoreAttr tests); every OTHER dynamic string attribute
+    /// stays refused [dynamic-attribute]. `placeholder="@caption"` reads reactive state exactly as `class`
+    /// would, and setAttr would be correct for it -- but no measurement covers it, so it is refused with a
+    /// message that names the allowlist. This is what keeps the widening honest: a name is admitted only when
+    /// a BENCH entry measures it.
     /// </summary>
     [Fact]
     public void DynamicNonClassAttribute_IsRefused_AtItsExactLocation()
@@ -226,9 +227,9 @@ public class DiagnosticTests
     }
 
     /// <summary>
-    /// The boolean allowlist is a MEASURED boundary, not folklore: a boolean attribute that is NOT
-    /// `disabled` (here `hidden`) still refuses `[dynamic-attribute]` at its exact location, and the
-    /// message now names BOTH allowlists (reactive string: class; boolean present/absent: disabled).
+    /// The boolean allowlist is a MEASURED boundary, not folklore: a boolean attribute that is NOT in
+    /// {disabled, hidden, required} (here `readonly`) still refuses `[dynamic-attribute]` at its exact
+    /// location, and the message names BOTH allowlists (reactive string: class; boolean present/absent: disabled).
     /// </summary>
     [Fact]
     public void NonAllowedBooleanAttribute_IsRefused_AtItsExactLocation()
@@ -243,8 +244,8 @@ public class DiagnosticTests
 
     /// <summary>
     /// Composition is gated by the ALLOWLIST, not by the value shape: a mixed literal+expression value on
-    /// a non-allow-listed name (here `title`) still refuses `[dynamic-attribute]` at its exact location.
-    /// Only `class` composes; every other name keeps the refusal.
+    /// a non-allow-listed name (here `placeholder`) still refuses `[dynamic-attribute]` at its exact location.
+    /// Only the allow-listed names compose; every other name keeps the refusal.
     /// </summary>
     [Fact]
     public void MixedValueOnNonAllowedAttribute_IsRefused_AtItsExactLocation()

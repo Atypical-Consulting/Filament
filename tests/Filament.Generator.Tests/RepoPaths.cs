@@ -105,6 +105,11 @@ public static class RepoPaths
 
     /// <summary>The string-attribute-names SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string StringAttrsAnswerKey => Path.Combine(Root, "samples", "StringAttrs", "stringattrs.js");
+
+    public static string MoreAttrsRazor => Path.Combine(Root, "baseline", "MoreAttrs.Blazor", "App.razor");
+
+    /// <summary>The attribute-allowlist-widening SPEC (decisions 51/97). Never edited to make a gate pass.</summary>
+    public static string MoreAttrsAnswerKey => Path.Combine(Root, "samples", "MoreAttrs", "moreattrs.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

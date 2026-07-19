@@ -171,7 +171,13 @@ public sealed class TemplateCompiler
     /// different emission (present/absent, not setAttr of "true"), so they are not admitted by adding a
     /// name here.
     /// </summary>
-    static readonly HashSet<string> DynamicAttributes = new(StringComparer.OrdinalIgnoreCase) { "class", "title", "href", "aria-label" };
+    static readonly HashSet<string> DynamicAttributes = new(StringComparer.OrdinalIgnoreCase) { "class", "title", "href", "aria-label", "role", "style" };
+
+    /// <summary>A reactive/composed STRING attribute: an allow-listed name OR any `data-*` custom attribute
+    /// (all data-* names carry string values and are safe to compose, so they are admitted by prefix rather
+    /// than one at a time). `value` is deliberately absent so @bind's lowered value= stays refused.</summary>
+    static bool IsDynamicStringAttribute(string name) =>
+        DynamicAttributes.Contains(name) || name.StartsWith("data-", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Attribute names whose value MAY be a compiled BOOLEAN expression, rendered present/absent (a second
@@ -183,7 +189,7 @@ public sealed class TemplateCompiler
     /// present/absent (a string-typed `disabled` is a deferred, distinct case). Widening this set is a NEW
     /// measured slice each time.
     /// </summary>
-    static readonly HashSet<string> BooleanAttributes = new(StringComparer.OrdinalIgnoreCase) { "disabled" };
+    static readonly HashSet<string> BooleanAttributes = new(StringComparer.OrdinalIgnoreCase) { "disabled", "hidden", "required" };
 
     /// <summary>
     /// A bare identifier, and nothing else. The ONE spelling this phase's template may
@@ -521,7 +527,7 @@ public sealed class TemplateCompiler
     {
         if (node is MarkupElementIntermediateNode el && !LooksLikeComponent(el.TagName))
             foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
-                if (DynamicAttributes.Contains(attr.AttributeName) && ComposableValue(attr) is { } parts)
+                if (IsDynamicStringAttribute(attr.AttributeName) && ComposableValue(attr) is { } parts)
                     foreach (var e in parts.OfType<CSharpExpressionAttributeValueIntermediateNode>())
                         plan.FreeSlots.Add(e);
                 else if (BooleanAttributes.Contains(attr.AttributeName) && DynamicValue(attr) is { } expr)
@@ -1343,7 +1349,7 @@ public sealed class TemplateCompiler
             // byte-identically -- the ReactiveAttr gate proves it. Reactive iff any expression part is
             // reactive; the effect lands in _bindings (before attach), so its first setAttr writes into the
             // detached tree and makes no MutationRecord.
-            if (DynamicAttributes.Contains(name) && ComposableValue(attr) is { } parts)
+            if (IsDynamicStringAttribute(name) && ComposableValue(attr) is { } parts)
             {
                 var (js, reactive) = ComposeAttributeValue(parts);
                 _used.Add("setAttr");
