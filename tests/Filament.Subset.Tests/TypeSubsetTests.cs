@@ -24,10 +24,12 @@ public class TypeSubsetTests
 
     [Theory]
     [InlineData("int x;", "x")]
+    [InlineData("long x;", "x")]                          // decision 112: long -> BigInt
     [InlineData("double x;", "x")]
     [InlineData("bool x;", "x")]
     [InlineData("string x;", "x")]
     [InlineData("List<int> x;", "x")]
+    [InlineData("List<long> x;", "x")]                    // decision 112: List<long> -> array of BigInt
     [InlineData("List<string> x;", "x")]
     public void InSubsetTypes_ClassifyToNull(string decls, string field)
     {
@@ -37,11 +39,10 @@ public class TypeSubsetTests
 
     [Theory]
     [InlineData("decimal x;", "x")]
-    [InlineData("long x;", "x")]
     [InlineData("float x;", "x")]
     [InlineData("object x;", "x")]
     [InlineData("DateTime x;", "x")]
-    [InlineData("List<long> x;", "x")]
+    [InlineData("List<decimal> x;", "x")]                 // the ELEMENT is out of subset (long is now IN)
     public void OutOfSubsetTypes_ClassifyToUnsupportedType(string decls, string field)
     {
         var t = TypeOfField(decls, field);

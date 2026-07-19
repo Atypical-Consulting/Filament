@@ -129,6 +129,14 @@ public static class ConstructSubset
         b.IsKind(SyntaxKind.DivideExpression) &&
         model.GetTypeInfo(b).Type?.SpecialType == SpecialType.System_Int32;
 
+    /// <summary>Long division: a DivideExpression whose RESULT type is long. Faithful in JS via a BARE `/`
+    /// on BigInt operands -- BigInt division truncates toward zero, EXACTLY C#'s long/long (7L/2L = 3,
+    /// -7L/2L = -3), and unlike int it needs NO Math.trunc because BigInt has no fractional part to drop.
+    /// TYPE-dependent like the int and double divisions, so kept out of JsBinaryOperator.</summary>
+    public static bool IsLongDivision(BinaryExpressionSyntax b, SemanticModel model) =>
+        b.IsKind(SyntaxKind.DivideExpression) &&
+        model.GetTypeInfo(b).Type?.SpecialType == SpecialType.System_Int64;
+
     /// <summary>`new Exception(...)` (or a subtype) — the ONE object creation in §5, for `throw`. It maps
     /// to `new Error(...)` (CSharpFrontEnd). Every other `new` stays refused: a Filament module has no BCL,
     /// so `new StringBuilder()` etc. have nothing to become.</summary>
@@ -159,9 +167,10 @@ public static class ConstructSubset
         {
             if (IsFaithfulDivision(bin, model)) return null;               // double result: verbatim `/`
             if (IsIntegerDivision(bin, model)) return null;                // int result: Math.trunc (CSharpFrontEnd)
-            return new Refusal("FIL0001", "unsupported-expression",         // neither int nor double: refused
-                $"{Describe(bin)} divides operands whose result is neither int nor double; only those two " +
-                "numeric divisions are in section 5 (int via Math.trunc, double verbatim). Refusing to emit.");
+            if (IsLongDivision(bin, model)) return null;                   // long result: verbatim `/` on BigInt (truncates)
+            return new Refusal("FIL0001", "unsupported-expression",         // none of int/long/double: refused
+                $"{Describe(bin)} divides operands whose result is not int, long or double; only those three " +
+                "numeric divisions are in section 5 (int via Math.trunc, long and double verbatim). Refusing to emit.");
         }
 
         var supported = e switch

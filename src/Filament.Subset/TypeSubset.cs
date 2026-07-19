@@ -14,7 +14,7 @@ public static class TypeSubset
 {
     static readonly HashSet<SpecialType> Scalars = new()
     {
-        SpecialType.System_Int32, SpecialType.System_Double,
+        SpecialType.System_Int32, SpecialType.System_Int64, SpecialType.System_Double,
         SpecialType.System_Boolean, SpecialType.System_String,
     };
 
@@ -39,12 +39,12 @@ public static class TypeSubset
             if (IsComponentRecord(element, componentRecords)) return null;
 
             return new TypeRefusal("unsupported-type",
-                $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits List<T> of int, double, " +
+                $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits List<T> of int, long, double, " +
                 "bool, string, or of a record declared in the component. Refusing to emit.");
         }
 
         return new TypeRefusal("unsupported-type",
-            $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits int, double, bool, " +
+            $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits int, long, double, bool, " +
             "string, and List<T> of those or of a record declared in the component. Refusing to emit.");
     }
 

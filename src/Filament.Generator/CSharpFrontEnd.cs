@@ -1157,6 +1157,7 @@ public sealed class CSharpFrontEnd
     static string DefaultOf(ITypeSymbol type) => type.SpecialType switch
     {
         SpecialType.System_Int32 => "0",
+        SpecialType.System_Int64 => "0n",   // long's JS home is BigInt (decision 112); default(long) is 0L -> 0n
         SpecialType.System_Double => "0",
         SpecialType.System_Boolean => "false",
         SpecialType.System_String => "null",
@@ -2005,7 +2006,26 @@ public sealed class CSharpFrontEnd
 
     // ---- expressions --------------------------------------------------------
 
+    /// <summary>Translate an expression, then apply any IMPLICIT NUMERIC CONVERSION C# performed on it that
+    /// crosses JS's BigInt boundary (decision 112). C# widens int->long and long->double silently; JS cannot
+    /// mix BigInt and number, so the widening must be spelled: an int promoted to long becomes `BigInt(x)`, a
+    /// long promoted to double becomes `Number(x)`. A literal is skipped -- NumericLiteral already emits it in
+    /// its converted form (`5` in a long context is `5n`, not `BigInt(5)`). No conversion crosses the boundary
+    /// for the pre-#112 types (int and double are both JS number), so this is inert for every existing app.</summary>
     string Expr(ExpressionSyntax e)
+    {
+        var js = ExprCore(e);
+        if (e is LiteralExpressionSyntax) return js;
+
+        var ti = _model.GetTypeInfo(e);
+        var from = ti.Type?.SpecialType;
+        var to = ti.ConvertedType?.SpecialType;
+        if (from == SpecialType.System_Int32 && to == SpecialType.System_Int64) return $"BigInt({js})";
+        if (from == SpecialType.System_Int64 && to == SpecialType.System_Double) return $"Number({js})";
+        return js;
+    }
+
+    string ExprCore(ExpressionSyntax e)
     {
         // Expression-FORM decision single-sourced in Filament.Subset (decisions 53/61). Validate the
         // current node first; a blessed form is guaranteed a case below. Call/member/name refusals
@@ -2038,6 +2058,11 @@ public sealed class CSharpFrontEnd
             // by Expr(). int/int is admitted upstream in ClassifyExpression (result-type dependent).
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.IsIntegerDivision(b, _model):
                 return $"Math.trunc({Expr(b.Left)} / {Expr(b.Right)})";
+
+            // Long division: a BARE `/` on BigInt operands. BigInt division truncates toward zero exactly as
+            // C#'s long/long, and needs NO Math.trunc (a BigInt has no fractional part). Decision 112.
+            case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.IsLongDivision(b, _model):
+                return $"{Expr(b.Left)} / {Expr(b.Right)}";
 
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.JsBinaryOperator(b) is { } op:
                 return $"{Expr(b.Left)} {op} {Expr(b.Right)}";
@@ -2245,14 +2270,33 @@ public sealed class CSharpFrontEnd
     /// are all just numbers in JS, and JS has one numeric type, so the C# suffix (`42.0d`)
     /// must not survive into the output -- it is not JS.
     /// </summary>
-    string NumericLiteral(LiteralExpressionSyntax lit) => lit.Token.Value switch
+    string NumericLiteral(LiteralExpressionSyntax lit)
     {
-        int i => i.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        double d => d.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
-        _ => Refuse("unsupported-type",
-            $"the numeric literal {Trunc(lit.ToString())} is not an int or a double. Section 5's numeric " +
-            "types are int and double. Refusing to emit.", lit.SpanStart, "FIL0002"),
-    };
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+
+        // A literal in a LONG context -> a BigInt literal (`5` in `long x = 5`, a `5L`, or a value past int
+        // range). `long`'s JS home is BigInt (decision 112): its integer display is exact where a double
+        // would lose precision past 2^53, and BigInt division truncates toward zero exactly as C#'s long/long.
+        if (_model.GetTypeInfo(lit).ConvertedType?.SpecialType == SpecialType.System_Int64)
+            return lit.Token.Value switch
+            {
+                int i => $"{i.ToString(inv)}n",
+                long l => $"{l.ToString(inv)}n",
+                _ => Refuse("unsupported-type",
+                    $"the numeric literal {Trunc(lit.ToString())} is long-typed but not integral. Refusing to emit.",
+                    lit.SpanStart, "FIL0002"),
+            };
+
+        return lit.Token.Value switch
+        {
+            int i => i.ToString(inv),
+            long l => l.ToString(inv),   // a `5L` whose target is NOT long (e.g. `double d = 5L`) -> a plain number
+            double d => d.ToString("R", inv),
+            _ => Refuse("unsupported-type",
+                $"the numeric literal {Trunc(lit.ToString())} is not an int, long or a double. Section 5's numeric " +
+                "types are int, long and double. Refusing to emit.", lit.SpanStart, "FIL0002"),
+        };
+    }
 
     // JsBinaryOperator / JsPrefixOperator / JsAssignmentOperator moved to Filament.Subset.ConstructSubset
     // (single source of the operator subset; decisions 53/61). Expr's cases call them there.

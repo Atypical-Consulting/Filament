@@ -26,9 +26,11 @@ public class TypeSubsetAnalyzerTests
     [Fact]
     public async Task OutOfSubsetLocalType_IsFlagged()
     {
+        // long entered the subset at decision 112 (List<long> too), so List<decimal> is the witness now:
+        // the CONTAINER is in the subset, the ELEMENT (decimal) is not.
         await Case(
             "    private void M() {\n" +
-            "        {|FIL0002:System.Collections.Generic.List<long>|} ys = null;\n" +
+            "        {|FIL0002:System.Collections.Generic.List<decimal>|} ys = null;\n" +
             "    }").RunAsync();
     }
 

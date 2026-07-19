@@ -60,7 +60,11 @@ public class CodeTests
     [InlineData("Constructor.razor", 5, 5, "FIL0001", "unsupported-member")]
     [InlineData("NestedClass.razor", 5, 5, "FIL0001", "unsupported-member")]
     // ---- types outside section 5's list (FIL0002) ---------------------------
-    [InlineData("TypeLong.razor", 5, 13, "FIL0002", "unsupported-type")]
+    // long LEFT this list at decision 112 (it compiles now -> TypeLong_NowCompiles): long's JS home is
+    // BigInt -- exact integer display past 2^53 where a double loses precision, and BigInt division
+    // truncates toward zero exactly as C#'s long/long. float/decimal/DateTime STAY refused (JS has no
+    // faithful representation: float display would need a single-precision formatter, decimal has no
+    // native type, DateTime no BCL).
     [InlineData("TypeFloat.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeDecimal.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeObject.razor", 5, 13, "FIL0002", "unsupported-type")]
@@ -85,7 +89,7 @@ public class CodeTests
     //
     // The coverage does not disappear, it moves OUT to the new edge -- which is the only
     // place a subset boundary can be tested once the middle works:
-    //   List<long>       the CONTAINER is in the subset, the ELEMENT is not
+    //   List<decimal>    the CONTAINER is in the subset, the ELEMENT is not (long is now IN, decision 112)
     //   List<int> = null the type is in the subset, the C# default has no array to be
     //   a method in a record: a data SHAPE cannot carry behaviour
     //
@@ -184,6 +188,28 @@ public class CodeTests
             var js = File.ReadAllText(outPath);
             Assert.Contains(expected, js);
             Assert.DoesNotContain("[unsupported-statement]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A `long` field now COMPILES (decision 112, closing the TypeLong deferral): long's JS home is BigInt --
+    /// its integer display is EXACT past 2^53 where a double loses precision, and BigInt division truncates
+    /// toward zero exactly as C#'s long/long. It used to be refused [unsupported-type] @ (5,13). float, decimal,
+    /// DateTime STAY refused (JS has no faithful representation).
+    /// </summary>
+    [Fact]
+    public void TypeLong_NowCompiles_ToABigIntField()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeLong.razor"), outPath);
+
+            Assert.True(exit == 0, $"a long field should compile now (decision 112):\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains("5n", js);                       // `long big = 5;` -> a BigInt literal
+            Assert.DoesNotContain("[unsupported-type]", js);
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }
