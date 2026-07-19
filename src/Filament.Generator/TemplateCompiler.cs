@@ -171,7 +171,7 @@ public sealed class TemplateCompiler
     /// different emission (present/absent, not setAttr of "true"), so they are not admitted by adding a
     /// name here.
     /// </summary>
-    static readonly HashSet<string> DynamicAttributes = new(StringComparer.OrdinalIgnoreCase) { "class" };
+    static readonly HashSet<string> DynamicAttributes = new(StringComparer.OrdinalIgnoreCase) { "class", "title", "href", "aria-label" };
 
     /// <summary>
     /// Attribute names whose value MAY be a compiled BOOLEAN expression, rendered present/absent (a second
