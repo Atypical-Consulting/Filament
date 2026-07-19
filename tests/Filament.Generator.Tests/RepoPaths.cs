@@ -51,6 +51,11 @@ public static class RepoPaths
     /// <summary>The root-@if SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string RootIfAnswerKey => Path.Combine(Root, "samples", "RootIf", "rootif.js");
 
+    public static string IfMultiBodyRazor => Path.Combine(Root, "baseline", "IfMultiBody.Blazor", "App.razor");
+
+    /// <summary>The multi-node-@if-body SPEC (decisions 51/81). Never edited to make a gate pass.</summary>
+    public static string IfMultiBodyAnswerKey => Path.Combine(Root, "samples", "IfMultiBody", "ifmulti.js");
+
     /// <summary>Bound-parameter composition (a reactive counter into a child) — the file Blazor compiles.</summary>
     public static string BoundComposeRazor => Path.Combine(Root, "baseline", "BoundCompose.Blazor", "App.razor");
 

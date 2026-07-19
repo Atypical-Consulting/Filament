@@ -268,6 +268,8 @@ public static class Generate
 
     public static string RootIfToTemp() => ToTemp(RepoPaths.RootIfRazor, "RootIf");
 
+    public static string IfMultiBodyToTemp() => ToTemp(RepoPaths.IfMultiBodyRazor, "IfMultiBody");
+
     public static string BoundComposeToTemp() => ToTemp(RepoPaths.BoundComposeRazor, "BoundCompose");
 
     public static string ReactiveAttrToTemp() => ToTemp(RepoPaths.ReactiveAttrRazor, "ReactiveAttr");

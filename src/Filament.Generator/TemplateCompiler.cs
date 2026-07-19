@@ -1143,24 +1143,44 @@ public sealed class TemplateCompiler
         _create.Add($"insert({container}, {anchor});");
         _used.Add("list");
 
-        // PLAIN @if (one branch, no @else): the exact #81 emission, byte-for-byte, so the @if gate
-        // and snapshot still hold. A 0/1 source, a constant key, the body function passed directly.
+        // PLAIN @if (one branch, no @else).
         if (op.Branches.Count == 1)
         {
-            var fn = Unique("ifBody");
-            if (!EmitBranchFn(op.Branches[0].Body, fn)) return; // body refused; nothing emitted
-            _bindings.Add($"list({container}, () => ({op.Branches[0].Cond}) ? [0] : [], () => 0, {fn}, {anchor});");
+            var body = op.Branches[0].Body;
+            if (body.Count == 1)
+            {
+                // SINGLE-NODE body: the exact #81 emission, byte-for-byte, so the @if gate and
+                // snapshot still hold. A 0/1 source, a constant key, the body function passed directly.
+                var fn = Unique("ifBody");
+                if (!EmitBranchFn(body[0], fn)) return; // body refused; nothing emitted
+                _bindings.Add($"list({container}, () => ({op.Branches[0].Cond}) ? [0] : [], () => 0, {fn}, {anchor});");
+                return;
+            }
+
+            // MULTI-NODE body: one list item per body node. The single item's VALUE is the node
+            // index; the key IS that index, so the whole group mounts/unmounts on the condition, in
+            // source order. #82's IfCreate dispatch, one level down (per node instead of per branch).
+            var bodyFns = new List<string>();
+            for (var i = 0; i < body.Count; i++)
+            {
+                var fn = Unique($"ifBody{id}_{i}");
+                if (!EmitBranchFn(body[i], fn)) return;
+                bodyFns.Add(fn);
+            }
+            var keys = string.Join(", ", Enumerable.Range(0, bodyFns.Count));
+            _bindings.Add($"list({container}, () => ({op.Branches[0].Cond}) ? [{keys}] : [], (i) => i, {IfCreate(bodyFns)}, {anchor});");
             return;
         }
 
         // MULTI-BRANCH @if/@else if/@else: the single item's VALUE is the active branch index; the
         // key IS that index, so flipping any condition changes the key and list() swaps the branch.
-        // Names carry `id` so two @if ops in one module never collide.
+        // Each branch is exactly one node (allowMulti was false). Names carry `id` so two @if ops in
+        // one module never collide.
         var fns = new List<string>();
         for (var i = 0; i < op.Branches.Count; i++)
         {
             var fn = Unique($"ifBody{id}_{i}");
-            if (!EmitBranchFn(op.Branches[i].Body, fn)) return;
+            if (!EmitBranchFn(op.Branches[i].Body[0], fn)) return;
             fns.Add(fn);
         }
         _bindings.Add($"list({container}, {IfSource(op.Branches)}, (i) => i, {IfCreate(fns)}, {anchor});");

@@ -73,7 +73,6 @@ public class DiagnosticTests
     [Theory]
     [InlineData("Foreach.razor", 2, 20, "unsupported-foreach")]
     [InlineData("IfNested.razor", 2, 1, "unsupported-if-body")]
-    [InlineData("IfMultiBody.razor", 2, 1, "unsupported-if-body")]
     [InlineData("IfElseMultiBody.razor", 6, 1, "unsupported-if-body")]
     public void ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation(
         string fixture, int line, int col, string reason)
@@ -103,6 +102,30 @@ public class DiagnosticTests
 
             Assert.True(exit == 0, $"root @if should compile now (decision 89):\n{stderr}");
             Assert.Contains("list(target,", File.ReadAllText(outPath));
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A single-branch @if with a MULTI-NODE body now COMPILES: the plain-@if lowering generalized to
+    /// one list() item per body node (a source over the condition yielding [0, 1], an identity key).
+    /// It used to be refused [unsupported-if-body] -- a DELIBERATE deferral at #81, now closed for the
+    /// branch-less case. IfElseMultiBody / IfNested stay refused (multi-branch bodies, nested control
+    /// flow); see ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation.
+    /// </summary>
+    [Fact]
+    public void IfMultiBody_NowCompiles_ToAMultiNodeConditionalList()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfMultiBody.razor"), outPath);
+
+            Assert.True(exit == 0, $"a single-branch @if with a multi-node body should compile now:\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains("[0, 1]", js);              // one list() item per body node
+            Assert.Contains("(i) => i", js);            // identity key
+            Assert.DoesNotContain("[unsupported-if-body]", js);
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }
@@ -528,9 +551,10 @@ public class DiagnosticTests
     // The deferred @if variants: refused by ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation
     // above, but that theory only asserts exit != 0 via Refused() -- it never asserted the file
     // itself was never written. (IfAtRoot.razor is NOT here anymore: root @if COMPILES now,
-    // decision 89 -- see IfAtRoot_NowCompiles_ToAConditionalAgainstTarget.)
+    // decision 89 -- see IfAtRoot_NowCompiles_ToAConditionalAgainstTarget. IfMultiBody.razor is NOT
+    // here either: a single-branch @if with a multi-node body COMPILES now -- see
+    // IfMultiBody_NowCompiles_ToAMultiNodeConditionalList.)
     [InlineData("IfNested.razor")]
-    [InlineData("IfMultiBody.razor")]
     [InlineData("IfElseMultiBody.razor")]
     public void ARefusalWritesNoFile(string fixture)
     {
