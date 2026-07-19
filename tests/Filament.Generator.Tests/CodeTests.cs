@@ -43,10 +43,10 @@ public class CodeTests
     /// </summary>
     [Theory]
     // ---- statements outside section 5's list (FIL0001) ----------------------
-    [InlineData("TryCatch.razor", 8, 9, "FIL0001", "unsupported-statement")]
-    [InlineData("Throw.razor", 8, 9, "FIL0001", "unsupported-statement")]
+    // try/catch, throw and lock LEFT this list at decision 110 (they compile now -> the NowCompiles
+    // test below). `using` and `goto` stay: a Filament module has no IDisposable to dispose and no
+    // labelled-goto lowering, so both remain deliberate refusals.
     [InlineData("Using.razor", 8, 9, "FIL0001", "unsupported-statement")]
-    [InlineData("Lock.razor", 8, 9, "FIL0001", "unsupported-statement")]
     [InlineData("Goto.razor", 8, 9, "FIL0001", "unsupported-statement")]
     // ---- expressions outside section 5's list (FIL0001) ---------------------
     [InlineData("ConsoleCall.razor", 8, 9, "FIL0001", "unsupported-call")]
@@ -154,6 +154,32 @@ public class CodeTests
             var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", fixture), outPath);
 
             Assert.True(exit == 0, $"{fixture} should compile now (decision 102):\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains(expected, js);
+            Assert.DoesNotContain("[unsupported-statement]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// TRY/CATCH, THROW and LOCK now COMPILE (decision 110): try/catch/finally maps to the JS namesake,
+    /// `throw new Exception(msg)` to `throw new Error(msg)`, and `lock (x) { ... }` to a bare block (JS is
+    /// single-threaded, so a lock can never be contended). All three used to be refused
+    /// [unsupported-statement] @ (8,9). A CAUGHT throw is faithful; an UNCAUGHT one is a disclosed edge
+    /// (C# would surface a .NET exception, JS a bare Error) -- measured, see BENCH.
+    /// </summary>
+    [Theory]
+    [InlineData("TryCatch.razor", "} catch {")]
+    [InlineData("Throw.razor", "throw new Error('no')")]
+    [InlineData("Lock.razor", "currentCount.value++")]
+    public void TryThrowLockStatement_NowCompiles(string fixture, string expected)
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", fixture), outPath);
+
+            Assert.True(exit == 0, $"{fixture} should compile now (decision 110):\n{stderr}");
             var js = File.ReadAllText(outPath);
             Assert.Contains(expected, js);
             Assert.DoesNotContain("[unsupported-statement]", js);

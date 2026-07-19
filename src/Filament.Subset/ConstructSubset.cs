@@ -27,12 +27,16 @@ public static class ConstructSubset
         // switch with CONSTANT case labels + default only; pattern / when-guard labels are deferred (fall to refusal).
         SwitchStatementSyntax sw when sw.Sections.All(sec =>
             sec.Labels.All(l => l is CaseSwitchLabelSyntax or DefaultSwitchLabelSyntax)) => null,
+        TryStatementSyntax => null,     // try/catch/finally -> the JS namesake (decision 110)
+        ThrowStatementSyntax => null,   // throw -> JS throw (a caught throw is faithful; uncaught is a disclosed edge)
+        LockStatementSyntax => null,    // lock -> a no-op block: JS is single-threaded, so a lock cannot be contended
         ReturnStatementSyntax => null,
         BlockSyntax => null,
         _ => new Refusal("FIL0001", "unsupported-statement",
             $"{Describe(s)} is not in the C# subset. Section 5 admits local declarations, " +
             "assignment and compound assignment, if/else, for, foreach, while, do-while, switch " +
-            "(constant labels), and calls to methods declared in the same component. Refusing to emit."),
+            "(constant labels), try/catch, throw, lock, and calls to methods declared in the same component. " +
+            "Refusing to emit."),
     };
 
     /// <summary>True for a `[Parameter]` attribute in any of its written forms. The generator's
@@ -125,6 +129,16 @@ public static class ConstructSubset
         b.IsKind(SyntaxKind.DivideExpression) &&
         model.GetTypeInfo(b).Type?.SpecialType == SpecialType.System_Int32;
 
+    /// <summary>`new Exception(...)` (or a subtype) — the ONE object creation in §5, for `throw`. It maps
+    /// to `new Error(...)` (CSharpFrontEnd). Every other `new` stays refused: a Filament module has no BCL,
+    /// so `new StringBuilder()` etc. have nothing to become.</summary>
+    public static bool IsExceptionCreation(ObjectCreationExpressionSyntax oc, SemanticModel model)
+    {
+        for (var b = model.GetTypeInfo(oc).Type; b is not null; b = b.BaseType)
+            if (b.ToDisplayString() == "System.Exception") return true;
+        return false;
+    }
+
     /// <summary>null = the expression FORM is in §5; non-null = the FIL0001 refusal — the decision
     /// behind Expr()'s default. Call-, member- and name-level refusals INSIDE a blessed form
     /// (invocation target, member access, identifier resolution) are separate concerns, not this.</summary>
@@ -157,13 +171,15 @@ public static class ConstructSubset
             ElementAccessExpressionSyntax ea => IsListFieldIndex(ea, model),
             InterpolatedStringExpressionSyntax => true,
             CastExpressionSyntax c => IsIntFromDouble(c, model),
+            ObjectCreationExpressionSyntax oc => IsExceptionCreation(oc, model),
             _ => false,
         };
         if (supported) return null;
         return new Refusal("FIL0001", "unsupported-expression",
             $"{Describe(e)} is not in the C# subset. Section 5 admits literals, arithmetic and " +
             "comparison operators, &&, ||, !, ternary, string interpolation, member access on a " +
-            "local record, List<T> indexing, .Count, .Add and .RemoveAt. Refusing to emit.");
+            "local record, List<T> indexing, .Count, .Add, .RemoveAt, .Clear and `new Exception(...)`. " +
+            "Refusing to emit.");
     }
 
     // Matches the generator's ListReceiver: indexing a field whose type is List<T> (one argument).

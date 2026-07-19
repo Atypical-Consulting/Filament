@@ -28,8 +28,9 @@ public class ConstructSubsetAnalyzerTests
         => await Method("        while (b) { }").RunAsync();
 
     [Fact]
-    public async Task TryCatch_IsFlagged()
-        => await Method("        {|FIL0001:try { } catch { }|}").RunAsync();
+    public async Task TryCatch_IsNotFlagged()
+        // try/catch/finally, throw and lock entered §5 at decision 110 (single-sourced via ConstructSubset).
+        => await Method("        try { } catch { }").RunAsync();
 
     [Fact]
     public async Task SupportedStatements_ProduceNoDiagnostics()
@@ -42,11 +43,11 @@ public class ConstructSubsetAnalyzerTests
 
     [Fact]
     public async Task UnsupportedStatement_IsFlaggedOnce_NotItsInnards()
-        // switch entered §5 at decision 102, so try/catch is the still-unsupported witness: the try
+        // try/catch entered §5 at decision 110, so `using` is the still-unsupported witness: the using
         // is flagged once and its supported innards (x = 1) are NOT separately flagged.
         => await Method(
             "        int x = 0;\n" +
-            "        {|FIL0001:try { x = 1; } catch { }|}").RunAsync();
+            "        {|FIL0001:using (System.IDisposable d = null) { x = 1; }|}").RunAsync();
 
     // ---- member kinds -------------------------------------------------------
 

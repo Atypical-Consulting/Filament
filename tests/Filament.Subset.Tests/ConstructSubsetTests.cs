@@ -24,6 +24,9 @@ public class ConstructSubsetTests
     [InlineData("do { } while (b);")]                    // decision 102
     [InlineData("switch (x) { case 1: break; default: break; }")]  // decision 102: constant labels
     [InlineData("break;")]                              // decision 102: needed inside a switch/loop
+    [InlineData("try { } catch { }")]                   // decision 110: try/catch/finally -> JS namesake
+    [InlineData("throw new System.Exception();")]       // decision 110: throw -> JS throw
+    [InlineData("lock (o) { }")]                        // decision 110: lock -> no-op block (single-threaded JS)
     [InlineData("return;")]
     [InlineData("{ }")]
     public void SupportedStatementKinds_ClassifyToNull(string body)
@@ -31,10 +34,7 @@ public class ConstructSubsetTests
 
     [Theory]
     [InlineData("switch (x) { case int y: break; }")]   // decision 102: PATTERN label still refused
-    [InlineData("try { } catch { }")]
-    [InlineData("throw new System.Exception();")]
-    [InlineData("using (d) { }")]
-    [InlineData("lock (o) { }")]
+    [InlineData("using (d) { }")]                        // no IDisposable in a Filament module -> nothing to dispose
     [InlineData("goto done;")]
     public void UnsupportedStatementKinds_ClassifyToUnsupportedStatement(string body)
     {

@@ -1839,6 +1839,40 @@ public sealed class CSharpFrontEnd
                 return lines;
             }
 
+            case TryStatementSyntax t:
+            {
+                var lines = new List<string> { "try {" };
+                lines.AddRange(Nest(t.Block));
+                foreach (var c in t.Catches)
+                {
+                    // JS bindingless `catch {` when C# names no variable; `catch (e) {` when it does.
+                    var id = c.Declaration?.Identifier.ValueText;
+                    lines.Add(string.IsNullOrEmpty(id) ? "} catch {" : $"}} catch ({JsName(id)}) {{");
+                    lines.AddRange(Nest(c.Block));
+                }
+                if (t.Finally is { } fin) { lines.Add("} finally {"); lines.AddRange(Nest(fin.Block)); }
+                lines.Add("}");
+                return lines;
+            }
+
+            case ThrowStatementSyntax th:
+                // A CAUGHT throw is faithful (both C# and JS unwind to the catch). An UNCAUGHT throw is a
+                // disclosed edge: Blazor's error boundary catches it, a Filament module propagates to the
+                // host -- exceptional-path only, like div-by-zero. `throw;` (rethrow) keeps its bare form.
+                return [th.Expression is null ? "throw;" : $"throw {Expr(th.Expression)};"];
+
+            case LockStatementSyntax l:
+            {
+                // JS is SINGLE-THREADED: a lock provides mutual exclusion that can never be contended, so
+                // it is a no-op. Emit the body in a bare block (C#'s lock body is block-scoped); the lock
+                // object is not evaluated. Dropping a no-op is not silent behaviour loss -- there is no
+                // behaviour to lose in a single-threaded runtime.
+                var lines = new List<string> { "{" };
+                lines.AddRange(Nest(l.Statement));
+                lines.Add("}");
+                return lines;
+            }
+
             case ReturnStatementSyntax r:
                 return [r.Expression is null ? "return;" : $"return {Expr(r.Expression)};"];
 
@@ -2012,6 +2046,11 @@ public sealed class CSharpFrontEnd
                 // C# depends on it: the seed stays in DOUBLE arithmetic on both sides, so the
                 // two label streams are byte-identical and the harness's oracle can check it.
                 return $"Math.trunc({Expr(cast.Expression)})";
+
+            case ObjectCreationExpressionSyntax oc when Filament.Subset.ConstructSubset.IsExceptionCreation(oc, _model):
+                // `new Exception(msg)` -> `new Error(msg)`: the one object creation in §5, for `throw`.
+                // C#'s Exception.Message and JS's Error.message carry the same string.
+                return $"new Error({string.Join(", ", oc.ArgumentList?.Arguments.Select(a => Expr(a.Expression)) ?? Enumerable.Empty<string>())})";
 
             default:
                 throw new GeneratorException(

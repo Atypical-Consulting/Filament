@@ -109,8 +109,8 @@ public class GateSubsetTests
     // ---- spec 5's TYPE list -------------------------------------------------
     [InlineData("Code/TypeDateTime.razor", 5, 13, "FIL0002", "unsupported-type")]
     // ---- spec 5's STATEMENT list --------------------------------------------
+    // try/catch/throw/lock left this list at decision 110 (they compile now); goto stays refused.
     [InlineData("Code/Goto.razor", 8, 9, "FIL0001", "unsupported-statement")]
-    [InlineData("Code/TryCatch.razor", 8, 9, "FIL0001", "unsupported-statement")]
     // ---- spec 5's EXPRESSION list -------------------------------------------
     //
     // The two lambda rows are refused by DIFFERENT rules and that is the point of having
