@@ -3306,3 +3306,49 @@ entre. Restent refusés loud+localisés : les **autres noms d'attributs** (`dyna
 les attributs **booléens** présence/absence, la valeur **mixte** littéral+expression (`class="box @x"`), le contrôle
 de flux dans une valeur d'attribut. Différés : attributs booléens, autres noms, valeurs concaténées. §5 s'élargit d'un
 cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 95. L'attribut booléen `disabled` (présence/absence) entre dans le §5 — le ternaire `? '' : null` au-dessus du `setAttr` qui ship DÉJÀ, une DEUXIÈME liste blanche disjointe, et l'élargissement MESURÉ contre Blazor
+
+**Décision.** La sous-tranche que la n°94 refusait explicitement — « les attributs **booléens** présence/absence
+(`disabled`) demandent une émission DIFFÉRENTE (présent/absent, pas `setAttr` de "true") » — est **fermée** : un attribut
+booléen `disabled` (`disabled="@locked"`) entre dans le sous-ensemble. Un attribut booléen est une **sémantique
+différente** de la n°94 : Blazor rend `<button disabled>` quand la valeur est vraie et **omet** l'attribut quand elle est
+fausse — jamais `disabled="true"` ni `disabled="false"`. Suite : **278 tests** (205 générateur + 55 subset + 18 analyseur).
+
+**RUNTIME INCHANGÉ — l'émission DIFFÉRENTE est un TERNAIRE, pas un op.** `setAttr(el, name, v)` fait DÉJÀ
+`removeAttribute` quand `v == null` (« null/undefined le retire — c'est ainsi qu'un compilateur exprime "absent" », doc de
+`dom.ts`). La liaison est donc `effect(() => setAttr(_el0, 'disabled', locked.value ? '' : null))` — `vrai → '' →
+setAttribute` (présent, `<button disabled="">`), `faux → null → removeAttribute` (absent). L'auteur du runtime avait bâti
+cette branche `null→remove` **pour exactement ça** ; la « émission différente » que la n°94 nommait est ce ternaire, PAS un
+nouvel op. Aucune source de `src/filament-runtime` ne bouge (`git diff` vide, 214 tests runtime byte-identiques). Comme en
+n°94, l'effect atterrit dans `_bindings` (avant l'attache) : `locked` démarrant **vrai**, son premier run écrit
+`setAttribute` dans l'arbre DÉTACHÉ (aucun `MutationRecord`), et le clic bascule vers `removeAttribute` — les DEUX primitifs
+en un seul scénario.
+
+**LA RÉCOLTE EST ÉLARGIE, LE PRÉDICAT NE BOUGE PAS.** `CollectDynamicAttributes` récolte désormais la valeur d'un attribut
+admis dans **l'une OU l'autre** liste blanche (`DynamicAttributes` **ou** `BooleanAttributes`) — même récolte, même unique
+prédicat `DynamicValue` (n°53 : une seule `@`-expression pure, pas de partie littérale, pas un `EventCallback`), même
+identité de nœud relue par `EmitAttribute`. Seule la garde de nom grandit. Les deux branches d'émission sont **disjointes**
+(`class` vs `disabled`), donc leur ordre est indifférent.
+
+**UNE DEUXIÈME LISTE BLANCHE, FONDÉE SUR LE NOM.** `BooleanAttributes = { disabled }`, à côté de `DynamicAttributes =
+{ class }` : `disabled` est le nom MESURÉ (entrée n°14) ; tout autre nom garde le refus `dynamic-attribute`, dont les
+booléens hors liste (`hidden` — test `NonAllowedBooleanAttribute`, à `(1,12)`) et le `value=` de `@bind` (test `Bind`
+INCHANGÉ, `BindConverter` toujours cité). La liste est **fondée sur le nom** parce que le générateur ne fait **aucune
+inférence de type** : `disabled` est **ENGAGÉ** vers présence/absence — un `disabled` de type chaîne (que Blazor rendrait
+présent-avec-valeur) est donc une frontière différée, distincte, divulguée. Le message de refus nomme désormais les DEUX
+listes (« chaîne réactive : class ; booléen présence/absence : disabled »).
+
+**GÉNÉRATEUR SEUL — l'analyseur ne bouge pas** (18 tests, byte-identique à la n°94) : la sémantique d'attribut est une
+affaire de template, invisible à l'analyseur de syntaxe C#. Aucun élargissement du sous-ensemble C# non plus : l'app de démo
+n'utilise que du C# déjà admis (champ `bool`, `!`, méthode `void`).
+
+**MESURÉ CONTRE BLAZOR (entrée n°14).** `baseline/BoolAttr.Blazor` et `filament-boolattr-gen` : les deux rendent `#target`
+disabled **présent → absent** au clic de `#toggle`, à l'identique — l'oracle vérifie les DEUX, la sérialisation DOM
+(`hasAttribute`) ET la propriété IDL (`.disabled`), `{true, true}` → `{false, false}`. La sémantique booléenne est mesurée,
+pas raisonnée. `HARNESS_VERSION` 1.8.0 → 1.9.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Seul `disabled`, valeur `@expr` pure, réactif OU (par symétrie) non-réactif (écriture au montage),
+entre. Restent refusés loud+localisés : les **autres noms booléens** (`checked`/`readonly`/`hidden`), le `disabled` de type
+**chaîne**, la valeur **mixte** littéral+expression (`class="box @x"`), les autres noms d'attributs. Différés : ces mêmes
+sous-tranches. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
