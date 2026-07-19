@@ -170,6 +170,11 @@ public static class RepoPaths
 
     /// <summary>The DateTime-via-BigInt-ticks SPEC (decisions 51/115). Never edited to make a gate pass.</summary>
     public static string DateTimeCounterAnswerKey => Path.Combine(Root, "samples", "DateTimeCounter", "datetimecounter.js");
+
+    public static string LinqRazor => Path.Combine(Root, "baseline", "Linq.Blazor", "App.razor");
+
+    /// <summary>The LINQ-over-a-List SPEC (decisions 51/116). Never edited to make a gate pass.</summary>
+    public static string LinqAnswerKey => Path.Combine(Root, "samples", "Linq", "linq.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
