@@ -3724,3 +3724,47 @@ suivent (`world→typed`). Porte `canon`, snapshot, oracle. `HARNESS_VERSION` 1.
 sens, reconnue depuis le lowering de Razor. Restent différés : `@bind` non-chaîne (int/bool → `BindConverter`
 parse), `@bind` sur un champ non-lu-ailleurs (marquage de réactivité), `@bind:event="oninput"`, `@bind` sur un
 composant. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 105. Le HANDLER LAMBDA en ligne (`() => count++`) entre dans le §5 — le corps enveloppé en méthode synthétique et TRADUIT par le modèle sémantique, jamais épissé
+
+**Décision.** Un handler d'évènement lambda **en ligne, sans argument, non-async** — `@onclick="() => count++"`
+(témoin `HandlerLambda`) — rejoint le sous-ensemble. Jusqu'ici tout handler devait être un **nom de méthode
+`@code` nu** (`NamedByTemplate`, refus `[compound-expression]`), car un lambda est du C# **template-side** absent
+de l'AST `@code`, donc hors du modèle sémantique. Cette entrée construit le **pont** : le corps du lambda est
+**enveloppé** en une méthode synthétique `void __filament_lambda_k() { … }` dans la MÊME `WrappedSource` que les
+slots libres et les méthodes de région, donc `count` s'y résout comme un champ, et le corps passe par la MÊME
+récolte de réactivité + `Body()` que les corps de méthode `@code`. Émis en `listen(el, event, () => { … })`. Suite :
+**313 tests** (237 générateur + 58 subset + 18 analyseur), runtime 214.
+
+**LE PONT SÉMANTIQUE, PAS UNE ÉPISSURE (la leçon n°57 encore).** Un scrape syntaxique du texte du lambda répèterait
+les défauts de sur-refus/sur-acceptation que la n°57 a éliminés en confiant « ce nom est-il un signal ? » à Roslyn.
+Ici `count++` devient `count.value++` **parce que le compilateur a marqué `count` signal**, pas parce qu'on a
+deviné à l'orthographe. Le marquage de réactivité passe **automatiquement** sur la méthode synthétique du lambda
+(le corps `count++` la marque assignée-hors-construction, et `@count` la marque lue-par-template → signal) — plus
+propre que la n°104 (`@bind`), qui exigeait un signal établi. Un corps de lambda hors sous-ensemble se **refuse
+tout seul** (mêmes portes que tout corps de méthode ; localisation approximative au niveau de l'attribut,
+divulguée).
+
+**MÉTHODES SYNTHÉTIQUES SÉPARÉES, JAMAIS ÉMISES COMME FONCTIONS.** Les `__filament_lambda_k` vivent dans une liste
+`_lambdaMethods` **distincte** de `_methods` : incluses dans les passes de marquage et `Body()`, exposées par
+`LambdaBodyJs(attr)`, mais jamais émises en fonctions top-level (elles s'inlinent dans leur `listen()`). `MarkCalls`
+a été refactorisé pour prendre le `MethodInfo` appelant en paramètre (un lambda n'est pas dans `_methodsByName`),
+de sorte que ses appels à des méthodes `@code` comptent correctement leurs `CallUses`.
+
+**AUCUNE PRIMITIVE DE RUNTIME NOUVELLE.** `listen` shippe déjà ; une flèche est un builtin JS. `git diff --
+src/filament-runtime` est **vide**. Les handlers à nom de méthode (Counter) restent octet pour octet.
+
+**LE TÉMOIN BASCULE, LES VOISINS RESTENT.** `HandlerLambda.razor` **passe de refusé à compilé**
+(`HandlerLambda_NowCompiles_ToAnInlineArrow` ; retiré de quatre théories de refus). `HandlerLambdaArgs.razor`
+(`e => …`, objet évènement) et `HandlerAsync.razor` (`async () => …`) **restent refusés** `[compound-expression]`
+— la regex de récolte `IsNoArgLambda` est ancrée à `()`, donc ni l'un ni l'autre n'est admis.
+
+**MESURÉ CONTRE BLAZOR (entrée n°24).** `baseline/LambdaHandler.Blazor` (un compteur piloté par `() => count++`)
+et `filament-lambdahandler-gen` rendent **`0 → 1 → 2`** au double clic, à l'identique. Porte `canon`, snapshot,
+oracle. `HARNESS_VERSION` 1.18.0 → 1.19.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Une vraie capacité de plus, la dernière tranche viable-et-mesurable des témoins `Unsupported`.
+Restent différés : `e => …` (objet évènement), `async () => …`, un corps de lambda hors sous-ensemble (refusé). Les
+autres témoins `Unsupported` sont soit **non-viables par fidélité** (`float`/`long` : l'arithmétique diverge en JS ;
+`decimal`/`DateTime`), soit **déjà supportés** au cas réel (`List<T>` de scalaires, records), soit des **portes de
+correction permanentes** ou hors-périmètre POC. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
