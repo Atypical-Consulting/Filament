@@ -270,6 +270,8 @@ public static class Generate
 
     public static string IfMultiBodyToTemp() => ToTemp(RepoPaths.IfMultiBodyRazor, "IfMultiBody");
 
+    public static string IfElseMultiBodyToTemp() => ToTemp(RepoPaths.IfElseMultiBodyRazor, "IfElseMultiBody");
+
     public static string BoundComposeToTemp() => ToTemp(RepoPaths.BoundComposeRazor, "BoundCompose");
 
     public static string ReactiveAttrToTemp() => ToTemp(RepoPaths.ReactiveAttrRazor, "ReactiveAttr");

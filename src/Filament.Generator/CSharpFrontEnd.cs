@@ -632,12 +632,11 @@ public sealed class CSharpFrontEnd
     /// </summary>
     IfOp? If(IfStatementSyntax ifs, IReadOnlyDictionary<string, IntermediateNode> markers)
     {
-        var singleBranch = ifs.Else is null;         // plain @if, no else -> a multi-node body is allowed
         var branches = new List<IfBranch>();
         var cur = ifs;
         while (true)
         {
-            if (BranchBody(cur.Statement, markers, allowMulti: singleBranch) is not { } body) return null;
+            if (BranchBody(cur.Statement, markers) is not { } body) return null;
             branches.Add(new IfBranch(Expr(cur.Condition), body));
 
             if (cur.Else is not { } els) break;               // if / else-if chain ended, no @else
@@ -646,7 +645,7 @@ public sealed class CSharpFrontEnd
                 cur = nested;
                 continue;
             }
-            if (BranchBody(els.Statement, markers, allowMulti: false) is not { } elseBody) return null;  // trailing "else { … }"
+            if (BranchBody(els.Statement, markers) is not { } elseBody) return null;  // trailing "else { … }"
             branches.Add(new IfBranch(null, elseBody));
             break;
         }
@@ -655,27 +654,24 @@ public sealed class CSharpFrontEnd
 
     /// <summary>
     /// One @if/@else branch body -> the markup node(s) it produces, or null (a located refusal
-    /// already emitted). `allowMulti` (a branch-less @if only) lifts the "exactly ONE" cap to "one
-    /// or more"; a branch that is part of an if/else chain passes false and keeps the one-node rule.
-    /// Non-markup ops (nested control flow, a stray text node) stay refused either way — ops.Count
-    /// must equal markup.Count.
+    /// already emitted). A branch body may be ONE OR MORE elements (each becomes a list() item; the
+    /// active branch owns a contiguous global-index range). Non-markup ops (nested control flow, a
+    /// stray text node) stay refused — ops.Count must equal markup.Count.
     /// </summary>
-    IReadOnlyList<IntermediateNode>? BranchBody(
-        StatementSyntax stmt, IReadOnlyDictionary<string, IntermediateNode> markers, bool allowMulti)
+    IReadOnlyList<IntermediateNode>? BranchBody(StatementSyntax stmt, IReadOnlyDictionary<string, IntermediateNode> markers)
     {
         // The ORIGINAL statement nodes, never a SyntaxFactory copy (see ForEach).
         IEnumerable<StatementSyntax> body = stmt is BlockSyntax b ? b.Statements : [stmt];
         var ops = RegionOps(body, markers);
         var markup = ops.OfType<MarkupOp>().ToList();
 
-        var tooMany = allowMulti ? markup.Count < 1 : markup.Count != 1;
-        if (tooMany || ops.Count != markup.Count)
+        if (markup.Count < 1 || ops.Count != markup.Count)
         {
             Refuse("unsupported-if-body",
-                $"a template @if / @else branch body must be {(allowMulti ? "one or more elements" : "exactly ONE element")} " +
-                $"and nothing else; this one produces {ops.Count} thing(s). @if lowers to a conditional list() " +
-                "whose create() returns one root node per item, so a body with a stray text node or nested " +
-                "control flow has no single thing to insert and remove. Refusing to emit.",
+                $"a template @if / @else branch body must be one or more elements and nothing else; this one " +
+                $"produces {ops.Count} thing(s). @if lowers to a conditional list() whose create() returns one " +
+                "root node per item, so a body with a stray text node or nested control flow has no single thing " +
+                "to insert and remove. Refusing to emit.",
                 stmt.SpanStart);
             return null;
         }

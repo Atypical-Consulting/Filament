@@ -73,7 +73,6 @@ public class DiagnosticTests
     [Theory]
     [InlineData("Foreach.razor", 2, 20, "unsupported-foreach")]
     [InlineData("IfNested.razor", 2, 1, "unsupported-if-body")]
-    [InlineData("IfElseMultiBody.razor", 6, 1, "unsupported-if-body")]
     public void ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation(
         string fixture, int line, int col, string reason)
     {
@@ -110,8 +109,8 @@ public class DiagnosticTests
     /// A single-branch @if with a MULTI-NODE body now COMPILES: the plain-@if lowering generalized to
     /// one list() item per body node (a source over the condition yielding [0, 1], an identity key).
     /// It used to be refused [unsupported-if-body] -- a DELIBERATE deferral at #81, now closed for the
-    /// branch-less case. IfElseMultiBody / IfNested stay refused (multi-branch bodies, nested control
-    /// flow); see ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation.
+    /// branch-less case. IfNested stays refused (nested control flow); see
+    /// ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation.
     /// </summary>
     [Fact]
     public void IfMultiBody_NowCompiles_ToAMultiNodeConditionalList()
@@ -124,6 +123,31 @@ public class DiagnosticTests
             Assert.True(exit == 0, $"a single-branch @if with a multi-node body should compile now:\n{stderr}");
             var js = File.ReadAllText(outPath);
             Assert.Contains("[0, 1]", js);              // one list() item per body node
+            Assert.Contains("(i) => i", js);            // identity key
+            Assert.DoesNotContain("[unsupported-if-body]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// An @if/@else where a branch has a MULTI-NODE body now COMPILES: the multi-branch lowering
+    /// generalized to per-branch global-index ranges (the @if branch = [0], the @else branch = [1, 2]),
+    /// keyed by identity. It used to be refused [unsupported-if-body] @ (6,1) -- now closed for every
+    /// branch of a chain. IfNested (nested control flow in a branch) stays refused; see
+    /// ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation.
+    /// </summary>
+    [Fact]
+    public void IfElseMultiBody_NowCompiles_ToARangedConditionalList()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfElseMultiBody.razor"), outPath);
+
+            Assert.True(exit == 0, $"an @if/@else with a multi-node branch body should compile now:\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains("? [0] :", js);             // the @if branch's range
+            Assert.Contains("[1, 2]", js);              // the @else branch's range (two nodes)
             Assert.Contains("(i) => i", js);            // identity key
             Assert.DoesNotContain("[unsupported-if-body]", js);
         }
@@ -555,7 +579,6 @@ public class DiagnosticTests
     // here either: a single-branch @if with a multi-node body COMPILES now -- see
     // IfMultiBody_NowCompiles_ToAMultiNodeConditionalList.)
     [InlineData("IfNested.razor")]
-    [InlineData("IfElseMultiBody.razor")]
     public void ARefusalWritesNoFile(string fixture)
     {
         var outPath = InRepo();

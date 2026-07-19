@@ -1143,47 +1143,37 @@ public sealed class TemplateCompiler
         _create.Add($"insert({container}, {anchor});");
         _used.Add("list");
 
-        // PLAIN @if (one branch, no @else).
-        if (op.Branches.Count == 1)
+        // #81 FAST PATH: a plain @if with a single-node body. Byte-for-byte the #81 emission (a
+        // constant key and the body function passed directly), so the @if gate and snapshot hold.
+        if (op.Branches.Count == 1 && op.Branches[0].Body.Count == 1)
         {
-            var body = op.Branches[0].Body;
-            if (body.Count == 1)
-            {
-                // SINGLE-NODE body: the exact #81 emission, byte-for-byte, so the @if gate and
-                // snapshot still hold. A 0/1 source, a constant key, the body function passed directly.
-                var fn = Unique("ifBody");
-                if (!EmitBranchFn(body[0], fn)) return; // body refused; nothing emitted
-                _bindings.Add($"list({container}, () => ({op.Branches[0].Cond}) ? [0] : [], () => 0, {fn}, {anchor});");
-                return;
-            }
-
-            // MULTI-NODE body: one list item per body node. The single item's VALUE is the node
-            // index; the key IS that index, so the whole group mounts/unmounts on the condition, in
-            // source order. #82's IfCreate dispatch, one level down (per node instead of per branch).
-            var bodyFns = new List<string>();
-            for (var i = 0; i < body.Count; i++)
-            {
-                var fn = Unique($"ifBody{id}_{i}");
-                if (!EmitBranchFn(body[i], fn)) return;
-                bodyFns.Add(fn);
-            }
-            var keys = string.Join(", ", Enumerable.Range(0, bodyFns.Count));
-            _bindings.Add($"list({container}, () => ({op.Branches[0].Cond}) ? [{keys}] : [], (i) => i, {IfCreate(bodyFns)}, {anchor});");
+            var fn = Unique("ifBody");
+            if (!EmitBranchFn(op.Branches[0].Body[0], fn)) return; // body refused; nothing emitted
+            _bindings.Add($"list({container}, () => ({op.Branches[0].Cond}) ? [0] : [], () => 0, {fn}, {anchor});");
             return;
         }
 
-        // MULTI-BRANCH @if/@else if/@else: the single item's VALUE is the active branch index; the
-        // key IS that index, so flipping any condition changes the key and list() swaps the branch.
-        // Each branch is exactly one node (allowMulti was false). Names carry `id` so two @if ops in
-        // one module never collide.
+        // GENERAL: each branch owns a contiguous range of GLOBAL NODE INDICES; the active branch's
+        // whole range is the source, keyed by identity, so flipping the condition swaps all of that
+        // branch's nodes (in order). Covers a single-branch multi-node body AND a multi-branch chain
+        // with any node counts. One node per branch is the degenerate range [i..i], which emits #82's
+        // exact bytes. Names carry `id` so two @if ops in one module never collide.
         var fns = new List<string>();
-        for (var i = 0; i < op.Branches.Count; i++)
+        var ranges = new List<IReadOnlyList<int>>();
+        for (var b = 0; b < op.Branches.Count; b++)
         {
-            var fn = Unique($"ifBody{id}_{i}");
-            if (!EmitBranchFn(op.Branches[i].Body[0], fn)) return;
-            fns.Add(fn);
+            var body = op.Branches[b].Body;
+            var idxs = new List<int>();
+            for (var n = 0; n < body.Count; n++)
+            {
+                var fn = Unique($"ifBody{id}_{fns.Count}");
+                if (!EmitBranchFn(body[n], fn)) return;
+                idxs.Add(fns.Count);
+                fns.Add(fn);
+            }
+            ranges.Add(idxs);
         }
-        _bindings.Add($"list({container}, {IfSource(op.Branches)}, (i) => i, {IfCreate(fns)}, {anchor});");
+        _bindings.Add($"list({container}, {IfSourceRanges(op.Branches, ranges)}, (i) => i, {IfCreate(fns)}, {anchor});");
     }
 
     /// <summary>
@@ -1215,15 +1205,17 @@ public sealed class TemplateCompiler
         return true;
     }
 
-    /// <summary>`() => (c0) ? [0] : (c1) ? [1] : [n]` — a trailing @else is `: [n]`; a chain with no
-    /// @else ends `: []` (nothing shows when none match, generalizing plain @if's `? [0] : []`).</summary>
-    static string IfSource(IReadOnlyList<IfBranch> branches)
+    /// <summary>`() => (c0) ? [r0…] : (c1) ? [r1…] : [rN…]` — each branch's whole global-index range; a
+    /// trailing @else is `: [rN…]`, a chain with no @else ends `: []`. One index per branch reproduces
+    /// the pre-multi-node form (`? [i] :`) exactly, so #82 stays byte-identical.</summary>
+    static string IfSourceRanges(IReadOnlyList<IfBranch> branches, IReadOnlyList<IReadOnlyList<int>> ranges)
     {
         var parts = new List<string>();
         for (var i = 0; i < branches.Count; i++)
         {
-            if (branches[i].Cond is { } c) parts.Add($"({c}) ? [{i}] : ");
-            else return "() => " + string.Concat(parts) + $"[{i}]";   // trailing @else
+            var keys = string.Join(", ", ranges[i]);
+            if (branches[i].Cond is { } c) parts.Add($"({c}) ? [{keys}] : ");
+            else return "() => " + string.Concat(parts) + $"[{keys}]";   // trailing @else
         }
         return "() => " + string.Concat(parts) + "[]";
     }
