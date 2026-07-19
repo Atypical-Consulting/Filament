@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.13.0';   // 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.14.0';   // 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -381,6 +381,14 @@ const APPS = {
   // measurement of the multi-node @else body widening (BENCH n°18).
   ifelsemulti: {
     readySelector: '#toggle',
+    observeSelector: '#w',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract drives two toggles and asserts a NESTED @if renders #a iff
+  // show && other — the decision-tree conjunction — against Blazor's own rendered DOM. The measurement
+  // of the nested-@if widening (BENCH n°19).
+  ifnested: {
+    readySelector: '#tshow',
     observeSelector: '#w',
     scenarios: [],
   },
@@ -1834,6 +1842,34 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         out.observed.afterSecond = ids();
         // ...and back to the @if branch (a) — a clean swap both ways.
         if (ids() !== 'a') out.problems.push(`#w spans "${ids()}" after second toggle, expected "a" (back to the @if branch)`);
+        return out;
+      });
+    }
+
+    if (app === 'ifnested') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#tshow') || !document.querySelector('#tother')) {
+          out.problems.push('missing required element: #tshow/#tother'); return out;
+        }
+        const present = () => (document.querySelector('#w > span#a') ? 'a' : '');
+        // show=true, other=true: #a present (show && other).
+        out.observed.initial = present();
+        if (present() !== 'a') { out.problems.push(`#a initially "${present()}", expected "a" (show && other)`); return out; }
+        document.querySelector('#tother').click();
+        out.observed.afterOtherOff = present();
+        // THE MEASUREMENT (inner condition): other=false -> #a gone even though show is still true.
+        if (present() !== '') { out.problems.push(`#a "${present()}" after other off, expected "" (!other)`); return out; }
+        document.querySelector('#tother').click();
+        out.observed.afterOtherOn = present();
+        if (present() !== 'a') { out.problems.push(`#a "${present()}" after other on, expected "a"`); return out; }
+        document.querySelector('#tshow').click();
+        out.observed.afterShowOff = present();
+        // THE MEASUREMENT (outer condition): show=false -> #a gone even though other is true.
+        if (present() !== '') { out.problems.push(`#a "${present()}" after show off, expected "" (!show)`); return out; }
+        document.querySelector('#tshow').click();
+        out.observed.afterShowOn = present();
+        if (present() !== 'a') out.problems.push(`#a "${present()}" after show on, expected "a"`);
         return out;
       });
     }

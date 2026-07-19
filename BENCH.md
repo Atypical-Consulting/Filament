@@ -3269,3 +3269,79 @@ conteneur — la généralisation à plages d'indices est **mesurée**, pas rais
 ---
 
 *Fin de l'entrée n°18. Ne pas modifier — ajouter une entrée n°19 pour toute rectification.*
+
+---
+
+## Entrée n°19 — 2026-07-19 — Phase 4 : le `@if` IMBRIQUÉ dans une branche mesuré contre Blazor (CORRECTION)
+
+**Réserve de la n°17/n°18 fermée pour le contrôle de flux imbriqué** : un `@if (other)` imbriqué dans une
+branche `@if (show)` rejoint le sous-ensemble compilé (décision #100). Toute la structure imbriquée est
+**aplatie** en un seul `list()` dont la source est un **arbre de décision** (ternaire imbriqué) sur toutes les
+conditions, un constructeur par nœud feuille indexé globalement. `IfSourceRanges` (n°99) est remplacé par un
+`IfExpr` **récursif** qui **reproduit les octets des n°82/n°98** quand il n'y a pas d'imbrication. Générateur
+seul, **runtime INCHANGÉ**. Artefact **fabriqué et mesuré**.
+
+### Validité Blazor vérifiée EN AMONT (la leçon RZ9979)
+
+`dotnet build baseline/IfNested.Blazor` **réussit** ; le `BuildRenderTree` donne le contrat : `if (show) { if
+(other) { AddMarkupContent(<span a>) } }` — `#a` présent **ssi** `show && other`, sans conteneur.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/IfNested.Blazor` : `<div id="w">…deux boutons…@if (show) { @if (other) { <span id="a"> } }</div>`.
+`show` ET `other` sont lus par des conditions (`MarkConditionReads` descend récursivement) ET assignés, donc
+**hissés en signaux**. Le nœud feuille compile en une source arbre-de-décision `() => (show.value) ?
+((other.value) ? [0] : []) : []` : le `?:` court-circuité **reproduit l'évaluation du `@if` imbriqué** (`other`
+n'est lu que si `show` est vrai, donc l'effet ne s'abonne à `other` que dans ce cas — exactement comme deux
+`list()` imbriqués). Deux bascules exercent les **quatre** combinaisons. Un générateur qui aurait ignoré la
+condition interne (ou externe) laisserait `#a` visible quand il ne devrait pas — l'oracle le verrait.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.14.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`). La branche `ifnested` de `verifyContract` lit la présence de
+`#w > span#a`, exige l'initial `"a"` (`show && other`), clique `#tother` (`other=false`) et exige `""` (feuille
+partie malgré `show` vrai — **condition interne**), reclique `#tother` → `"a"`, clique `#tshow` (`show=false`) et
+exige `""` (feuille partie malgré `other` vrai — **condition externe**), reclique `#tshow` → `"a"`.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/IfNested.Blazor -c Release -o bench/publish/blazor-ifnested
+./bench/build-filament.sh filament-ifnested-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-ifnested/wwwroot --app ifnested --label blazor-ifnested       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-ifnested-gen   --app ifnested --label filament-ifnested-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#a` : init → other✗ → other✓ → show✗ → show✓ | verdict |
+|---|---|---|
+| **blazor-ifnested** (autorité) | `a` → `` → `a` → `` → `a` | contrat OK |
+| **filament-ifnested-gen** (générateur) | `a` → `` → `a` → `` → `a` | contrat OK |
+
+**Les deux rendent `a → «» → a → «» → a`, à l'identique.** `#a` suit la conjonction `show && other`, les deux
+conditions (interne et externe) mesurées séparément — l'aplatissement en arbre de décision est **mesuré**, pas
+raisonné.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (app triviale, décision du propriétaire).
+- **`HARNESS_VERSION` 1.13.0 → 1.14.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (branche `ifnested` + entrée
+  `APPS`), donc son hash change ; le numéro monte. Aucune mesure de poids antérieure n'est invalidée.
+- **RUNTIME INCHANGÉ.** L'arbre de décision réemploie `list()` ; `git diff -- src/filament-runtime` est vide. Les
+  émissions n°81/n°82/n°98 restent octet pour octet (25 tests de régression `@if` verts après le changement).
+- **ANCRE-COMMENTAIRE `+1` nœud.** Toujours la seule divergence divulguée (n°81/20).
+- **TRANCHE ÉTROITE.** Une branche ne peut être QUE tout-markup OU un unique `@if` imbriqué. Une branche
+  **mélangeant** markup et `@if` imbriqué (nouveau témoin `IfNestedMixed.razor`, refusé `[unsupported-if-body]` à
+  `(2,1)`), **plusieurs** `@if` imbriqués frères, un `@foreach` imbriqué, restent refusés (différés).
+  `Foreach.razor` reste refusé `[unsupported-foreach]`. §8 inchangé : RADICAL reste « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°19. Ne pas modifier — ajouter une entrée n°20 pour toute rectification.*
