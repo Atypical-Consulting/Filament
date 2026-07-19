@@ -1,0 +1,38 @@
+@* Loop & switch statements (BENCH n°21): three @code handlers exercising while, switch, do-while.
+   The oracle clicks each in turn and reads #v; the sequence 0 -> 5 -> 9 -> 3 proves each construct
+   ran. The blank lines between siblings are part of the DOM contract ("\n\n" text nodes). *@
+
+<h1 id="title">Loops</h1>
+
+<p>n = <span id="v">@n</span></p>
+
+<button id="bwhile" @onclick="DoWhile">while</button>
+
+<button id="bswitch" @onclick="DoSwitch">switch</button>
+
+<button id="bdo" @onclick="DoDo">do</button>
+
+@code {
+    private int n = 0;
+
+    private void DoWhile()
+    {
+        n = 0;
+        while (n < 5) { n = n + 1; }
+    }
+
+    private void DoSwitch()
+    {
+        switch (n)
+        {
+            case 5: n = 9; break;
+            default: n = 0; break;
+        }
+    }
+
+    private void DoDo()
+    {
+        n = 0;
+        do { n = n + 1; } while (n < 3);
+    }
+}
