@@ -3352,3 +3352,49 @@ pas raisonnée. `HARNESS_VERSION` 1.8.0 → 1.9.0, divulgué.
 entre. Restent refusés loud+localisés : les **autres noms booléens** (`checked`/`readonly`/`hidden`), le `disabled` de type
 **chaîne**, la valeur **mixte** littéral+expression (`class="box @x"`), les autres noms d'attributs. Différés : ces mêmes
 sous-tranches. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 96. La valeur `class` MIXTE (littéral+expression) entre dans le §5 — un pli préfixe-conscient dont le `@expr` pur est le cas DÉGÉNÉRÉ (octet pour octet), et l'élargissement MESURÉ contre Blazor
+
+**Décision.** La sous-tranche que les n°94/n°95 refusaient explicitement — « la valeur **mixte** littéral+expression
+(`class="box @x"`) » — est **fermée** : une valeur `class` mixte (`class="badge @statusClass rounded"`) entre dans le
+sous-ensemble. C'est la forme `class` la plus courante du monde réel. Razor livre la valeur en **parties ordonnées,
+chacune portant un `Prefix`** (le texte qui la précède, vérifié via `--dump-ir`) ; le compilateur les **plie** en une
+seule concaténation `setAttr`. Suite : **282 tests** (209 générateur + 55 subset + 18 analyseur).
+
+**LE PLI EST PRÉFIXE-CONSCIENT, ET LE PUR EN EST LE CAS DÉGÉNÉRÉ.** `ComposeAttributeValue` parcourt les parties dans
+l'ordre : chaque partie apporte son `Prefix` puis son corps ; un littéral s'accumule dans un tampon, une expression vide
+le tampon en terme chaîne JS puis émet `SlotJs` (jamais un splice) ; les termes sont joints par ` + `. `class="badge @x
+rounded"` se plie en `'badge ' + x.value + ' rounded'`. **Le `class="@x"` pur** (n°13) est le pli **dégénéré** — une
+expression, aucun littéral — et se plie en **exactement** `x.value` : il émet **octet pour octet** comme avant. C'est
+pourquoi la branche `class` a été **GÉNÉRALISÉE, pas dupliquée** — et la porte + le snapshot `ReactiveAttr` restent verts
+**sans modification**, ce qui EST la preuve que la généralisation est transparente. `reactive` est vrai ssi **une**
+partie-expression est réactive ; l'effect atterrit dans `_bindings` (avant l'attache), donc son premier `setAttr` écrit
+dans l'arbre détaché sans `MutationRecord`.
+
+**UN PRÉDICAT UNIQUE `ComposableValue`, RÉCOLTE + ÉMISSION.** `ComposableValue(attr)` : toutes les parties sont des
+nœuds littéral (`HtmlAttributeValue`) ou expression (`CSharpExpressionAttributeValue`), au moins une expression, aucune
+partie-expression n'étant un `EventCallback`. Le prédicat unique que la récolte ET l'émission consultent (n°53) :
+`CollectDynamicAttributes` récolte **chaque** partie-expression dans `FreeSlots` (le pur en récolte une), et `EmitAttribute`
+relit `SlotJs`/`SlotIsReactive` sur les MÊMES nœuds. `DynamicValue` (expr pure unique) **reste** pour la voie booléenne
+`disabled` (une valeur mixte sur `disabled` n'a pas de sens et refuse).
+
+**LE CONTRÔLE DE FLUX RESTE REFUSÉ, INTACT.** `ComposableValue` renvoie null pour un `CSharpCodeAttributeValueIntermediateNode`
+(`class="@if(c){…}"`) — ce nœud n'est ni un littéral ni une expression-valeur — donc cette valeur reste sur le refus
+`unaccounted-attribute-value` (tranche distincte, non touchée). Le message `dynamic-attribute` perd sa clause « ou une
+valeur mixte (`class="box @x"`) » (désormais admise pour un nom allow-listed) ; la valeur mixte sur un **autre nom** refuse
+toujours (test `MixedValueOnNonAllowed` à `(1,12)`), donc la composition est gardée par la **liste blanche**, pas par la
+forme de la valeur.
+
+**GÉNÉRATEUR SEUL — l'analyseur ne bouge pas** (18 tests) ; aucun élargissement du sous-ensemble C# (l'app de démo n'utilise
+que du C# déjà admis). **RUNTIME INCHANGÉ** : la composition est une concaténation de chaînes JS au-dessus du `setAttr` qui
+ship déjà (`git diff -- src/filament-runtime` vide).
+
+**MESURÉ CONTRE BLAZOR (entrée n°15).** `baseline/MixedAttr.Blazor` et `filament-mixedattr-gen` : les deux rendent
+`#status` class / `#counter-value` `badge zero rounded` / `0` → `badge counting rounded` / `1` au clic — la chaîne `class`
+**entière** est vérifiée, les littéraux survivant autour du jeton réactif dans l'ordre et l'espacement exacts. La
+composition est mesurée, pas raisonnée. `HARNESS_VERSION` 1.9.0 → 1.10.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Seul `class`. Général à N parties, mesuré sur une expression avec littéraux en tête et en queue
+(les deux vidages). Restent refusés loud+localisés : le **contrôle de flux** dans un attribut, le `disabled` de type
+**chaîne**, les **autres noms** d'attributs. Différés : ces mêmes sous-tranches. §5 s'élargit d'un cran ; RADICAL reste
+**« ni éliminée ni établie »**.
