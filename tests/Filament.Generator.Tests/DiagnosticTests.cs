@@ -147,9 +147,9 @@ public class DiagnosticTests
     [Fact]
     public void DynamicNonClassAttribute_IsRefused_AtItsExactLocation()
     {
-        var d = Refused("DynamicTitle.razor");
+        var d = Refused("DynamicRole.razor");
 
-        Assert.Contains("DynamicTitle.razor(1,12): FIL0003: [dynamic-attribute]", d);
+        Assert.Contains("DynamicRole.razor(1,12): FIL0003: [dynamic-attribute]", d);
         Assert.Contains("class", d);   // the message names the allowlist
         Assert.Contains("caption", d); // and echoes the refused expression
     }
