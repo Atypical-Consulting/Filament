@@ -1,0 +1,25 @@
+@* List .Clear() (BENCH n°25): an in-element @foreach over a reactive List<string>, with #add
+   populating it and #clear emptying it via items.Clear(). Clear maps to `items.length = 0` plus the
+   version bump, so the list() reconciles to EMPTY -- three <li> then none. No whitespace between the
+   buttons and the @foreach (If.razor's contract). *@
+
+<ul id="list"><button id="add" @onclick="Add">add</button><button id="clear" @onclick="Clear">clear</button>@foreach (string item in items)
+{
+    <li @key="item" class="row">@item</li>
+}</ul>
+
+@code {
+    private List<string> items = new List<string>();
+
+    private void Add()
+    {
+        items.Add("alpha");
+        items.Add("beta");
+        items.Add("gamma");
+    }
+
+    private void Clear()
+    {
+        items.Clear();
+    }
+}
