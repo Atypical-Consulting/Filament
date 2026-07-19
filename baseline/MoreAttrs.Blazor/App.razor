@@ -1,0 +1,21 @@
+@* Attribute allowlist widening (BENCH n°22): a boolean `hidden` (present/absent) plus reactive
+   string `role`, `style`, and `data-count` (data-* prefix) on #s, all driven by a toggle. *@
+
+<span id="s" hidden="@hid" role="@r" style="@st" data-count="@d">x</span>
+
+<button id="toggle" @onclick="Toggle">Toggle</button>
+
+@code {
+    private bool hid = true;
+    private string r = "alert";
+    private string st = "color: red";
+    private string d = "1";
+
+    private void Toggle()
+    {
+        hid = false;
+        r = "status";
+        st = "color: blue";
+        d = "2";
+    }
+}
