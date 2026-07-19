@@ -255,6 +255,28 @@ public class CodeTests
     }
 
     /// <summary>
+    /// A LINQ chain over a List now COMPILES (decision 116): `_items.Where(x => x > 0).Count()` lowers to
+    /// `_items.filter(x => x > 0).length` -- the source List is already a JS array, so eager array methods are
+    /// faithful to a LINQ chain ending in a scalar. It used to be refused [unsupported-call]. Enumerable.Range and
+    /// the rest of LINQ stay refused (Code/Linq.razor: Range -> an IEnumerable local, refused at its type).
+    /// </summary>
+    [Fact]
+    public void Linq_NowCompiles_ToArrayMethods()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Gate", "Linq.razor"), outPath);
+
+            Assert.True(exit == 0, $"a LINQ Where().Count() chain should compile now (decision 116):\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains(".filter(x => x > 0).length", js);   // Where -> filter, Count -> length
+            Assert.DoesNotContain("[unsupported-call]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
     /// A `DateTime` field now COMPILES (decision 115, closing the TypeDateTime deferral): a DateTime is a BigInt
     /// tick count (default(DateTime) is 0 ticks -> 0n). `new DateTime(y,m,d)` is computed from constant args at
     /// generate-time, .AddDays(constant int) is tick arithmetic, comparison is BigInt, and display goes through the

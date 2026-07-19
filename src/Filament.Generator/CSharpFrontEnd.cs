@@ -2307,6 +2307,14 @@ public sealed class CSharpFrontEnd
         if (symbol is not null && symbol.ContainingType.SpecialType == SpecialType.System_DateTime)
             return DateTimeMethod(inv, symbol);
 
+        // A LINQ operator (decision 116): the common ones over a List map to JS array methods -- Where -> filter,
+        // Select -> map, Count -> length, Any -> some, All -> every, ToList -> the array. LINQ over a JS array is
+        // faithful because the source is already a materialised array (rows.js decision 1), and a chain that ends
+        // in Count/Any/All produces a scalar. The predicate/selector lambda translates through the same Expr the
+        // rest of @code uses (its parameter is an ordinary local). The rest of LINQ is refused in LinqInvocation.
+        if (symbol is not null && symbol.ContainingType?.ToDisplayString() == "System.Linq.Enumerable")
+            return LinqInvocation(inv, symbol);
+
         // Spec 5: "calls to methods declared in the same component". Anything else --
         // Console.WriteLine, DateTime.Now, an extension method -- has no meaning in a Filament
         // module and there is nothing honest to emit for it. (List<T>'s Add/RemoveAt are
@@ -2369,6 +2377,53 @@ public sealed class CSharpFrontEnd
                 "comparisons. Division and modulo need System.Decimal's 28-digit rounding, which is deferred. " +
                 "Refusing to emit.", b.SpanStart),
         };
+    }
+
+    /// <summary>A LINQ operator over a List (decision 116) -> a JS array method. The source array is already
+    /// materialised (a List is a JS array), so eager JS methods are faithful to LINQ terminating in a scalar
+    /// (Count/Any/All) or ToList. Only these operators are admitted; the rest of LINQ (GroupBy, OrderBy, Join,
+    /// aggregate overloads, …) is refused rather than half-translated.</summary>
+    string LinqInvocation(InvocationExpressionSyntax inv, IMethodSymbol symbol)
+    {
+        if (inv.Expression is not MemberAccessExpressionSyntax ma)
+            return Refuse("unsupported-call",
+                "a LINQ operator must be called on a source (e.g. items.Where(...)). Refusing to emit.", inv.SpanStart);
+        var recv = Expr(ma.Expression);
+        var args = inv.ArgumentList.Arguments;
+        return (symbol.Name, args.Count) switch
+        {
+            ("Where", 1) => $"{recv}.filter({Lambda(args[0])})",
+            ("Select", 1) => $"{recv}.map({Lambda(args[0])})",
+            ("Count", 0) => $"{recv}.length",
+            ("Count", 1) => $"{recv}.filter({Lambda(args[0])}).length",
+            ("Any", 0) => $"({recv}.length > 0)",
+            ("Any", 1) => $"{recv}.some({Lambda(args[0])})",
+            ("All", 1) => $"{recv}.every({Lambda(args[0])})",
+            ("ToList", 0) => recv,
+            ("ToArray", 0) => recv,
+            _ => Refuse("unsupported-call",
+                $"the LINQ operator '{symbol.Name}' (arity {args.Count}) is not in the subset. Section 5 admits " +
+                "Where, Select, Count, Any, All and ToList/ToArray over a List. Refusing to emit.", inv.SpanStart),
+        };
+    }
+
+    /// <summary>A single-parameter lambda argument to a LINQ operator (decision 116) -> a JS arrow. Its parameter
+    /// is an ordinary local (Identifier resolves an IParameterSymbol to its name), and its body is translated by
+    /// the same Expr as the rest of @code -- so `x => x > 0` becomes `x => x > 0`. Only an EXPRESSION body is
+    /// admitted (a statement-block lambda is refused).</summary>
+    string Lambda(ArgumentSyntax arg)
+    {
+        switch (arg.Expression)
+        {
+            case SimpleLambdaExpressionSyntax { Body: ExpressionSyntax body } sl:
+                return $"{JsName(sl.Parameter.Identifier.Text)} => {Expr(body)}";
+            case ParenthesizedLambdaExpressionSyntax { Body: ExpressionSyntax body } pl when pl.ParameterList.Parameters.Count == 1:
+                return $"{JsName(pl.ParameterList.Parameters[0].Identifier.Text)} => {Expr(body)}";
+            default:
+                return Refuse("unsupported-expression",
+                    "a LINQ operator's argument must be a single-parameter lambda with an expression body. Refusing to emit.",
+                    arg.SpanStart);
+        }
     }
 
     /// <summary>A DateTime instance method (decision 115). `.AddDays(n)` with a constant integer n adds

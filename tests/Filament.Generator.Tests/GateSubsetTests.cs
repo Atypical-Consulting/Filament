@@ -84,7 +84,9 @@ public class GateSubsetTests
     [Theory]
     // ---- spec 3 NON-GOALS ---------------------------------------------------
     [InlineData("Gate/AsyncTask.razor", 6, 13, "FIL0001", "unsupported-modifier")]
-    [InlineData("Gate/Linq.razor", 9, 24, "FIL0001", "unsupported-call")]
+    // Gate/Linq.razor LEFT this list at decision 116: `_items.Where(x => x > 0).Count()` compiles now
+    // (-> filter/length; the LinqNowCompiles test below). The still-refused LINQ (GroupBy, Range, …) is
+    // covered by Code/Linq.razor (Enumerable.Range -> an IEnumerable local, refused at its type).
     [InlineData("Gate/GenericMethod.razor", 6, 19, "FIL0001", "unsupported-generic")]
     [InlineData("Gate/GenericErasure.razor", 7, 22, "FIL0001", "unsupported-generic")]
     [InlineData("Inherits.razor", 1, 1, "FIL0003", "unsupported-directive")]
@@ -171,7 +173,6 @@ public class GateSubsetTests
     /// </summary>
     [Theory]
     [InlineData("Gate/AsyncTask.razor")]
-    [InlineData("Gate/Linq.razor")]
     [InlineData("Gate/GenericMethod.razor")]
     [InlineData("Gate/GenericErasure.razor")]
     [InlineData("Gate/Implements.razor")]
