@@ -3653,3 +3653,37 @@ switch-constant/break vers admis et **ajoute** un `switch` à label PATTERN touj
 **LE PLAFOND HONNÊTE.** Deuxième tranche de la frontière « sous-ensemble C# » (IntDivision ✓ → While/Switch/DoWhile
 ✓). Restent différés : `continue`, `goto`, `goto case`, instructions étiquetées, labels PATTERN/`when` de `switch`,
 switch-EXPRESSIONS (`x switch { … }`). §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 103. Les LISTES BLANCHES d'attributs s'élargissent — booléen `hidden`/`required` + chaîne `role`/`style`/`data-*` (préfixe), une tranche combinée
+
+**Décision.** Les réserves « autres noms » des n°95 (booléen) et n°97 (chaîne) sont **fermées** pour un lot
+représentatif, en une tranche combinée. `hidden` et `required` rejoignent `BooleanAttributes` (présence/absence,
+comme `disabled`) ; `role` et `style` rejoignent la liste blanche des attributs chaîne réactifs, et **tout nom
+`data-*`** est admis par un **prédicat de préfixe** (`IsDynamicStringAttribute`). Comme la récolte et l'émission
+sont **agnostiques au nom** (n°95/n°97), c'est un changement d'allowlist + un prédicat ; aucune émission neuve.
+Suite : **308 tests** (232 générateur + 58 subset + 18 analyseur), runtime 214.
+
+**`data-*` PAR PRÉFIXE, PAS NOM PAR NOM.** Un attribut `data-*` porte toujours une valeur chaîne et est sûr à
+composer, donc au lieu de l'admettre nom par nom (`data-count`, `data-id`, …) le prédicat
+`IsDynamicStringAttribute(name) = DynamicAttributes.Contains(name) || name.StartsWith("data-")` couvre toute la
+famille. Consulté par la récolte (`CollectDynamicAttributes`) ET l'émission (`EmitAttribute`), les deux sites qui
+lisaient `DynamicAttributes.Contains`.
+
+**`value` DÉLIBÉRÉMENT EXCLU.** `value` reste hors des deux listes, gardant le `value=` lowered de `@bind` sur la
+voie de refus `dynamic-attribute`. Les témoins de refus ont **migré** pour rester bornés : `hidden→readonly`
+(`BooleanNotAllowed`), `role→placeholder` (`DynamicRole`, `MixedNonAllowed`), toujours refusés `[dynamic-attribute]`
+à `(1,12)` — la position ne dépend pas du nom (le nœud d'attribut commence à l'espace qui le précède), donc la
+migration garde la colonne.
+
+**GÉNÉRATEUR SEUL — RUNTIME INCHANGÉ.** `setAttr` prend n'importe quel nom (booléen via son ternaire
+présence/absence, chaîne via `setAttr` composé). `git diff -- src/filament-runtime` est vide. L'analyseur ne bouge
+pas.
+
+**MESURÉ CONTRE BLAZOR (entrée n°22).** `baseline/MoreAttrs.Blazor` (un `<span>` avec `hidden`+`role`+`style`+
+`data-count` réactifs) et `filament-moreattrs-gen` rendent à l'identique : `hidden` présent→absent, `role`/`style`/
+`data-count` suivant l'état (`BuildRenderTree` confirme que Blazor traite `hidden`:bool en présence/absence et les
+trois chaînes en attributs chaîne). Porte `canon`, snapshot, oracle. `HARNESS_VERSION` 1.16.0 → 1.17.0, divulgué.
+
+**LE PLAFOND HONNÊTE — FAIBLE NOUVEAUTÉ, DIVULGUÉE.** Aucune forme d'émission nouvelle : preuve mesurée que les deux
+listes blanches se généralisent (booléen par nom, chaîne par nom + préfixe `data-*`). Restent différés : `value`
+(pour @bind), et tout autre nom non mesuré. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
