@@ -178,6 +178,7 @@ ALL_LABELS=(
   filament-rootforeach-gen
   filament-rootif-gen
   filament-boundcompose-gen
+  filament-reactiveattr-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -195,6 +196,7 @@ project_for() {
     filament-rootforeach-gen)                        echo "samples/filament-rootforeach-gen" ;;
     filament-rootif-gen)                             echo "samples/filament-rootif-gen" ;;
     filament-boundcompose-gen)                       echo "samples/filament-boundcompose-gen" ;;
+    filament-reactiveattr-gen)                       echo "samples/filament-reactiveattr-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -204,7 +206,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -231,6 +233,7 @@ razor_for() {
     filament-rootforeach-gen)                        echo "$REPO_ROOT/baseline/RootForeach.Blazor/App.razor" ;;
     filament-rootif-gen)                             echo "$REPO_ROOT/baseline/RootIf.Blazor/App.razor" ;;
     filament-boundcompose-gen)                       echo "$REPO_ROOT/baseline/BoundCompose.Blazor/App.razor" ;;
+    filament-reactiveattr-gen)                       echo "$REPO_ROOT/baseline/ReactiveAttr.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -250,6 +253,7 @@ generated_js_for() {
     filament-rootforeach-gen)                        echo "App.g.js" ;;
     filament-rootif-gen)                             echo "App.g.js" ;;
     filament-boundcompose-gen)                       echo "App.g.js" ;;
+    filament-reactiveattr-gen)                       echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -265,6 +269,7 @@ title_for() {
     filament-rootforeach-gen)                        echo "RootForeach" ;;
     filament-rootif-gen)                             echo "RootIf" ;;
     filament-boundcompose-gen)                       echo "BoundCompose" ;;
+    filament-reactiveattr-gen)                       echo "ReactiveAttr" ;;
     *) return 1 ;;
   esac
 }
@@ -283,6 +288,7 @@ blazor_label_for() {
     filament-rootforeach-gen)                        echo "blazor-rootforeach" ;;
     filament-rootif-gen)                             echo "blazor-rootif" ;;
     filament-boundcompose-gen)                       echo "blazor-boundcompose" ;;
+    filament-reactiveattr-gen)                       echo "blazor-reactiveattr" ;;
     *) return 1 ;;
   esac
 }
@@ -309,6 +315,7 @@ css_for() {
     filament-rootforeach-gen)                        echo "$REPO_ROOT/baseline/RootForeach.Blazor/wwwroot/css/app.css" ;;
     filament-rootif-gen)                             echo "$REPO_ROOT/baseline/RootIf.Blazor/wwwroot/css/app.css" ;;
     filament-boundcompose-gen)                       echo "$REPO_ROOT/baseline/BoundCompose.Blazor/wwwroot/css/app.css" ;;
+    filament-reactiveattr-gen)                       echo "$REPO_ROOT/baseline/ReactiveAttr.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }

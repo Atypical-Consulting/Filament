@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.7.0';   // 1.7.0: 'boundcompose' contract (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.8.0';   // 1.8.0: 'reactiveattr' contract (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -333,6 +333,14 @@ const APPS = {
   boundcompose: {
     readySelector: '#inc',
     observeSelector: '#wrap',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #increment and asserts a REACTIVE `class` attribute on
+  // #status tracks state (zero -> counting) in lockstep with the #counter-value text (0 -> 1), against
+  // Blazor's own rendered DOM. The measurement of the reactive-`class` widening (BENCH n°13).
+  reactiveattr: {
+    readySelector: '#increment',
+    observeSelector: '#status',
     scenarios: [],
   },
 };
@@ -1518,6 +1526,44 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         out.observed.initialValue = document.querySelector('#counter-value').textContent.trim();
         if (out.observed.initialValue === '1') {
           out.problems.push('#counter-value already reads "1" before #increment; the predicate would be vacuous');
+        }
+        return out;
+      });
+    }
+
+    if (app === 'reactiveattr') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        for (const sel of ['#increment', '#status', '#counter-value']) {
+          if (!document.querySelector(sel)) out.problems.push(`missing required element: ${sel}`);
+        }
+        if (out.problems.length) return out;
+
+        const cls = () => document.querySelector('#status').getAttribute('class');
+        const txt = () => document.querySelector('#counter-value').textContent.trim();
+        out.observed.initialClass = cls();
+        out.observed.initialText = txt();
+        // Blazor's own initial render: class="zero", count "0". If either already read the post-click
+        // value the assertions below would be vacuous.
+        if (out.observed.initialClass !== 'zero') {
+          out.problems.push(`#status class initial is "${out.observed.initialClass}", expected "zero"`);
+          return out;
+        }
+        if (out.observed.initialText !== '0') {
+          out.problems.push(`#counter-value initial is "${out.observed.initialText}", expected "0"`);
+          return out;
+        }
+        document.querySelector('#increment').click();
+        out.observed.afterClass = cls();
+        out.observed.afterText = txt();
+        // THE MEASUREMENT: a reactive `class` binding updates the attribute in lockstep with the text
+        // binding -- both against Blazor's OWN rendered DOM. A stale class here means the attribute
+        // binding did not track (no effect, or a create-time write where a live one was needed).
+        if (out.observed.afterClass !== 'counting') {
+          out.problems.push(`#status class after #increment is "${out.observed.afterClass}", expected "counting"`);
+        }
+        if (out.observed.afterText !== '1') {
+          out.problems.push(`#counter-value after #increment is "${out.observed.afterText}", expected "1"`);
         }
         return out;
       });

@@ -2807,3 +2807,77 @@ au clic — la liaison réactive traverse la frontière de composition. L'élarg
 ---
 
 *Fin de l'entrée n°12. Ne pas modifier — ajouter une entrée n°13 pour toute rectification.*
+
+---
+
+## Entrée n°13 — 2026-07-19 — Phase 4 : l'attribut `class` RÉACTIF mesuré contre Blazor (CORRECTION)
+
+**Sous-tranche différée de la n°12 fermée** : un **attribut `class` réactif** (`class="@statusClass"`) entre dans le
+sous-ensemble (décision #94). La n°12 refusait explicitement « attribut d'enfant lié (`class="@x"`) — les attributs
+réactifs ne sont pas encore dans le sous-ensemble de base » ; c'est cette réserve-là qui tombe. La règle est celle de
+la liaison de TEXTE (`EmitBinding`), la cible d'écriture étant un attribut (`setAttr`) au lieu d'un nœud texte
+(`setText`). `setAttr` **est déjà** dans le runtime (et dans `RuntimeExports`) : **aucun octet de runtime ne change**,
+l'élargissement est **générateur seul**. Comme aucune answer key préexistante ne portait d'attribut dynamique,
+l'artefact est **fabriqué et mesuré** — même protocole que les n°9/10/11/12.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/ReactiveAttr.Blazor` : un compteur `<p id="status" class="@statusClass">…<span id="counter-value">@currentCount</span></p>`
+avec `statusClass` (« zero ») et `currentCount` (0) réassignés au clic (« counting », 1). `statusClass` est **lu par le
+template** (l'attribut `class`) ET **assigné hors construction** (dans `Increment`) : il est donc **hissé en signal**, et
+la liaison `class` devient `effect(() => setAttr(_el, 'class', statusClass.value))` — la MÊME règle réactive que le
+texte, l'écriture visant un attribut. Blazor **re-rend** l'attribut à chaque changement d'état ; Filament abonne un
+**seul effect** qui écrit l'attribut. `Increment` écrit deux fois → le handler `batch()` : un seul flush pour les deux
+signaux (texte + attribut). L'oracle demande : *le `class` de `#status` suit-il l'état comme celui de Blazor, en phase
+avec le texte ?* Un générateur qui aurait écrit l'attribut au montage (sans effect) laisserait `class="zero"` au clic —
+et l'oracle le verrait.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.8.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`, aucun run de poids/vitesse). La branche `reactiveattr` de
+`verifyContract` lit le `class` de `#status` (doit valoir « zero ») et le texte de `#counter-value` (« 0 »), clique
+`#increment`, et exige « counting » / « 1 ». L'interaction est LA mesure : elle prouve que l'attribut réactif SUIT
+l'état, ce qu'un rendu initial seul ne montrerait pas.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/ReactiveAttr.Blazor -c Release -o bench/publish/blazor-reactiveattr
+./bench/build-filament.sh filament-reactiveattr-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-reactiveattr/wwwroot --app reactiveattr --label blazor-reactiveattr       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-reactiveattr-gen   --app reactiveattr --label filament-reactiveattr-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#status` class / `#counter-value` : initial → `#increment` | verdict |
+|---|---|---|
+| **blazor-reactiveattr** (autorité) | `zero` / `0` → `counting` / `1` | contrat OK |
+| **filament-reactiveattr-gen** (générateur) | `zero` / `0` → `counting` / `1` | contrat OK |
+
+**Les deux rendent `zero/0 → counting/1`, à l'identique.** L'attribut `class`, lié au signal `statusClass`, suit l'état
+au clic, en phase avec la liaison de texte — la réactivité d'attribut est **mesurée**, pas raisonnée.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (app triviale, décision du propriétaire).
+- **`HARNESS_VERSION` 1.7.0 → 1.8.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (branche `reactiveattr` + entrée
+  `APPS`), donc son hash change ; le numéro monte. Aucune mesure de poids antérieure n'est invalidée.
+- **RUNTIME INCHANGÉ.** `setAttr` existait déjà (rows.js l'émet en statique) ; l'élargissement n'a touché QUE le
+  générateur. `git diff -- src/filament-runtime` est vide.
+- **TRANCHE ÉTROITE — `class` seulement, valeur `@expr` pure.** L'émission dynamique est réservée à une **liste
+  blanche d'attributs** (`{ class }`, comme `PropertyAttributes`) : tout autre nom reste refusé `dynamic-attribute`
+  (dont le `value=` de `@bind` — d'où `BindConverter` toujours cité, test `Bind`). Refusés loud+localisés :
+  attributs booléens présence/absence (`disabled`), valeur mixte littéral+expression (`class="box @x"`), contrôle de
+  flux dans une valeur d'attribut. Restent différés : attributs booléens, autres noms d'attributs, valeurs
+  concaténées. §8 inchangé : RADICAL reste « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°13. Ne pas modifier — ajouter une entrée n°14 pour toute rectification.*
