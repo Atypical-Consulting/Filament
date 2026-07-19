@@ -145,6 +145,11 @@ public static class RepoPaths
 
     /// <summary>The try/catch/throw/lock SPEC (decisions 51/110). Never edited to make a gate pass.</summary>
     public static string TryLockAnswerKey => Path.Combine(Root, "samples", "TryLock", "trylock.js");
+
+    public static string PositionalRecordRazor => Path.Combine(Root, "baseline", "PositionalRecord.Blazor", "App.razor");
+
+    /// <summary>The positional-record SPEC (decisions 51/111). Never edited to make a gate pass.</summary>
+    public static string PositionalRecordAnswerKey => Path.Combine(Root, "samples", "PositionalRecord", "positionalrecord.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
