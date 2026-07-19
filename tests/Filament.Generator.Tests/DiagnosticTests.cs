@@ -138,6 +138,23 @@ public class DiagnosticTests
     }
 
     /// <summary>
+    /// THE ALLOWLIST IS A MEASURED BOUNDARY, NOT FOLKLORE. `class` compiles (ReactiveAttrTests); every
+    /// OTHER dynamic attribute stays refused [dynamic-attribute]. `title="@caption"` reads reactive state
+    /// exactly as `class` would, and setAttr would be correct for it -- but no measurement covers it, so it
+    /// is refused with a message that names the allowlist. This is what keeps the widening honest: a name
+    /// is admitted only when a BENCH entry measures it.
+    /// </summary>
+    [Fact]
+    public void DynamicNonClassAttribute_IsRefused_AtItsExactLocation()
+    {
+        var d = Refused("DynamicTitle.razor");
+
+        Assert.Contains("DynamicTitle.razor(1,12): FIL0003: [dynamic-attribute]", d);
+        Assert.Contains("class", d);   // the message names the allowlist
+        Assert.Contains("caption", d); // and echoes the refused expression
+    }
+
+    /// <summary>
     /// DECISION 53's backstop, from the input side. An attribute that still carries its
     /// '@' never resolved to a directive attribute. The cause is either an
     /// out-of-subset directive attribute or -- and this is the one that matters -- the
