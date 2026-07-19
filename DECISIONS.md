@@ -3398,3 +3398,40 @@ composition est mesurée, pas raisonnée. `HARNESS_VERSION` 1.9.0 → 1.10.0, di
 (les deux vidages). Restent refusés loud+localisés : le **contrôle de flux** dans un attribut, le `disabled` de type
 **chaîne**, les **autres noms** d'attributs. Différés : ces mêmes sous-tranches. §5 s'élargit d'un cran ; RADICAL reste
 **« ni éliminée ni établie »**.
+
+## 97. Les NOMS d'attributs chaîne réactifs (`title`/`href`/`aria-label`) entrent dans le §5 — un changement d'UNE LIGNE (récolte/émission agnostiques au nom), et l'élargissement MESURÉ contre Blazor
+
+**Décision.** La sous-tranche que les n°94/#95/#96 réservaient (« autres noms d'attributs ») est **fermée** pour un lot
+représentatif : trois noms d'attributs chaîne réactifs — `title`, `href`, `aria-label` — rejoignent `DynamicAttributes`.
+Comme la récolte (`CollectDynamicAttributes`) et l'émission (`ComposableValue`/`ComposeAttributeValue`) sont déjà
+**agnostiques au nom**, l'admission est un **changement d'UNE LIGNE** : `DynamicAttributes = { class }` devient
+`{ class, title, href, aria-label }`. Chaque nom compile vers la MÊME émission composée que `class`
+(`effect(() => setAttr(el, nom, x.value))`), `setAttr` prenant n'importe quel nom (tiret d'`aria-label` compris). Suite :
+**285 tests** (212 générateur + 55 subset + 18 analyseur).
+
+**VALIDITÉ BLAZOR VÉRIFIÉE EN AMONT — la leçon de la tranche retirée.** La tranche « contrôle de flux dans un attribut »
+(`class="@if(on){<text>a</text>}"`) a été conçue puis **retirée** (design/plan revert, mémoire) quand `dotnet build`
+de l'app Blazor l'a rejetée avec **RZ9979** : le contrôle de flux dans un attribut est une fonctionnalité **supprimée**
+de Blazor. Le générateur de Filament la *parse* pourtant (son parseur Razor est plus permissif que le SDK Blazor), d'où
+le piège. **Leçon appliquée ici en amont** : `dotnet build` de `<a href="@url" title="@tip" aria-label="@label">`
+**réussit** — ces attributs chaîne réactifs, tirets compris, sont du Blazor valide. Ne jamais concevoir une tranche
+d'attribut/template sans construire l'app Blazor de base d'abord ; un IR productible n'implique PAS que Blazor accepte
+la source.
+
+**`value` DÉLIBÉRÉMENT EXCLU.** `value` n'entre pas : c'est ce qui garde le `value=` lowered de `@bind` sur la voie de
+refus `dynamic-attribute` (test `Bind` inchangé, `BindConverter` toujours cité). Le témoin de refus, jusqu'ici `title`,
+a **migré vers `role`** (`DynamicRole.razor`, `MixedNonAllowed.razor`) — un nom hors liste, toujours refusé à `(1,12)` —
+puisque `title` est désormais admis. La migration précède l'élargissement pour que chaque commit reste vert.
+
+**GÉNÉRATEUR SEUL — RUNTIME INCHANGÉ.** `setAttr` prend n'importe quel nom d'attribut ; l'admission n'a touché QUE la
+liste blanche. `git diff -- src/filament-runtime` est vide. L'analyseur ne bouge pas (18 tests) ; aucun élargissement du
+sous-ensemble C#.
+
+**MESURÉ CONTRE BLAZOR (entrée n°16).** `baseline/StringAttrs.Blazor` (un `<a>` dont href/title/aria-label sont
+réactifs) et `filament-stringattrs-gen` : les deux rendent `/a·first·one → /b·second·two` au clic, à l'identique — les
+trois attributs (dont le nom à tiret `aria-label`) suivent le signal en phase. `HARNESS_VERSION` 1.10.0 → 1.11.0,
+divulgué.
+
+**LE PLAFOND HONNÊTE — FAIBLE NOUVEAUTÉ, DIVULGUÉE.** Aucune forme d'émission nouvelle : la valeur est la **preuve
+mesurée** que la liste blanche chaîne se généralise. Seuls `title`/`href`/`aria-label` ; restent différés : `data-*`,
+`style`, `value`, autres noms. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
