@@ -53,7 +53,9 @@ export function mount(target) {
 
   // -- events -----------------------------------------------------------------
   // Toggle writes once (locked), so the handler is a plain assignment -- no batch.
-  listen(toggleButton, 'click', () => locked.value = !locked.value);
+  listen(toggleButton, 'click', () => {
+    locked.value = !locked.value;
+  });
 
   // -- attach: last, so the effect's first run made no MutationRecord ----------
   insert(target, targetButton);

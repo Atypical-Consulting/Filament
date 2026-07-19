@@ -174,6 +174,18 @@ public sealed class TemplateCompiler
     static readonly HashSet<string> DynamicAttributes = new(StringComparer.OrdinalIgnoreCase) { "class" };
 
     /// <summary>
+    /// Attribute names whose value MAY be a compiled BOOLEAN expression, rendered present/absent (a second
+    /// allowlist beside DynamicAttributes, disjoint from it). `disabled` is the MEASURED one (BENCH n°14):
+    /// `disabled="@b"` compiles to `effect(() => setAttr(el, 'disabled', b.value ? '' : null))` -- the
+    /// present/absent contract via setAttr's own null->remove branch (true -> '' -> setAttribute, false ->
+    /// null -> removeAttribute), NOT the naive `setAttr(el,'disabled',true)` that yields disabled="true".
+    /// Name-based because the generator does no type inference: `disabled` is COMMITTED to boolean
+    /// present/absent (a string-typed `disabled` is a deferred, distinct case). Widening this set is a NEW
+    /// measured slice each time.
+    /// </summary>
+    static readonly HashSet<string> BooleanAttributes = new(StringComparer.OrdinalIgnoreCase) { "disabled" };
+
+    /// <summary>
     /// A bare identifier, and nothing else. The ONE spelling this phase's template may
     /// use to name state or a handler; see NamedByTemplate().
     /// </summary>
@@ -509,7 +521,8 @@ public sealed class TemplateCompiler
     {
         if (node is MarkupElementIntermediateNode el && !LooksLikeComponent(el.TagName))
             foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
-                if (DynamicAttributes.Contains(attr.AttributeName) && DynamicValue(attr) is { } expr)
+                if ((DynamicAttributes.Contains(attr.AttributeName) || BooleanAttributes.Contains(attr.AttributeName))
+                    && DynamicValue(attr) is { } expr)
                     plan.FreeSlots.Add(expr);
         foreach (var child in node.Children) CollectDynamicAttributes(child, plan);
     }
@@ -1270,10 +1283,33 @@ public sealed class TemplateCompiler
                 return;
             }
 
+            // BOOLEAN / PRESENT-ABSENT ATTRIBUTE VALUE (the `disabled` slice, BENCH n°14). Same shape as
+            // the `class` branch above (disjoint allowlist), but the compiled expression is wrapped in a
+            // present/absent ternary: true -> '' -> setAttribute (present, <button disabled="">), false ->
+            // null -> removeAttribute (absent, setAttr's own null->remove). Not the naive setAttr of the
+            // bool, which would render disabled="true". The effect lands in _bindings (before attach), so
+            // its first write goes into the detached tree and makes no MutationRecord.
+            if (BooleanAttributes.Contains(name) && DynamicValue(attr) is { } boolNode)
+            {
+                var js = _code.SlotJs(boolNode);
+                _used.Add("setAttr");
+                if (_code.SlotIsReactive(boolNode))
+                {
+                    _used.Add("effect");
+                    _bindings.Add($"effect(() => setAttr({v}, {JsString(name)}, {js} ? '' : null));");
+                }
+                else
+                {
+                    _create.Add($"setAttr({v}, {JsString(name)}, {js} ? '' : null);");
+                }
+                return;
+            }
+
             Diag("dynamic-attribute",
                 $"attribute '{name}' on <{el.TagName}> carries the C# expression \"{Trunc(expr)}\". This " +
-                "compiler compiles a reactive/dynamic value only for ALLOW-LISTED attributes (currently: " +
-                $"{string.Join(", ", DynamicAttributes.Order())}); '{name}' is not one of them, and this is " +
+                "compiler compiles a dynamic value only for ALLOW-LISTED attributes (reactive string: " +
+                $"{string.Join(", ", DynamicAttributes.Order())}; boolean present/absent: " +
+                $"{string.Join(", ", BooleanAttributes.Order())}); '{name}' is not one of them, and this is " +
                 "neither a resolved event handler nor a static value. A dynamic value on an un-measured " +
                 "attribute -- or a mixed literal+expression value (class=\"box @x\") -- has no measurement " +
                 "covering it. Refusing to emit.",
