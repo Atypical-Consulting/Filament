@@ -182,6 +182,7 @@ ALL_LABELS=(
   filament-boolattr-gen
   filament-mixedattr-gen
   filament-stringattrs-gen
+  filament-ifmulti-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -203,6 +204,7 @@ project_for() {
     filament-boolattr-gen)                           echo "samples/filament-boolattr-gen" ;;
     filament-mixedattr-gen)                          echo "samples/filament-mixedattr-gen" ;;
     filament-stringattrs-gen)                        echo "samples/filament-stringattrs-gen" ;;
+    filament-ifmulti-gen)                            echo "samples/filament-ifmulti-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -212,7 +214,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -243,6 +245,7 @@ razor_for() {
     filament-boolattr-gen)                           echo "$REPO_ROOT/baseline/BoolAttr.Blazor/App.razor" ;;
     filament-mixedattr-gen)                          echo "$REPO_ROOT/baseline/MixedAttr.Blazor/App.razor" ;;
     filament-stringattrs-gen)                        echo "$REPO_ROOT/baseline/StringAttrs.Blazor/App.razor" ;;
+    filament-ifmulti-gen)                            echo "$REPO_ROOT/baseline/IfMultiBody.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -266,6 +269,7 @@ generated_js_for() {
     filament-boolattr-gen)                           echo "App.g.js" ;;
     filament-mixedattr-gen)                          echo "App.g.js" ;;
     filament-stringattrs-gen)                        echo "App.g.js" ;;
+    filament-ifmulti-gen)                            echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -285,6 +289,7 @@ title_for() {
     filament-boolattr-gen)                           echo "BoolAttr" ;;
     filament-mixedattr-gen)                          echo "MixedAttr" ;;
     filament-stringattrs-gen)                        echo "StringAttrs" ;;
+    filament-ifmulti-gen)                            echo "IfMultiBody" ;;
     *) return 1 ;;
   esac
 }
@@ -307,6 +312,7 @@ blazor_label_for() {
     filament-boolattr-gen)                           echo "blazor-boolattr" ;;
     filament-mixedattr-gen)                          echo "blazor-mixedattr" ;;
     filament-stringattrs-gen)                        echo "blazor-stringattrs" ;;
+    filament-ifmulti-gen)                            echo "blazor-ifmulti" ;;
     *) return 1 ;;
   esac
 }
@@ -337,6 +343,7 @@ css_for() {
     filament-boolattr-gen)                           echo "$REPO_ROOT/baseline/BoolAttr.Blazor/wwwroot/css/app.css" ;;
     filament-mixedattr-gen)                          echo "$REPO_ROOT/baseline/MixedAttr.Blazor/wwwroot/css/app.css" ;;
     filament-stringattrs-gen)                        echo "$REPO_ROOT/baseline/StringAttrs.Blazor/wwwroot/css/app.css" ;;
+    filament-ifmulti-gen)                            echo "$REPO_ROOT/baseline/IfMultiBody.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }

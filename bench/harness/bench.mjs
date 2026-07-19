@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.11.0';   // 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.12.0';   // 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -366,6 +366,14 @@ const APPS = {
   stringattrs: {
     readySelector: '#toggle',
     observeSelector: '#link',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #toggle and asserts a MULTI-NODE @if body mounts/unmounts
+  // BOTH #w spans together, in order (a,b), against Blazor's own rendered DOM. The measurement of the
+  // multi-node @if body widening (BENCH n°17).
+  ifmulti: {
+    readySelector: '#toggle',
+    observeSelector: '#w',
     scenarios: [],
   },
 };
@@ -1779,6 +1787,25 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         document.querySelector('#toggle').click();
         out.observed.afterSecondToggle = present();
         if (!present()) out.problems.push('#cond absent after second toggle (show=true), expected present');
+        return out;
+      });
+    }
+
+    if (app === 'ifmulti') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#toggle')) { out.problems.push('missing required element: #toggle'); return out; }
+        const ids = () => Array.from(document.querySelectorAll('#w > span')).map(s => s.id).join(',');
+        out.observed.initial = ids();
+        if (ids() !== 'a,b') { out.problems.push(`#w spans initially "${ids()}", expected "a,b"`); return out; }
+        document.querySelector('#toggle').click();
+        out.observed.afterToggle = ids();
+        // THE MEASUREMENT: a multi-node @if body unmounts BOTH spans together when the condition goes false.
+        if (ids() !== '') { out.problems.push(`#w spans still "${ids()}" after toggle, expected "" (both removed together)`); return out; }
+        document.querySelector('#toggle').click();
+        out.observed.afterSecond = ids();
+        // ...and remounts BOTH, in order, when it goes true again.
+        if (ids() !== 'a,b') out.problems.push(`#w spans "${ids()}" after second toggle, expected "a,b" (both restored, in order)`);
         return out;
       });
     }

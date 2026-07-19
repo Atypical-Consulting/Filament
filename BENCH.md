@@ -3113,3 +3113,83 @@ en phase — la généralisation de la liste blanche chaîne est **mesurée**, p
 ---
 
 *Fin de l'entrée n°16. Ne pas modifier — ajouter une entrée n°17 pour toute rectification.*
+
+---
+
+## Entrée n°17 — 2026-07-19 — Phase 4 : le corps MULTI-NŒUD d'un `@if` (branche unique) mesuré contre Blazor (CORRECTION)
+
+**Réserve différée de la n°81 fermée pour le cas sans `@else`** : un `@if (cond) { <a><b> }` — une branche unique dont
+le corps est **plus d'un élément** — rejoint le sous-ensemble compilé (décision #98). La n°81 refusait le corps
+multi-nœud (`[unsupported-if-body]`) **délibérément** ; c'est cette réserve-là qui tombe, pour la branche sans `@else`.
+L'abaissement plain-`@if` est **généralisé** de « un nœud par branche » à « **un item de liste par nœud du corps** » :
+`list(c, () => cond ? [0, 1] : [], (i) => i, (i) => i===0 ? f0() : f1(), anchor)`. Générateur seul, **runtime
+INCHANGÉ** ; les émissions de la n°81 (nœud unique) et de la n°82 (multi-branche) restent **octet pour octet**
+identiques (le chemin neuf ne s'active que pour `Body.Count > 1` sur un `@if` sans `else`). Artefact **fabriqué et
+mesuré**.
+
+### Validité Blazor vérifiée EN AMONT (la leçon RZ9979)
+
+Avant toute conception, `dotnet build baseline/IfMultiBody.Blazor` **réussit** — un `@if` à branche unique avec un
+corps de deux `<span>` est du Blazor ordinaire. Le `BuildRenderTree` de Blazor (lu depuis `App_razor.g.cs`, méthode
+n°64) confirme le contrat DOM : **deux `AddMarkupContent` (seq 6, 7)** dans `if (show)`, soit deux `<span>` adjacents,
+enfants directs de `#w`, dans l'ordre a puis b, **sans conteneur** et **sans nœud texte intercalé**.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/IfMultiBody.Blazor` : `<div id="w"><button id="toggle">…</button>@if (show) { <span id="a">a</span><span
+id="b">b</span> }</div>`. `show` est **lu par la condition `@if`** ET **assigné dans `Toggle`**, donc **hissé en
+signal**. Le corps compile en **deux fonctions de création** (`ifBody0_0`, `ifBody0_1`) et une source
+`() => (show.value) ? [0, 1] : []`, à clé identité, dispatchée par `IfCreate`. Au clic, les **deux** `<span>`
+montent/démontent **ensemble**, dans l'ordre. Un générateur qui n'aurait démonté qu'un nœud, ou inversé l'ordre, ou
+enveloppé le corps dans un conteneur, l'oracle le verrait (il lit `#w > span` comme chaîne d'ids jointe).
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.12.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`, aucun run de poids/vitesse). La branche `ifmulti` de `verifyContract` lit
+`#w > span` comme chaîne d'ids jointe, exige l'initial `"a,b"`, clique `#toggle` et exige `""` (les deux retirés
+ENSEMBLE), reclique et exige `"a,b"` (les deux restaurés, dans l'ordre). L'ordre (`a,b`, pas `b,a`) mesure que la liste
+à un-item-par-nœud préserve l'ordre ; la chaîne vide mesure que les deux nœuds démontent ensemble.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/IfMultiBody.Blazor -c Release -o bench/publish/blazor-ifmulti
+./bench/build-filament.sh filament-ifmulti-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-ifmulti/wwwroot --app ifmulti --label blazor-ifmulti       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-ifmulti-gen   --app ifmulti --label filament-ifmulti-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#w > span` ids : initial → `#toggle` → `#toggle` | verdict |
+|---|---|---|
+| **blazor-ifmulti** (autorité) | `a,b` → `` (vide) → `a,b` | contrat OK |
+| **filament-ifmulti-gen** (générateur) | `a,b` → `` (vide) → `a,b` | contrat OK |
+
+**Les deux rendent `a,b → «» → a,b`, à l'identique.** Les deux `<span>` du corps multi-nœud montent et démontent
+**ensemble**, dans l'ordre, sans conteneur — l'abaissement à un-item-par-nœud est **mesuré**, pas raisonné. Cela ferme
+aussi le « À RE-MESURER si `@if` entre un jour dans une app mesurée » laissé ouvert par la n°81.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (app triviale, décision du propriétaire).
+- **`HARNESS_VERSION` 1.11.0 → 1.12.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (branche `ifmulti` + entrée
+  `APPS`), donc son hash change ; le numéro monte. Aucune mesure de poids antérieure n'est invalidée.
+- **RUNTIME INCHANGÉ.** Le corps multi-nœud réemploie `list()` exactement comme `@foreach`/`@if` simple ; l'ancre-
+  commentaire est un builtin DOM. `git diff -- src/filament-runtime` est vide.
+- **ANCRE-COMMENTAIRE `+1` nœud.** Toujours la seule divergence divulguée d'avec Blazor (n°81/20) ; l'ancrage au frère
+  suivant reste différé.
+- **TRANCHE ÉTROITE.** Branche unique seulement. Le corps multi-nœud d'un `@else`/`@else if` (`IfElseMultiBody`) et le
+  contrôle de flux imbriqué dans une branche (`IfNested`) **restent refusés** `[unsupported-if-body]`, témoins intacts.
+  Les nœuds texte intercalés dans un corps restent refusés (`ops.Count != markup.Count`). §8 inchangé : RADICAL reste
+  « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°17. Ne pas modifier — ajouter une entrée n°18 pour toute rectification.*
