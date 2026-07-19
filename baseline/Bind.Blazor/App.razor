@@ -1,0 +1,19 @@
+@* Two-way binding (BENCH n°23): @bind="text" on an <input>, with #echo showing @text and a button
+   that sets text programmatically. `text` is a string SIGNAL (read by @text AND @bind, assigned in
+   Set) -- both directions of the binding are measured: #set changes text -> input.value tracks it,
+   and a change event on the input -> text (and #echo) track it. *@
+
+<input id="box" @bind="text" />
+
+<span id="echo">@text</span>
+
+<button id="set" @onclick="Set">Set</button>
+
+@code {
+    private string text = "hi";
+
+    private void Set()
+    {
+        text = "world";
+    }
+}
