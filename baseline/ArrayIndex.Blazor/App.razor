@@ -1,0 +1,20 @@
+@* T[] array (BENCH n°36, decision 117): a `int[]` indexed by a reactive index. `items` is an array literal
+   [10, 20, 30] -- a T[] maps to the SAME JS array a List<T> does (read-only: indexing, .Length, iteration).
+   `i` is a signal, and #next advances it (mod the length), so @items[i] steps through the array. #value goes
+   "10" -> "20" -> "30" -> "10", exactly as Blazor indexes the same C# array. items is read by @items[i] but
+   never mutated -> a plain array; i is read AND assigned -> a signal. (An array is READ-ONLY here; a mutable
+   collection is a List<T>, whose element write bumps the reactive version.) *@
+
+<p>Item: <span id="value">@items[i]</span></p>
+
+<button id="next" @onclick="Next">next</button>
+
+@code {
+    private int[] items = new int[] { 10, 20, 30 };
+    private int i = 0;
+
+    private void Next()
+    {
+        i = (i + 1) % items.Length;
+    }
+}
