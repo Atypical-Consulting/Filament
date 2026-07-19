@@ -171,6 +171,21 @@ public class DiagnosticTests
     }
 
     /// <summary>
+    /// Composition is gated by the ALLOWLIST, not by the value shape: a mixed literal+expression value on
+    /// a non-allow-listed name (here `title`) still refuses `[dynamic-attribute]` at its exact location.
+    /// Only `class` composes; every other name keeps the refusal.
+    /// </summary>
+    [Fact]
+    public void MixedValueOnNonAllowedAttribute_IsRefused_AtItsExactLocation()
+    {
+        var d = Refused("MixedNonAllowed.razor");
+
+        Assert.Contains("MixedNonAllowed.razor(1,12): FIL0003: [dynamic-attribute]", d);
+        Assert.Contains("class", d);    // the message names the string allowlist
+        Assert.Contains("caption", d);  // and echoes the refused expression
+    }
+
+    /// <summary>
     /// DECISION 53's backstop, from the input side. An attribute that still carries its
     /// '@' never resolved to a directive attribute. The cause is either an
     /// out-of-subset directive attribute or -- and this is the one that matters -- the
