@@ -4044,3 +4044,47 @@ refusés (`object` n'est pas typé ; `DateTime` n'a pas de BCL). §8 inchangé.
 ---
 
 *Fin de l'entrée n°33. Ne pas modifier — ajouter une entrée n°34 pour toute rectification.*
+
+---
+
+## Entrée n°34 — 2026-07-20 — Phase 4 : le type `DateTime` (→ ticks BigInt) mesuré contre Blazor (CORRECTION)
+
+**Le type `DateTime`** (décision #115) rejoint le §5, mappé sur un **BigInt de ticks** (100ns depuis 0001-01-01).
+Un DateTime C# EST un compte de ticks 64 bits, qu'un BigInt tient exactement. La construction `new DateTime(y,m,d)`
+est calculée à la GÉNÉRATION à partir des arguments CONSTANTS (le générateur construit le DateTime dans son propre
+runtime et lit `.Ticks`) ; `.AddDays(n)` (n constant int) ajoute n·TicksPerDay ; la comparaison est un compare
+BigInt (gratuit) ; l'affichage par défaut rend le `"MM/dd/yyyy HH:mm:ss"` de C# via un formateur `__dtStr` émis
+(ticks → ms epoch → Date UTC). Sous-ensemble ÉTROIT et honnête : `DateTime.Now` est refusé (NON déterministe →
+non mesurable contre Blazor), l'arithmétique `dt - dt` (TimeSpan) refusée, les autres membres (Add*, propriétés,
+ToString(format)) différés. `__dtStr` est émis dans le module → **runtime INCHANGÉ**.
+
+### Ce qui est mesuré
+
+`baseline/DateTimeCounter.Blazor` : `when` (un `DateTime`) part de `new DateTime(2026, 7, 20)` ; chaque `#add`
+l'avance de 5 jours (`when.AddDays(5)`). `when` est lu par `@when` ET assigné par `Add` → signal. La branche
+`datetimecounter` de `verifyContract` clique `#add` deux fois et exige `#value` :
+`"07/20/2026 00:00:00" → "07/25/2026 00:00:00" → "07/30/2026 00:00:00"`. **`HARNESS_VERSION` 1.28.0 → 1.29.0**, divulgué.
+
+```
+dotnet publish baseline/DateTimeCounter.Blazor -c Release -o bench/publish/blazor-datetimecounter
+./bench/build-filament.sh filament-datetimecounter-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-datetimecounter/wwwroot --app datetimecounter --label blazor-datetimecounter       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-datetimecounter-gen   --app datetimecounter --label filament-datetimecounter-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#value` | verdict |
+|---|---|---|
+| **blazor-datetimecounter** (autorité) | `07/20 → 07/25 → 07/30 (2026, 00:00:00)` | contrat OK |
+| **filament-datetimecounter-gen** (générateur) | `07/20 → 07/25 → 07/30 (2026, 00:00:00)` | contrat OK |
+
+**Les deux avancent `07/20 → 07/25 → 07/30`, à l'identique**, avec le rollover de calendrier correct et le format
+par défaut fidèle. C'est la mesure QUI PROUVE le mapping : une coercion nue du BigInt afficherait le nombre de ticks
+brut, pas la date. `git diff -- src/filament-runtime` vide (le formateur est émis dans le module). Les témoins
+`Code/TypeDateTime.razor` et `DateTime`/`List<DateTime>` basculent de refusés à compilés ; `object` reste refusé
+(non typé — aucune représentation JS fidèle). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°34. Ne pas modifier — ajouter une entrée n°35 pour toute rectification.*

@@ -4012,3 +4012,40 @@ mesure qui PROUVE le mapping. Les témoins `Code/TypeDecimal.razor` et `decimal`
 compilés ; `object`/`DateTime` restent refusés. `HARNESS_VERSION` 1.27.0 → 1.28.0, divulgué. §5 s'élargit d'un cran ;
 RADICAL reste **« ni éliminée ni établie »**.
 
+
+## 115. Le type `DateTime` entre dans le §5 — un BigInt de ticks, construction/AddDays calculés depuis des constantes, affiché par un formateur émis ; supersède le refus « pas de BCL »
+
+**Décision.** Le type `DateTime` rejoint le sous-ensemble §5, mappé sur un **BigInt de ticks** (100ns depuis
+0001-01-01). Il était refusé, catalogué « le plus dur des types restants — pas de BCL ». VÉRIFIÉ empiriquement
+qu'il est fidèle : un DateTime C# EST un compte de ticks 64 bits, `(new DateTime(2026,7,20) - epoch).TotalMs`
+= `Date.UTC(2026,6,20)`, donc ticks↔ms se convertissent exactement, et un formateur JS reproduit le
+`"MM/dd/yyyy HH:mm:ss"` de C# (rollover de calendrier + année bissextile compris — testés contre C#).
+`TypeSubset.Scalars` admet `System_DateTime` (donc `List<DateTime>`). Suite : **350 tests** (272 générateur / 60
+subset / 18 analyzer), runtime 214. **LEÇON (5e over-refus corrigé cette session) : « le plus dur » n'est pas
+« impossible » — vérifier avant de rejeter.**
+
+**CONSTRUCTION ET AddDays CALCULÉS À LA GÉNÉRATION.** Un DateTime n'est pas une constante C# à la compilation, mais
+ses ARGUMENTS le sont : `new DateTime(2026,7,20)` → le générateur construit le DateTime dans SON PROPRE runtime,
+lit `.Ticks`, et émet `639201024000000000n` — aucune arithmétique de date à l'exécution pour la construction. Une
+construction à arguments NON constants est refusée. `.AddDays(n)` (n constant int) → `(ticks + n·TicksPerDay·n)` en
+arithmétique BigInt. La COMPARAISON est gratuite : un DateTime étant un BigInt, `dt1 < dt2` retombe sur
+`JsBinaryOperator` en compare BigInt.
+
+**UN SOUS-ENSEMBLE ÉTROIT ET HONNÊTE, le reste REFUSÉ pour ne rien mal traduire.** Admettre le type ouvre toute
+l'API DateTime ; chaque membre non géré est donc explicitement refusé plutôt qu'émis faux : `DateTime.Now`/`.Today`
+(NON déterministe → non mesurable contre Blazor, le point qui distingue ce bord des scalaires) et les propriétés
+(`.Year`, …) tombent sur le refus existant de `MemberAccess` (pas un membre de record / `.Count` de List) ;
+l'arithmétique `dt - dt` (qui produit un `TimeSpan`, hors §5) est refusée dans `ExprCore` (garde `EitherDateTime`
++ `IsComparisonKind`) plutôt qu'émise en soustraction de ticks nue (silencieusement fausse, §10) ; les autres
+méthodes (`AddHours`, `ToString(format)`, …) tombent sur le refus de `DateTimeMethod`. Divulgué.
+
+**FORMATEUR ÉMIS, PAS D'EXPORT RUNTIME.** `__dtStr` (ticks → ms epoch → `Date` UTC → parties formatées) est écrit
+dans le module (comme `__f32`/`__dec*`), quand un affichage DateTime existe (`Slot.IsDateTime`). Donc DateTime reste
+GÉNÉRATEUR SEUL : `git diff -- src/filament-runtime` vide. Le pare-feu tient — cohérent avec #94–#114.
+
+**MESURÉ (entrée n°34).** `baseline/DateTimeCounter.Blazor` (`when` part de `new DateTime(2026,7,20)`, `#add` fait
+`AddDays(5)`) et `filament-datetimecounter-gen` rendent `#value` `"07/20/2026 00:00:00" → "07/25/..." → "07/30/..."`,
+à l'identique — rollover de calendrier correct, format fidèle. C'est la mesure qui PROUVE le mapping. Les témoins
+`Code/TypeDateTime.razor` et `DateTime`/`List<DateTime>` basculent refusés → compilés ; `object` reste refusé (non
+typé — le témoin de bord d'élément de List devient `List<object>`). `HARNESS_VERSION` 1.28.0 → 1.29.0, divulgué. §5
+s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
