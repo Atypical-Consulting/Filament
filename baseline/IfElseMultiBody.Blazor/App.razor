@@ -1,0 +1,20 @@
+@* Multi-node @else body (BENCH n°18): an @if/@else where the @if branch is ONE <span> and the @else
+   branch is TWO adjacent <span>s. Flipping `show` swaps the whole branch -- one node out, two in (and
+   back), all direct children of #w, no wrapper. Global-index ranges: branch 0 = [0], branch 1 = [1,2].
+
+   No whitespace between </span> and <span>, nor between the button and @if, matching If.razor's
+   contract: Razor turns SOURCE whitespace between siblings into text nodes, and there is none here. *@
+
+<div id="w"><button id="toggle" @onclick="Toggle">toggle</button>@if (show)
+{
+    <span id="a">a</span>
+}
+else
+{
+    <span id="b">b</span><span id="c">c</span>
+}</div>
+
+@code {
+    private bool show = true;
+    private void Toggle() { show = !show; }
+}
