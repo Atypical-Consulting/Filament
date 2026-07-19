@@ -63,10 +63,11 @@ public class CodeTests
     // long (112), float (113), decimal (114) and DateTime (115) all LEFT this list -- they compile now
     // (Type*_NowCompiles). long -> BigInt; float -> Math.fround + __f32; decimal -> boxed { m, s } + __dec;
     // DateTime -> BigInt ticks + __dtStr (construction/AddDays computed from constants, comparison free).
-    // object/Dict/Array STAY refused: `object` is untyped (no faithful JS mapping), Dict/Array have no §5 mapping.
+    // T[] arrays LEFT this list at decision 117 (they compile now -> TypeArray_NowCompiles): a T[] maps to the
+    // same JS array a List<T> does (read-only). object/Dict STAY refused: `object` is untyped (no faithful JS
+    // mapping), Dictionary has no §5 mapping yet.
     [InlineData("TypeObject.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeDict.razor", 5, 13, "FIL0002", "unsupported-type")]
-    [InlineData("TypeArray.razor", 5, 13, "FIL0002", "unsupported-type")]
     // These four are refused at the LOCAL's type rather than at the expression, because
     // the declaration's type is checked first and Func/IEnumerable/StringBuilder/Type are
     // all out of subset. Asserted as measured, not as first guessed.
@@ -250,6 +251,25 @@ public class CodeTests
             Assert.Contains("m:", js);                       // a boxed { m: <mantissa>n, s: <scale> }
             Assert.Contains("n, s:", js);
             Assert.DoesNotContain("[unsupported-type]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A `T[]` array field now COMPILES (decision 117, closing the TypeArray deferral): an array maps to the same
+    /// JS array a List<T> does, admitted READ-ONLY (indexing, .Length, iteration; element assignment refused).
+    /// It used to be refused [unsupported-type] @ (5,13). object/Dictionary STAY refused.
+    /// </summary>
+    [Fact]
+    public void TypeArray_NowCompiles_ToAJsArray()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeArray.razor"), outPath);
+
+            Assert.True(exit == 0, $"an int[] field should compile now (decision 117):\n{stderr}");
+            Assert.DoesNotContain("[unsupported-type]", File.ReadAllText(outPath));
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }

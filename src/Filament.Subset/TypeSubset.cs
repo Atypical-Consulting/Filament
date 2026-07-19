@@ -35,13 +35,13 @@ public static class TypeSubset
         if (Scalars.Contains(type.SpecialType)) return null;
         if (IsComponentRecord(type, componentRecords)) return null;
 
-        if (allowList && ListElement(type) is { } element)
+        if (allowList && (ListElement(type) ?? ArrayElement(type)) is { } element)
         {
             if (Scalars.Contains(element.SpecialType)) return null;
             if (IsComponentRecord(element, componentRecords)) return null;
 
             return new TypeRefusal("unsupported-type",
-                $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits List<T> of int, long, float, double, decimal, DateTime, " +
+                $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits List<T> or T[] of int, long, float, double, decimal, DateTime, " +
                 "bool, string, or of a record declared in the component. Refusing to emit.");
         }
 
@@ -58,4 +58,11 @@ public static class TypeSubset
         type is INamedTypeSymbol { TypeArguments.Length: 1 } n
             ? n.TypeArguments[0]
             : null;
+
+    /// <summary>A single-rank array `T[]` -> its element type, else null (decision 117). A T[] maps to the
+    /// SAME JS array a List<T> does; the difference is only mutability (an array is fixed-size, so it is
+    /// admitted READ-ONLY — indexing, .Length, iteration; element assignment is refused in the generator).
+    /// Multi-dimensional/jagged arrays are out (rank != 1).</summary>
+    public static ITypeSymbol? ArrayElement(ITypeSymbol type) =>
+        type is IArrayTypeSymbol { Rank: 1 } a ? a.ElementType : null;
 }

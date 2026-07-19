@@ -202,11 +202,15 @@ public static class ConstructSubset
             AssignmentExpressionSyntax a => JsAssignmentOperator(a) != null,
             InvocationExpressionSyntax => true,
             MemberAccessExpressionSyntax => true,
-            ElementAccessExpressionSyntax ea => IsListFieldIndex(ea, model),
+            ElementAccessExpressionSyntax ea => IsIndexableFieldIndex(ea, model),
             InterpolatedStringExpressionSyntax => true,
             CastExpressionSyntax c => IsIntFromDouble(c, model),
             ObjectCreationExpressionSyntax oc =>
                 IsExceptionCreation(oc, model) || IsLocalRecordCreation(oc, model) || IsDateTimeCreation(oc, model),
+            // A T[] LITERAL (`new int[]{…}`, `new[]{…}`) -> a JS array literal. Decision 117. A sized array with
+            // no initialiser (`new int[n]`) is NOT admitted -- it needs an n-defaults array, deferred.
+            ArrayCreationExpressionSyntax ac => ac.Initializer is not null && IsArrayCreation(ac.Type.ElementType, model),
+            ImplicitArrayCreationExpressionSyntax => true,
             _ => false,
         };
         if (supported) return null;
@@ -217,11 +221,19 @@ public static class ConstructSubset
             "`new Record(...)` for a local record. Refusing to emit.");
     }
 
-    // Matches the generator's ListReceiver: indexing a field whose type is List<T> (one argument).
-    static bool IsListFieldIndex(ElementAccessExpressionSyntax ea, SemanticModel model) =>
+    // Indexing a field whose type is List<T> OR a single-rank array (one argument). Both are JS arrays, so the
+    // indexer is the array's own (decision 117 generalises the List-only rule of rows.js decision 1).
+    static bool IsIndexableFieldIndex(ElementAccessExpressionSyntax ea, SemanticModel model) =>
         ea.ArgumentList.Arguments.Count == 1 &&
         model.GetSymbolInfo(ea.Expression).Symbol is IFieldSymbol f &&
-        TypeSubset.ListElement(f.Type) is not null;
+        (TypeSubset.ListElement(f.Type) ?? TypeSubset.ArrayElement(f.Type)) is not null;
+
+    // A T[] literal's element type is in the subset (a scalar). The generator emits `[a, b, c]`.
+    static bool IsArrayCreation(TypeSyntax elementType, SemanticModel model) =>
+        model.GetTypeInfo(elementType).Type?.SpecialType is { } st &&
+        st is SpecialType.System_Int32 or SpecialType.System_Int64 or SpecialType.System_Single
+            or SpecialType.System_Double or SpecialType.System_Decimal or SpecialType.System_DateTime
+            or SpecialType.System_Boolean or SpecialType.System_String;
 
     // (int) on a double truncates toward zero -> Math.trunc; the only cast in the subset.
     static bool IsIntFromDouble(CastExpressionSyntax c, SemanticModel model) =>

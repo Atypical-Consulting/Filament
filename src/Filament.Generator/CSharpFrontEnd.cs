@@ -1766,6 +1766,14 @@ public sealed class CSharpFrontEnd
     FieldInfo? ListReceiver(ExpressionSyntax e) =>
         _model.GetSymbolInfo(e).Symbol is IFieldSymbol fs && Field(fs) is { List: not null } f ? f : null;
 
+    // A field whose type is a single-rank array (decision 117). Its indexer and .Length are the JS array's own.
+    bool IsArrayReceiver(ExpressionSyntax e) =>
+        _model.GetSymbolInfo(e).Symbol is IFieldSymbol { Type: IArrayTypeSymbol { Rank: 1 } };
+
+    // A T[] literal's elements -> a JS array literal, in order.
+    string ArrayLiteral(InitializerExpressionSyntax init) =>
+        "[" + string.Join(", ", init.Expressions.Select(Expr)) + "]";
+
     List<string> Statement(StatementSyntax s)
     {
         // The statement-KIND decision is single-sourced in Filament.Subset (decisions 53/61).
@@ -2162,6 +2170,15 @@ public sealed class CSharpFrontEnd
             case ConditionalExpressionSyntax c:
                 return $"{Expr(c.Condition)} ? {Expr(c.WhenTrue)} : {Expr(c.WhenFalse)}";
 
+            // `arr[i] = v` -- an array is admitted READ-ONLY (a mutable collection is a List<T>, whose element
+            // write bumps the reactive version). Refused rather than emitted as a plain write that no effect
+            // would ever see -- a stale display, the silently-wrong outcome §10 forbids. Decision 117. Placed
+            // BEFORE the general assignment case so an array element write never slips through to a plain `=`.
+            case AssignmentExpressionSyntax asg when asg.Left is ElementAccessExpressionSyntax lea && IsArrayReceiver(lea.Expression):
+                return Refuse("unsupported-expression",
+                    "assigning an array element (`arr[i] = v`) is not in the subset: an array is admitted " +
+                    "READ-ONLY. A mutable collection is a List<T>. Refusing to emit.", asg.SpanStart);
+
             case AssignmentExpressionSyntax a when Filament.Subset.ConstructSubset.JsAssignmentOperator(a) is { } op:
                 return $"{Expr(a.Left)} {op} {Expr(a.Right)}";
 
@@ -2171,10 +2188,21 @@ public sealed class CSharpFrontEnd
             case MemberAccessExpressionSyntax ma:
                 return MemberAccess(ma);
 
-            // _rows[i]. A List<T> IS an array here, so this is the array's own indexer.
-            case ElementAccessExpressionSyntax ea when ListReceiver(ea.Expression) is not null &&
+            // _rows[i] / arr[i]. A List<T> and a T[] are both JS arrays here, so this is the array's own
+            // indexer (decision 117 generalises the List-only case of decision 1).
+            case ElementAccessExpressionSyntax ea when (ListReceiver(ea.Expression) is not null || IsArrayReceiver(ea.Expression)) &&
                                                        ea.ArgumentList.Arguments.Count == 1:
                 return $"{Expr(ea.Expression)}[{Expr(ea.ArgumentList.Arguments[0].Expression)}]";
+
+            // A T[] literal -> a JS array literal (decision 117). `new int[]{10,20,30}` -> `[10, 20, 30]`.
+            case ArrayCreationExpressionSyntax ac:
+                return ac.Initializer is { } init ? ArrayLiteral(init)
+                    : Refuse("unsupported-expression",
+                        "a sized array `new T[n]` (no initialiser) is not in the subset; use an array literal " +
+                        "`new T[]{…}`. Refusing to emit.", ac.SpanStart);
+
+            case ImplicitArrayCreationExpressionSyntax iac:
+                return ArrayLiteral(iac.Initializer);
 
             case InterpolatedStringExpressionSyntax s:
                 return Interpolated(s);
@@ -2261,6 +2289,11 @@ public sealed class CSharpFrontEnd
         // `_rows.Count` -- the List's length. A JS array's own property, so no call and no
         // wrapper: the mapping IS the array (rows.js decision 1).
         if (ma.Name.Identifier.Text == "Count" && ListReceiver(ma.Expression) is not null)
+            return $"{Expr(ma.Expression)}.length";
+
+        // arr.Length -- a JS array's own property, so no call and no wrapper (decision 117, the array sibling
+        // of List's .Count).
+        if (ma.Name.Identifier.Text == "Length" && IsArrayReceiver(ma.Expression))
             return $"{Expr(ma.Expression)}.length";
 
         if (_model.GetSymbolInfo(ma).Symbol is IPropertySymbol ps && PropAnywhere(ps) is { } p)
