@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.12.0';   // 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.13.0';   // 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -372,6 +372,14 @@ const APPS = {
   // BOTH #w spans together, in order (a,b), against Blazor's own rendered DOM. The measurement of the
   // multi-node @if body widening (BENCH n°17).
   ifmulti: {
+    readySelector: '#toggle',
+    observeSelector: '#w',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #toggle and asserts an @if/@else with a MULTI-NODE branch
+  // body swaps the WHOLE branch — #w spans go a -> b,c -> a — against Blazor's own rendered DOM. The
+  // measurement of the multi-node @else body widening (BENCH n°18).
+  ifelsemulti: {
     readySelector: '#toggle',
     observeSelector: '#w',
     scenarios: [],
@@ -1806,6 +1814,26 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         out.observed.afterSecond = ids();
         // ...and remounts BOTH, in order, when it goes true again.
         if (ids() !== 'a,b') out.problems.push(`#w spans "${ids()}" after second toggle, expected "a,b" (both restored, in order)`);
+        return out;
+      });
+    }
+
+    if (app === 'ifelsemulti') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#toggle')) { out.problems.push('missing required element: #toggle'); return out; }
+        const ids = () => Array.from(document.querySelectorAll('#w > span')).map(s => s.id).join(',');
+        out.observed.initial = ids();
+        // show=true: the @if branch (one node, a) is mounted.
+        if (ids() !== 'a') { out.problems.push(`#w spans initially "${ids()}", expected "a"`); return out; }
+        document.querySelector('#toggle').click();
+        out.observed.afterToggle = ids();
+        // THE MEASUREMENT: flipping to the @else branch swaps the WHOLE branch — a out, b AND c in, in order.
+        if (ids() !== 'b,c') { out.problems.push(`#w spans "${ids()}" after toggle, expected "b,c" (else branch, both in order)`); return out; }
+        document.querySelector('#toggle').click();
+        out.observed.afterSecond = ids();
+        // ...and back to the @if branch (a) — a clean swap both ways.
+        if (ids() !== 'a') out.problems.push(`#w spans "${ids()}" after second toggle, expected "a" (back to the @if branch)`);
         return out;
       });
     }
