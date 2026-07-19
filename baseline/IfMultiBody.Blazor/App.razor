@@ -1,0 +1,17 @@
+@* Multi-node @if body (BENCH n°17): a single-branch @if whose body is TWO adjacent <span>
+   elements, mounted/unmounted together as direct children of #w -- no wrapper. One list()
+   item per body node (keys [0,1]); the comment anchor is the disclosed +1 node (decision 81).
+   A toggle drives `show` so both spans are measured appearing and disappearing together, IN ORDER.
+
+   No whitespace between </span> and <span>, nor between the button and @if, matching If.razor's
+   contract: Razor turns SOURCE whitespace between siblings into text nodes, and there is none here. *@
+
+<div id="w"><button id="toggle" @onclick="Toggle">toggle</button>@if (show)
+{
+    <span id="a">a</span><span id="b">b</span>
+}</div>
+
+@code {
+    private bool show = true;
+    private void Toggle() { show = !show; }
+}
