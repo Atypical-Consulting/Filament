@@ -165,6 +165,11 @@ public static class RepoPaths
 
     /// <summary>The decimal-via-boxed-{m,s} SPEC (decisions 51/114). Never edited to make a gate pass.</summary>
     public static string DecimalCounterAnswerKey => Path.Combine(Root, "samples", "DecimalCounter", "decimalcounter.js");
+
+    public static string DateTimeCounterRazor => Path.Combine(Root, "baseline", "DateTimeCounter.Blazor", "App.razor");
+
+    /// <summary>The DateTime-via-BigInt-ticks SPEC (decisions 51/115). Never edited to make a gate pass.</summary>
+    public static string DateTimeCounterAnswerKey => Path.Combine(Root, "samples", "DateTimeCounter", "datetimecounter.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

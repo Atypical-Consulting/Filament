@@ -59,6 +59,7 @@ samples/filament-positionalrecord-gen/App.g.js
 samples/filament-longcounter-gen/App.g.js
 samples/filament-floatcounter-gen/App.g.js
 samples/filament-decimalcounter-gen/App.g.js
+samples/filament-datetimecounter-gen/App.g.js
 
 # examples/FilamentApp: emitted/copied at build, never committed (same rule as samples/*.g.js).
 examples/FilamentApp/wwwroot/App.g.js
