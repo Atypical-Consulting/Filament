@@ -125,6 +125,11 @@ public static class RepoPaths
 
     /// <summary>The List.Clear() SPEC (decisions 51/106). Never edited to make a gate pass.</summary>
     public static string ListOpsAnswerKey => Path.Combine(Root, "samples", "ListOps", "listops.js");
+
+    public static string CheckBindRazor => Path.Combine(Root, "baseline", "CheckBind.Blazor", "App.razor");
+
+    /// <summary>The checkbox-@bind SPEC (decisions 51/104). Never edited to make a gate pass.</summary>
+    public static string CheckBindAnswerKey => Path.Combine(Root, "samples", "CheckBind", "checkbind.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

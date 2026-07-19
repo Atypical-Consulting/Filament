@@ -285,6 +285,12 @@ public sealed class CSharpFrontEnd
         _fieldsByName.TryGetValue(name, out var f) && f.IsSignal &&
         f.Symbol.Type.SpecialType == SpecialType.System_String;
 
+    /// <summary>A `bool` field that is already a signal — for `@bind` on a checkbox (the converter is the
+    /// identity `.checked` property, no parsing, so this is faithful with no parse-failure edge).</summary>
+    public bool IsBoolSignal(string name) =>
+        _fieldsByName.TryGetValue(name, out var f) && f.IsSignal &&
+        f.Symbol.Type.SpecialType == SpecialType.System_Boolean;
+
     /// <summary>The JS name of a field (e.g. `text`), so a signal read is `{FieldJs}.value`.</summary>
     public string? FieldJs(string name) => _fieldsByName.TryGetValue(name, out var f) ? f.Js : null;
     public IEnumerable<string> DeclaredNames => _fieldsByName.Keys.Concat(_methodsByName.Keys);

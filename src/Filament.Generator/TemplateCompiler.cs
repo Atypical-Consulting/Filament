@@ -990,32 +990,51 @@ public sealed class TemplateCompiler
     HashSet<HtmlAttributeIntermediateNode> TryBind(MarkupElementIntermediateNode el, string v)
     {
         var attrs = el.Children.OfType<HtmlAttributeIntermediateNode>().ToList();
-        var valueAttr = attrs.FirstOrDefault(a =>
-            string.Equals(a.AttributeName, "value", StringComparison.OrdinalIgnoreCase) &&
-            AttrCs(a).Contains("BindConverter.FormatValue"));
         var changeAttr = attrs.FirstOrDefault(a =>
             string.Equals(a.AttributeName, "onchange", StringComparison.OrdinalIgnoreCase) &&
             AttrCs(a).Contains("CreateBinder"));
-        if (valueAttr is null || changeAttr is null) return [];
+        if (changeAttr is null) return [];
 
-        var field = BoundField(valueAttr);
-        if (field is null || !_code.IsStringSignal(field))
+        // The bound value attribute is `value` for a text input (string) or `checked` for a checkbox (bool).
+        static bool IsFormat(HtmlAttributeIntermediateNode a, string name) =>
+            string.Equals(a.AttributeName, name, StringComparison.OrdinalIgnoreCase) &&
+            AttrCs(a).Contains("BindConverter.FormatValue");
+        var valueAttr = attrs.FirstOrDefault(a => IsFormat(a, "value"));
+        var checkedAttr = attrs.FirstOrDefault(a => IsFormat(a, "checked"));
+        var bound = valueAttr ?? checkedAttr;
+        if (bound is null) return [];
+
+        var field = BoundField(bound);
+        var isCheckbox = checkedAttr is not null;
+        var ok = field is not null && (isCheckbox ? _code.IsBoolSignal(field) : _code.IsStringSignal(field));
+        if (!ok)
         {
             Diag("unsupported-bind",
-                $"@bind on <{el.TagName}> binds '{Trunc(field ?? "?")}', which is not a string field that is " +
-                "already a signal. The @bind slice binds a STRING field the component also reads and assigns " +
-                "(so it is reactive); a non-string @bind needs BindConverter parsing, and a pure @bind-only " +
-                "field needs its reactivity marked from the template -- both deferred. Refusing to emit.",
-                valueAttr.Source);
-            return [valueAttr, changeAttr];   // consumed: the located refusal above is the one diagnostic
+                $"@bind on <{el.TagName}> binds '{Trunc(field ?? "?")}', which is not a " +
+                $"{(isCheckbox ? "bool" : "string")} field that is already a signal. The @bind slice binds a " +
+                "STRING field (text input) or a BOOL field (checkbox) the component also reads and assigns (so " +
+                "it is reactive); other types need BindConverter parsing, and a pure @bind-only field needs its " +
+                "reactivity marked from the template -- both deferred. Refusing to emit.",
+                bound.Source);
+            return [bound, changeAttr];   // consumed: the located refusal above is the one diagnostic
         }
 
-        var js = _code.FieldJs(field);
+        var js = _code.FieldJs(field!);
         _used.Add("effect");
-        _bindings.Add($"effect(() => {{ {v}.value = {js}.value; }});");
         _used.Add("listen");
-        _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.value; }});");
-        return [valueAttr, changeAttr];
+        if (isCheckbox)
+        {
+            // A checkbox: the .checked PROPERTY is the two-way surface, and it is already a bool -- no
+            // BindConverter parsing, so no parse-failure edge.
+            _bindings.Add($"effect(() => {{ {v}.checked = {js}.value; }});");
+            _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.checked; }});");
+        }
+        else
+        {
+            _bindings.Add($"effect(() => {{ {v}.value = {js}.value; }});");
+            _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.value; }});");
+        }
+        return [bound, changeAttr];
     }
 
     /// <summary>
