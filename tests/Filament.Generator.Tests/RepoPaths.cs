@@ -140,6 +140,11 @@ public static class RepoPaths
 
     /// <summary>The root-@{ }-code-block SPEC (decisions 51/89). Never edited to make a gate pass.</summary>
     public static string CodeBlockAnswerKey => Path.Combine(Root, "samples", "CodeBlock", "codeblock.js");
+
+    public static string TryLockRazor => Path.Combine(Root, "baseline", "TryLock.Blazor", "App.razor");
+
+    /// <summary>The try/catch/throw/lock SPEC (decisions 51/110). Never edited to make a gate pass.</summary>
+    public static string TryLockAnswerKey => Path.Combine(Root, "samples", "TryLock", "trylock.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
