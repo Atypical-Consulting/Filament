@@ -1,0 +1,20 @@
+@* float -> Math.fround + shortest-round-trip display (BENCH n°32, decision 113): a `float` accumulator
+   whose value a NAIVE JS number would render wrong. `total` starts at 0.1f; each #add adds 0.2f. In C#
+   float, 0.1f + 0.2f = 0.3f, which prints "0.3" -- but a JS double computes 0.1 + 0.2 = 0.30000000000000004
+   and would print that. Filament rounds every op to single precision (Math.fround) AND formats the display
+   through a shortest-round-trip-through-float32 helper, so #value renders "0.1" -> "0.3" -> "0.5", exactly as
+   Blazor renders the same C# float. The click IS the measurement: a number-backed float would show
+   "0.30000000000000004" / "0.5000000000000001". total is read by @total AND assigned by Add -> a signal. *@
+
+<p><span id="value">@total</span></p>
+
+<button id="add" @onclick="Add">add</button>
+
+@code {
+    private float total = 0.1f;
+
+    private void Add()
+    {
+        total = total + 0.2f;
+    }
+}
