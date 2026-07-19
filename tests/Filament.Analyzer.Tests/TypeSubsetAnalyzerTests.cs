@@ -20,18 +20,19 @@ public class TypeSubsetAnalyzerTests
     [Fact]
     public async Task OutOfSubsetFieldType_IsFlagged()
     {
-        // decimal entered the subset at decision 114, so DateTime is the scalar witness now (no BCL to map it).
-        await Case("    private {|FIL0002:System.DateTime|} x = default;").RunAsync();
+        // int/long/float/double/decimal/DateTime are all in the subset now (decisions 112–115), so `object` is
+        // the scalar witness -- an untyped value has no faithful JS mapping (permanent).
+        await Case("    private {|FIL0002:object|} x = null;").RunAsync();
     }
 
     [Fact]
     public async Task OutOfSubsetLocalType_IsFlagged()
     {
-        // int/long/float/double/decimal are all in the subset now (decisions 112–114), so List<DateTime> is the
-        // element witness: the CONTAINER is in the subset, the ELEMENT (DateTime) is not.
+        // int/long/float/double/decimal/DateTime are all in the subset now (decisions 112–115), so List<object>
+        // is the element witness: the CONTAINER is in the subset, the ELEMENT (object) is not.
         await Case(
             "    private void M() {\n" +
-            "        {|FIL0002:System.Collections.Generic.List<System.DateTime>|} ys = null;\n" +
+            "        {|FIL0002:System.Collections.Generic.List<object>|} ys = null;\n" +
             "    }").RunAsync();
     }
 

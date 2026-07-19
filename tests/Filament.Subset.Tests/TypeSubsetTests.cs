@@ -28,6 +28,7 @@ public class TypeSubsetTests
     [InlineData("float x;", "x")]                         // decision 113: float -> Math.fround + shortest-round-trip display
     [InlineData("double x;", "x")]
     [InlineData("decimal x;", "x")]                       // decision 114: decimal -> boxed { m, s } + __dec helpers
+    [InlineData("DateTime x;", "x")]                      // decision 115: DateTime -> BigInt ticks + __dtStr
     [InlineData("bool x;", "x")]
     [InlineData("string x;", "x")]
     [InlineData("List<int> x;", "x")]
@@ -41,9 +42,8 @@ public class TypeSubsetTests
     }
 
     [Theory]
-    [InlineData("object x;", "x")]
-    [InlineData("DateTime x;", "x")]
-    [InlineData("List<DateTime> x;", "x")]                // the ELEMENT is out of subset (int/long/float/decimal are IN)
+    [InlineData("object x;", "x")]                        // untyped -> no faithful JS mapping (permanent)
+    [InlineData("List<object> x;", "x")]                  // the ELEMENT is out of subset (the numeric types are all IN)
     public void OutOfSubsetTypes_ClassifyToUnsupportedType(string decls, string field)
     {
         var t = TypeOfField(decls, field);

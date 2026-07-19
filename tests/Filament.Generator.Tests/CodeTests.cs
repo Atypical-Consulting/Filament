@@ -60,14 +60,13 @@ public class CodeTests
     [InlineData("Constructor.razor", 5, 5, "FIL0001", "unsupported-member")]
     [InlineData("NestedClass.razor", 5, 5, "FIL0001", "unsupported-member")]
     // ---- types outside section 5's list (FIL0002) ---------------------------
-    // long (112), float (113) and decimal (114) all LEFT this list -- they compile now (TypeLong_NowCompiles /
-    // TypeFloat_NowCompiles / TypeDecimal_NowCompiles). long -> BigInt; float -> Math.fround + __f32 display;
-    // decimal -> a boxed { m, s } (BigInt mantissa + scale) with the emitted __dec helpers (exact base-10, scale
-    // preserved). object/DateTime/Dict/Array STAY refused (object is untyped; DateTime has no BCL to map).
+    // long (112), float (113), decimal (114) and DateTime (115) all LEFT this list -- they compile now
+    // (Type*_NowCompiles). long -> BigInt; float -> Math.fround + __f32; decimal -> boxed { m, s } + __dec;
+    // DateTime -> BigInt ticks + __dtStr (construction/AddDays computed from constants, comparison free).
+    // object/Dict/Array STAY refused: `object` is untyped (no faithful JS mapping), Dict/Array have no §5 mapping.
     [InlineData("TypeObject.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeDict.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeArray.razor", 5, 13, "FIL0002", "unsupported-type")]
-    [InlineData("TypeDateTime.razor", 5, 13, "FIL0002", "unsupported-type")]
     // These four are refused at the LOCAL's type rather than at the expression, because
     // the declaration's type is checked first and Func/IEnumerable/StringBuilder/Type are
     // all out of subset. Asserted as measured, not as first guessed.
@@ -251,6 +250,26 @@ public class CodeTests
             Assert.Contains("m:", js);                       // a boxed { m: <mantissa>n, s: <scale> }
             Assert.Contains("n, s:", js);
             Assert.DoesNotContain("[unsupported-type]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A `DateTime` field now COMPILES (decision 115, closing the TypeDateTime deferral): a DateTime is a BigInt
+    /// tick count (default(DateTime) is 0 ticks -> 0n). `new DateTime(y,m,d)` is computed from constant args at
+    /// generate-time, .AddDays(constant int) is tick arithmetic, comparison is BigInt, and display goes through the
+    /// emitted __dtStr. It used to be refused [unsupported-type] @ (5,13). object STAYS refused (untyped).
+    /// </summary>
+    [Fact]
+    public void TypeDateTime_NowCompiles_ToABigIntTickCount()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeDateTime.razor"), outPath);
+
+            Assert.True(exit == 0, $"a DateTime field should compile now (decision 115):\n{stderr}");
+            Assert.DoesNotContain("[unsupported-type]", File.ReadAllText(outPath));
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }

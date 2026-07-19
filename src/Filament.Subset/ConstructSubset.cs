@@ -164,6 +164,12 @@ public static class ConstructSubset
         model.GetTypeInfo(oc).Type is INamedTypeSymbol { IsRecord: true } t &&
         t.DeclaringSyntaxReferences.Length > 0;
 
+    /// <summary>`new DateTime(...)` (decision 115). A DateTime is a BigInt tick count; the generator computes the
+    /// ticks at generate-time from CONSTANT arguments and refuses non-constant construction. Admitted here so the
+    /// expression FORM passes; the constant-args check is the generator's (it needs the values, not just the type).</summary>
+    public static bool IsDateTimeCreation(ObjectCreationExpressionSyntax oc, SemanticModel model) =>
+        model.GetTypeInfo(oc).Type?.SpecialType == SpecialType.System_DateTime;
+
     /// <summary>null = the expression FORM is in §5; non-null = the FIL0001 refusal — the decision
     /// behind Expr()'s default. Call-, member- and name-level refusals INSIDE a blessed form
     /// (invocation target, member access, identifier resolution) are separate concerns, not this.</summary>
@@ -199,7 +205,8 @@ public static class ConstructSubset
             ElementAccessExpressionSyntax ea => IsListFieldIndex(ea, model),
             InterpolatedStringExpressionSyntax => true,
             CastExpressionSyntax c => IsIntFromDouble(c, model),
-            ObjectCreationExpressionSyntax oc => IsExceptionCreation(oc, model) || IsLocalRecordCreation(oc, model),
+            ObjectCreationExpressionSyntax oc =>
+                IsExceptionCreation(oc, model) || IsLocalRecordCreation(oc, model) || IsDateTimeCreation(oc, model),
             _ => false,
         };
         if (supported) return null;

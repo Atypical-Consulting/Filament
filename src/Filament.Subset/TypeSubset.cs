@@ -16,6 +16,7 @@ public static class TypeSubset
     {
         SpecialType.System_Int32, SpecialType.System_Int64,
         SpecialType.System_Single, SpecialType.System_Double, SpecialType.System_Decimal,
+        SpecialType.System_DateTime,
         SpecialType.System_Boolean, SpecialType.System_String,
     };
 
@@ -40,12 +41,12 @@ public static class TypeSubset
             if (IsComponentRecord(element, componentRecords)) return null;
 
             return new TypeRefusal("unsupported-type",
-                $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits List<T> of int, long, float, double, " +
+                $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits List<T> of int, long, float, double, decimal, DateTime, " +
                 "bool, string, or of a record declared in the component. Refusing to emit.");
         }
 
         return new TypeRefusal("unsupported-type",
-            $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits int, long, float, double, bool, " +
+            $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits int, long, float, double, decimal, DateTime, bool, " +
             "string, and List<T> of those or of a record declared in the component. Refusing to emit.");
     }
 

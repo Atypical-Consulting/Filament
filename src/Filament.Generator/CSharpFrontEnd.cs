@@ -272,6 +272,7 @@ public sealed class CSharpFrontEnd
         public bool Reactive;
         public bool IsFloat;     // the slot's expression is float-typed -> the template must format it (decision 113)
         public bool IsDecimal;   // the slot's expression is decimal-typed -> format it through __decStr (decision 114)
+        public bool IsDateTime;  // the slot's expression is DateTime-typed -> format it through __dtStr (decision 115)
     }
 
     /// <summary>The decimal helpers this module actually used (`decAdd`, `decStr`, …). A `decimal` value is a
@@ -337,6 +338,10 @@ public sealed class CSharpFrontEnd
     /// means rendering that object as C#'s decimal string (scale preserved: {m:110n,s:2} -> "1.10"), which the
     /// template does through the emitted __decStr helper (decision 114).</summary>
     public bool SlotIsDecimal(IntermediateNode node) => Get(node).IsDecimal;
+
+    /// <summary>The slot's expression is DateTime-typed. A DateTime is a BigInt of ticks; displaying it renders
+    /// that as C#'s default DateTime string ("MM/dd/yyyy HH:mm:ss") through the emitted __dtStr helper (decision 115).</summary>
+    public bool SlotIsDateTime(IntermediateNode node) => Get(node).IsDateTime;
 
     /// <summary>What to emit for a container whose children held template C#, in order.</summary>
     /// <summary>
@@ -1179,6 +1184,7 @@ public sealed class CSharpFrontEnd
         SpecialType.System_Single => "0",   // default(float) is 0f -> 0 (exactly representable; decision 113)
         SpecialType.System_Double => "0",
         SpecialType.System_Decimal => "{ m: 0n, s: 0 }",   // default(decimal) is 0m -> the boxed zero (decision 114)
+        SpecialType.System_DateTime => "0n",   // default(DateTime) is 0 ticks -> 01/01/0001 00:00:00 (decision 115)
         SpecialType.System_Boolean => "false",
         SpecialType.System_String => "null",
         _ => "null",
@@ -1479,6 +1485,7 @@ public sealed class CSharpFrontEnd
                 Reactive = IsReactive(e),
                 IsFloat = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Single,
                 IsDecimal = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Decimal,
+                IsDateTime = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_DateTime,
             };
         }
     }
@@ -2118,6 +2125,15 @@ public sealed class CSharpFrontEnd
             case BinaryExpressionSyntax b when EitherDecimal(b):
                 return DecimalBinary(b);
 
+            // DateTime COMPARISON is free (a DateTime is a BigInt of ticks, so `<`/`==` fall through to
+            // JsBinaryOperator as BigInt ops -- faithful). DateTime ARITHMETIC (+/-) produces a TimeSpan, which
+            // is not in the subset, so it is refused here rather than emitted as a bare tick subtraction (which
+            // would be a silently wrong number). Decision 115.
+            case BinaryExpressionSyntax b when EitherDateTime(b) && !IsComparisonKind(b.Kind()):
+                return Refuse("unsupported-expression",
+                    $"DateTime arithmetic ('{b.OperatorToken.Text}') produces a TimeSpan, which is not in the subset. " +
+                    "Only DateTime comparison and .AddDays(constant int) are admitted. Refusing to emit.", b.SpanStart);
+
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.JsBinaryOperator(b) is { } op:
                 return $"{Expr(b.Left)} {op} {Expr(b.Right)}";
 
@@ -2183,6 +2199,12 @@ public sealed class CSharpFrontEnd
                 // position sibling of the construction-site fold (ObjectLiteral): a positional `new Row(a, b)`
                 // maps its args to the props by order; an object-initialiser `new Row { X = a }` maps by name.
                 return RecordLiteral(oc, rec);
+
+            case ObjectCreationExpressionSyntax oc when Filament.Subset.ConstructSubset.IsDateTimeCreation(oc, _model):
+                // `new DateTime(...)` -> a BigInt tick count (decision 115). Computed HERE, from constant args:
+                // a DateTime is not a compile-time constant in C#, but its constructor args are, so the exact
+                // ticks are known now -- no runtime Date math for construction. Non-constant args are refused.
+                return DateTimeConstruction(oc);
 
             default:
                 throw new GeneratorException(
@@ -2280,6 +2302,11 @@ public sealed class CSharpFrontEnd
             return "/*refused*/";
         }
 
+        // A DateTime instance method (decision 115): .AddDays(constant int) is tick arithmetic. The rest of the
+        // DateTime API is deferred (refused in DateTimeMethod), so it can never slip through to a wrong emission.
+        if (symbol is not null && symbol.ContainingType.SpecialType == SpecialType.System_DateTime)
+            return DateTimeMethod(inv, symbol);
+
         // Spec 5: "calls to methods declared in the same component". Anything else --
         // Console.WriteLine, DateTime.Now, an extension method -- has no meaning in a Filament
         // module and there is nothing honest to emit for it. (List<T>'s Add/RemoveAt are
@@ -2308,6 +2335,15 @@ public sealed class CSharpFrontEnd
         _model.GetTypeInfo(b.Left).ConvertedType?.SpecialType == SpecialType.System_Decimal ||
         _model.GetTypeInfo(b.Right).ConvertedType?.SpecialType == SpecialType.System_Decimal;
 
+    bool EitherDateTime(BinaryExpressionSyntax b) =>
+        _model.GetTypeInfo(b.Left).Type?.SpecialType == SpecialType.System_DateTime ||
+        _model.GetTypeInfo(b.Right).Type?.SpecialType == SpecialType.System_DateTime;
+
+    static bool IsComparisonKind(SyntaxKind k) => k is
+        SyntaxKind.LessThanExpression or SyntaxKind.LessThanOrEqualExpression or
+        SyntaxKind.GreaterThanExpression or SyntaxKind.GreaterThanOrEqualExpression or
+        SyntaxKind.EqualsExpression or SyntaxKind.NotEqualsExpression;
+
     /// <summary>A decimal binary -> a __dec* helper call (decision 114). +, -, * are exact base-10 on the
     /// { m, s } representation; the six comparisons go through __decCmp (scale-aligned). Division and modulo are
     /// REFUSED: faithful decimal division needs System.Decimal's 28-29-significant-digit rounding, which is a
@@ -2333,6 +2369,58 @@ public sealed class CSharpFrontEnd
                 "comparisons. Division and modulo need System.Decimal's 28-digit rounding, which is deferred. " +
                 "Refusing to emit.", b.SpanStart),
         };
+    }
+
+    /// <summary>A DateTime instance method (decision 115). `.AddDays(n)` with a constant integer n adds
+    /// n·TicksPerDay to the tick count -- exactly C#'s AddDays for whole days -- computed at generate-time. Every
+    /// other DateTime method (other Add*, ToString(format), …) is deferred and refused, so admitting the type
+    /// cannot silently mistranslate a call it does not handle.</summary>
+    string DateTimeMethod(InvocationExpressionSyntax inv, IMethodSymbol symbol)
+    {
+        var args = inv.ArgumentList.Arguments;
+        if (symbol.Name == "AddDays" && inv.Expression is MemberAccessExpressionSyntax ma && args.Count == 1 &&
+            _model.GetConstantValue(args[0].Expression) is { HasValue: true, Value: int days })
+            return $"({Expr(ma.Expression)} + {(long)days * System.TimeSpan.TicksPerDay}n)";
+        return Refuse("unsupported-call",
+            $"'{Trunc(inv.ToString())}' is not a DateTime operation in the subset. Section 5 admits `new DateTime(...)`, " +
+            ".AddDays(constant int), comparison and default display; the rest of the DateTime API (other Add*, properties, " +
+            "ToString(format), .Now) is deferred. Refusing to emit.", inv.SpanStart);
+    }
+
+    /// <summary>`new DateTime(y, m, d[, h, mi, s])` -> the exact tick count as a BigInt literal (decision 115),
+    /// computed at generate-time by CONSTRUCTING the DateTime in the generator's own runtime and reading .Ticks.
+    /// A DateTime value is a BigInt of ticks (100ns since 0001-01-01); __dtStr renders it, AddDays adds ticks,
+    /// comparison is BigInt. Non-constant arguments are refused: the ticks are only known now if the args are.</summary>
+    string DateTimeConstruction(ObjectCreationExpressionSyntax oc)
+    {
+        var args = oc.ArgumentList?.Arguments ?? default;
+        var vals = new List<int>();
+        foreach (var a in args)
+        {
+            var c = _model.GetConstantValue(a.Expression);
+            if (!c.HasValue || c.Value is not int i)
+                return Refuse("unsupported-expression",
+                    "a `new DateTime(...)` in the subset needs CONSTANT int arguments -- its ticks are computed at " +
+                    "generate-time (decision 115), so a non-constant argument has no value to compute from. Refusing to emit.",
+                    a.SpanStart);
+            vals.Add(i);
+        }
+        if (vals.Count is not (3 or 6))
+            return Refuse("unsupported-expression",
+                "only `new DateTime(y, m, d)` and `new DateTime(y, m, d, h, mi, s)` are in the subset. Refusing to emit.",
+                oc.SpanStart);
+        try
+        {
+            var dt = vals.Count == 3
+                ? new System.DateTime(vals[0], vals[1], vals[2])
+                : new System.DateTime(vals[0], vals[1], vals[2], vals[3], vals[4], vals[5]);
+            return $"{dt.Ticks}n";
+        }
+        catch (System.ArgumentOutOfRangeException)
+        {
+            return Refuse("unsupported-expression",
+                $"the DateTime {Trunc(oc.ToString())} is out of range. Refusing to emit.", oc.SpanStart);
+        }
     }
 
     static string DecimalObject(decimal d)

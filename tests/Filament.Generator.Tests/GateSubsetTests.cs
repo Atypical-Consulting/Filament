@@ -107,7 +107,8 @@ public class GateSubsetTests
     [InlineData("Gate/CascadingParameterField.razor", 15, 5, "FIL0001", "unsupported-attribute")]
     [InlineData("Gate/JsInterop.razor", 5, 13, "FIL0002", "unsupported-type")]
     // ---- spec 5's TYPE list -------------------------------------------------
-    [InlineData("Code/TypeDateTime.razor", 5, 13, "FIL0002", "unsupported-type")]
+    // DateTime entered §5 at decision 115; `object` is the type-list representative now (untyped -> no JS mapping).
+    [InlineData("Code/TypeObject.razor", 5, 13, "FIL0002", "unsupported-type")]
     // ---- spec 5's STATEMENT list --------------------------------------------
     // try/catch/throw/lock left this list at decision 110 (they compile now); goto stays refused.
     [InlineData("Code/Goto.razor", 8, 9, "FIL0001", "unsupported-statement")]

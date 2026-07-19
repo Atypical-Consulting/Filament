@@ -218,6 +218,7 @@ public sealed class TemplateCompiler
     readonly HashSet<string> _used = [];
     readonly List<Diagnostic> _diagnostics = [];
     bool _needsFloatFormat;   // some @expr is float-typed -> Render emits the __f32 helper (decision 113)
+    bool _needsDateTimeFormat;   // some @expr is DateTime-typed -> Render emits the __dtStr helper (decision 115)
 
     /// <summary>
     /// Every event site the template names, RECORDED during the walk and emitted after
@@ -1613,6 +1614,14 @@ public sealed class TemplateCompiler
             js = $"__decStr({js})";
         }
 
+        // A DATETIME value is a BigInt of ticks; displaying it renders C#'s default DateTime string
+        // ("MM/dd/yyyy HH:mm:ss") through the emitted __dtStr helper (decision 115).
+        if (_code.SlotIsDateTime(expr))
+        {
+            _needsDateTimeFormat = true;
+            js = $"__dtStr({js})";
+        }
+
         // NOT REACTIVE -> no signal, no effect, no .value: one write, at create time. The
         // source can never change, so an effect around it would be a subscription to nothing --
         // machinery serving machinery, which is the thing this POC refuses. rows.js's @row.Id
@@ -1702,6 +1711,21 @@ public sealed class TemplateCompiler
                 if (_code.DecimalHelpers.Contains(name))
                     sb.Append(code).Append('\n');
             sb.Append('\n');
+        }
+
+        if (_needsDateTimeFormat)
+        {
+            // A DateTime is a BigInt of ticks (100ns since 0001-01-01). C#'s default ToString is
+            // "MM/dd/yyyy HH:mm:ss" (invariant). Convert ticks -> ms since the Unix epoch, hand to a UTC Date,
+            // and format its parts. Emitted (not a runtime export), so a DateTime display stays generator-only.
+            // The epoch offset 621355968000000000 is the ticks at 1970-01-01. Decision 115.
+            sb.Append("// -- DateTime display: ticks (BigInt) -> C#'s default \"MM/dd/yyyy HH:mm:ss\" (invariant) --\n");
+            sb.Append("function __dtStr(t) {\n");
+            sb.Append("  const d = new Date(Number((t - 621355968000000000n) / 10000n));\n");
+            sb.Append("  const p = (n, w = 2) => String(n).padStart(w, '0');\n");
+            sb.Append("  return p(d.getUTCMonth() + 1) + '/' + p(d.getUTCDate()) + '/' + p(d.getUTCFullYear(), 4) +\n");
+            sb.Append("    ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':' + p(d.getUTCSeconds());\n");
+            sb.Append("}\n\n");
         }
 
         if (module.Count > 0)
