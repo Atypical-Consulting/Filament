@@ -160,6 +160,11 @@ public static class RepoPaths
 
     /// <summary>The float-via-fround SPEC (decisions 51/113). Never edited to make a gate pass.</summary>
     public static string FloatCounterAnswerKey => Path.Combine(Root, "samples", "FloatCounter", "floatcounter.js");
+
+    public static string DecimalCounterRazor => Path.Combine(Root, "baseline", "DecimalCounter.Blazor", "App.razor");
+
+    /// <summary>The decimal-via-boxed-{m,s} SPEC (decisions 51/114). Never edited to make a gate pass.</summary>
+    public static string DecimalCounterAnswerKey => Path.Combine(Root, "samples", "DecimalCounter", "decimalcounter.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
