@@ -3575,3 +3575,42 @@ séparément. `HARNESS_VERSION` 1.13.0 → 1.14.0, divulgué.
 IfElseMultiBody ✓ → IfNested ✓ → Foreach). Restent différés : branche **mixte** markup+imbriqué, **plusieurs**
 `@if` imbriqués frères, `@foreach` imbriqué, `@foreach` en élément (tranche 4), nœuds texte intercalés. §5
 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 101. La division ENTIÈRE (`int/int`) entre dans le §5 via `Math.trunc` — la réserve de la n°87 fermée par un abaissement fidèle
+
+**Décision.** `int / int` rejoint le §5. La n°87 admettait la division `double` (`/` verbatim, même op IEEE-754)
+et **refusait `int/int`** faute d'abaissement fidèle : C# tronque `7/2` à `3`, JS `/` donne `3.5`, donc `/` nu
+serait un nombre silencieusement faux (§10). L'abaissement fidèle est `Math.trunc(a / b)` — troncature vers zéro,
+**exactement** la division entière de C# (`7/2 = 3`, `-7/2 = -3`), et pour des int 32 bits le quotient est exact
+dans un double JS. `n = n / 2` compile en `n.value = Math.trunc(n.value / 2)`. Suite : **300 tests** (227
+générateur + 55 subset + 18 analyseur), runtime 214.
+
+**ADMISSION DÉPENDANTE DU TYPE, MONO-SOURCÉE — L'ANALYSEUR SUIT.** Comme `IsFaithfulDivision` (double), la division
+entière n'est PAS dans `JsBinaryOperator` (syntaxique) : son admission dépend du TYPE du résultat
+(`IsIntegerDivision` : `DivideExpression` dont le type est `Int32`). Décidé une seule fois dans
+`ConstructSubset.ClassifyExpression` (partagé générateur/analyseur), donc l'analyseur cesse de la signaler sans
+changement : `IntegerDivision_IsFlagged` devient `IntegerDivision_IsNotFlagged`, et le témoin « imbriqué signalé
+une fois » migre vers un cast `(long)i` toujours hors sous-ensemble. Le générateur émet le `Math.trunc` ; la
+classification dit seulement « dans le §5 ».
+
+**AUCUNE PRIMITIVE DE RUNTIME NOUVELLE.** `Math.trunc` est un builtin JS, pas un export runtime ; `git diff --
+src/filament-runtime` est **vide**. La division `double` (`Section5_DoubleDivision`) reste `/` verbatim, octet
+inchangé.
+
+**LE TÉMOIN BASCULE.** `Unsupported/Code/IntDivision.razor` **passe de refusé à compilé**
+(`IntDivision_NowCompiles_ToMathTrunc` ; retiré de la théorie de refus `CodeTests`) ;
+`GateSubsetTests.IntegerDivision_IsRefused_LoudAndLocated` devient `IntegerDivision_CompilesToMathTrunc` ;
+`ConstructSubsetTests` déplace `i / 2` du théorème refusé vers admis.
+
+**MESURÉ CONTRE BLAZOR (entrée n°20).** `baseline/DivideInt.Blazor` et `filament-divideint-gen` rendent **`7 → 3`**
+au clic, à l'identique — la troncature entière, pas `3.5`. Porte `canon` (alpha-équivalent), snapshot octet-exact,
+oracle Playwright. `HARNESS_VERSION` 1.14.0 → 1.15.0, divulgué.
+
+**DIVISION PAR ZÉRO — BORD DIVULGUÉ.** C# `int/0` **lève** `DivideByZeroException` ; JS `Math.trunc(a/0)` donne
+`Infinity`. Même catégorie que la divergence de débordement pré-existante `int`→`number` (les doubles JS ne
+bouclent pas à 2^31). Le comportement mesuré (opérandes normaux) est fidèle ; le chemin exceptionnel est un bord
+accepté et divulgué, pas un nombre silencieusement faux en fonctionnement normal.
+
+**LE PLAFOND HONNÊTE.** Première tranche de la frontière « sous-ensemble C# » (IntDivision ✓ → While → Switch →
+DoWhile). Seules les divisions `int` et `double` ; `long`/`decimal` restent refusées (types hors §5). §5 s'élargit
+d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
