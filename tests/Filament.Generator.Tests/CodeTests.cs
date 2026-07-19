@@ -63,11 +63,10 @@ public class CodeTests
     // long (112), float (113), decimal (114) and DateTime (115) all LEFT this list -- they compile now
     // (Type*_NowCompiles). long -> BigInt; float -> Math.fround + __f32; decimal -> boxed { m, s } + __dec;
     // DateTime -> BigInt ticks + __dtStr (construction/AddDays computed from constants, comparison free).
-    // T[] arrays LEFT this list at decision 117 (they compile now -> TypeArray_NowCompiles): a T[] maps to the
-    // same JS array a List<T> does (read-only). object/Dict STAY refused: `object` is untyped (no faithful JS
-    // mapping), Dictionary has no §5 mapping yet.
+    // T[] arrays LEFT this list at decision 117 and Dictionary at decision 118 (they compile now ->
+    // TypeArray_NowCompiles / TypeDict_NowCompiles): a T[] maps to the same JS array a List<T> does; a
+    // Dictionary<K,V> maps to a JS Map. `object` STAYS refused: untyped, no faithful JS mapping.
     [InlineData("TypeObject.razor", 5, 13, "FIL0002", "unsupported-type")]
-    [InlineData("TypeDict.razor", 5, 13, "FIL0002", "unsupported-type")]
     // These four are refused at the LOCAL's type rather than at the expression, because
     // the declaration's type is checked first and Func/IEnumerable/StringBuilder/Type are
     // all out of subset. Asserted as measured, not as first guessed.
@@ -251,6 +250,25 @@ public class CodeTests
             Assert.Contains("m:", js);                       // a boxed { m: <mantissa>n, s: <scale> }
             Assert.Contains("n, s:", js);
             Assert.DoesNotContain("[unsupported-type]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A `Dictionary<K,V>` field now COMPILES (decision 118, closing the TypeDict deferral): a Dictionary maps to
+    /// a JS Map (read-only: indexing -> .get, .Count -> .size, .ContainsKey -> .has; entry write refused). It used
+    /// to be refused [unsupported-type] @ (5,13). object STAYS refused.
+    /// </summary>
+    [Fact]
+    public void TypeDict_NowCompiles_ToAJsMap()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeDict.razor"), outPath);
+
+            Assert.True(exit == 0, $"a Dictionary field should compile now (decision 118):\n{stderr}");
+            Assert.DoesNotContain("[unsupported-type]", File.ReadAllText(outPath));
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }

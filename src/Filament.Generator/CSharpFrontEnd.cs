@@ -1774,6 +1774,30 @@ public sealed class CSharpFrontEnd
     string ArrayLiteral(InitializerExpressionSyntax init) =>
         "[" + string.Join(", ", init.Expressions.Select(Expr)) + "]";
 
+    // A field whose type is a Dictionary<K,V> (decision 118). Its indexer is `.get`, .Count is `.size`.
+    bool IsDictReceiver(ExpressionSyntax e) =>
+        _model.GetSymbolInfo(e).Symbol is IFieldSymbol fs && Filament.Subset.TypeSubset.DictionaryTypes(fs.Type).Key is not null;
+
+    // `new Dictionary<K,V>()` / `{ {k,v}, … }` -> a JS Map. The collection initialiser's elements are complex
+    // element initialisers `{k, v}` (each an InitializerExpression of two expressions) -> `[k, v]` pairs.
+    string DictionaryLiteral(ObjectCreationExpressionSyntax oc)
+    {
+        if (oc.ArgumentList is { Arguments.Count: > 0 })
+            return Refuse("unsupported-expression",
+                "a Dictionary constructed with arguments (a capacity or a copy-from) is not in the subset. Refusing to emit.",
+                oc.SpanStart);
+        if (oc.Initializer is null) return "new Map()";
+        var entries = new List<string>();
+        foreach (var e in oc.Initializer.Expressions)
+        {
+            if (e is not InitializerExpressionSyntax { Expressions.Count: 2 } kv)
+                return Refuse("unsupported-expression",
+                    "a Dictionary initialiser element must be a `{ key, value }` pair. Refusing to emit.", e.SpanStart);
+            entries.Add($"[{Expr(kv.Expressions[0])}, {Expr(kv.Expressions[1])}]");
+        }
+        return $"new Map([{string.Join(", ", entries)}])";
+    }
+
     List<string> Statement(StatementSyntax s)
     {
         // The statement-KIND decision is single-sourced in Filament.Subset (decisions 53/61).
@@ -2179,6 +2203,13 @@ public sealed class CSharpFrontEnd
                     "assigning an array element (`arr[i] = v`) is not in the subset: an array is admitted " +
                     "READ-ONLY. A mutable collection is a List<T>. Refusing to emit.", asg.SpanStart);
 
+            // `d[key] = v` -- a Dictionary is admitted READ-ONLY (no reactive version signal, decision 118), so a
+            // write no effect would see is a stale display (§10). Refused. Placed before the general assignment.
+            case AssignmentExpressionSyntax asg when asg.Left is ElementAccessExpressionSyntax dea && IsDictReceiver(dea.Expression):
+                return Refuse("unsupported-expression",
+                    "assigning a Dictionary entry (`d[key] = v`) is not in the subset: a Dictionary is admitted " +
+                    "READ-ONLY. Refusing to emit.", asg.SpanStart);
+
             case AssignmentExpressionSyntax a when Filament.Subset.ConstructSubset.JsAssignmentOperator(a) is { } op:
                 return $"{Expr(a.Left)} {op} {Expr(a.Right)}";
 
@@ -2193,6 +2224,10 @@ public sealed class CSharpFrontEnd
             case ElementAccessExpressionSyntax ea when (ListReceiver(ea.Expression) is not null || IsArrayReceiver(ea.Expression)) &&
                                                        ea.ArgumentList.Arguments.Count == 1:
                 return $"{Expr(ea.Expression)}[{Expr(ea.ArgumentList.Arguments[0].Expression)}]";
+
+            // d[key] -- a Dictionary is a JS Map, so its indexer is `.get(key)` (decision 118).
+            case ElementAccessExpressionSyntax ea when IsDictReceiver(ea.Expression) && ea.ArgumentList.Arguments.Count == 1:
+                return $"{Expr(ea.Expression)}.get({Expr(ea.ArgumentList.Arguments[0].Expression)})";
 
             // A T[] literal -> a JS array literal (decision 117). `new int[]{10,20,30}` -> `[10, 20, 30]`.
             case ArrayCreationExpressionSyntax ac:
@@ -2227,6 +2262,11 @@ public sealed class CSharpFrontEnd
                 // position sibling of the construction-site fold (ObjectLiteral): a positional `new Row(a, b)`
                 // maps its args to the props by order; an object-initialiser `new Row { X = a }` maps by name.
                 return RecordLiteral(oc, rec);
+
+            case ObjectCreationExpressionSyntax oc when _model.GetTypeInfo(oc).Type is { } dt &&
+                                                        Filament.Subset.TypeSubset.DictionaryTypes(dt).Key is not null:
+                // `new Dictionary<K,V>(){…}` -> a JS Map (decision 118).
+                return DictionaryLiteral(oc);
 
             case ObjectCreationExpressionSyntax oc when Filament.Subset.ConstructSubset.IsDateTimeCreation(oc, _model):
                 // `new DateTime(...)` -> a BigInt tick count (decision 115). Computed HERE, from constant args:
@@ -2296,6 +2336,10 @@ public sealed class CSharpFrontEnd
         if (ma.Name.Identifier.Text == "Length" && IsArrayReceiver(ma.Expression))
             return $"{Expr(ma.Expression)}.length";
 
+        // d.Count -- a JS Map's `.size` (decision 118, the Dictionary sibling of List's .Count).
+        if (ma.Name.Identifier.Text == "Count" && IsDictReceiver(ma.Expression))
+            return $"{Expr(ma.Expression)}.size";
+
         if (_model.GetSymbolInfo(ma).Symbol is IPropertySymbol ps && PropAnywhere(ps) is { } p)
             return p.IsSignal ? $"{Expr(ma.Expression)}.{p.Js}.value" : $"{Expr(ma.Expression)}.{p.Js}";
 
@@ -2347,6 +2391,11 @@ public sealed class CSharpFrontEnd
         // rest of @code uses (its parameter is an ordinary local). The rest of LINQ is refused in LinqInvocation.
         if (symbol is not null && symbol.ContainingType?.ToDisplayString() == "System.Linq.Enumerable")
             return LinqInvocation(inv, symbol);
+
+        // A Dictionary instance method (decision 118): .ContainsKey(k) -> .has(k). Everything else (Add/Remove/
+        // TryGetValue) is refused -- a Dictionary is admitted READ-ONLY, so a mutation cannot slip through.
+        if (symbol is not null && Filament.Subset.TypeSubset.DictionaryTypes(symbol.ContainingType).Key is not null)
+            return DictionaryMethod(inv, symbol);
 
         // Spec 5: "calls to methods declared in the same component". Anything else --
         // Console.WriteLine, DateTime.Now, an extension method -- has no meaning in a Filament
@@ -2410,6 +2459,19 @@ public sealed class CSharpFrontEnd
                 "comparisons. Division and modulo need System.Decimal's 28-digit rounding, which is deferred. " +
                 "Refusing to emit.", b.SpanStart),
         };
+    }
+
+    /// <summary>A Dictionary instance method (decision 118). `.ContainsKey(k)` -> `.has(k)`; every other method
+    /// (Add/Remove/TryGetValue/…) is refused, keeping a Dictionary READ-ONLY so no mutation slips through.</summary>
+    string DictionaryMethod(InvocationExpressionSyntax inv, IMethodSymbol symbol)
+    {
+        var args = inv.ArgumentList.Arguments;
+        if (symbol.Name == "ContainsKey" && inv.Expression is MemberAccessExpressionSyntax ma && args.Count == 1)
+            return $"{Expr(ma.Expression)}.has({Expr(args[0].Expression)})";
+        return Refuse("unsupported-call",
+            $"'{Trunc(inv.ToString())}' is not a Dictionary operation in the subset: a Dictionary is admitted " +
+            "READ-ONLY (indexing, .Count, .ContainsKey). Add/Remove/TryGetValue are deferred. Refusing to emit.",
+            inv.SpanStart);
     }
 
     /// <summary>A LINQ operator over a List (decision 116) -> a JS array method. The source array is already

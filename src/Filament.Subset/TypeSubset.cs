@@ -45,6 +45,18 @@ public static class TypeSubset
                 "bool, string, or of a record declared in the component. Refusing to emit.");
         }
 
+        // A Dictionary<K,V> -> a JS Map (decision 118), admitted when BOTH K and V are scalars. Scalar keys are
+        // required because JS Map keys use SameValueZero equality, which matches C#'s default for the primitive
+        // key types; a record key would use reference identity and diverge.
+        if (allowList && DictionaryTypes(type) is var (k, v) && k is not null && v is not null)
+        {
+            if (Scalars.Contains(k.SpecialType) && (Scalars.Contains(v.SpecialType) || IsComponentRecord(v, componentRecords)))
+                return null;
+            return new TypeRefusal("unsupported-type",
+                $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits Dictionary<K,V> with a scalar " +
+                "key and a scalar or record value. Refusing to emit.");
+        }
+
         return new TypeRefusal("unsupported-type",
             $"'{type.ToDisplayString()}' is not in the C# subset. Section 5 admits int, long, float, double, decimal, DateTime, bool, " +
             "string, and List<T> of those or of a record declared in the component. Refusing to emit.");
@@ -58,6 +70,13 @@ public static class TypeSubset
         type is INamedTypeSymbol { TypeArguments.Length: 1 } n
             ? n.TypeArguments[0]
             : null;
+
+    /// <summary>A Dictionary&lt;K,V&gt; -> (K, V), else (null, null) (decision 118). A Dictionary maps to a JS Map.</summary>
+    public static (ITypeSymbol? Key, ITypeSymbol? Value) DictionaryTypes(ITypeSymbol type) =>
+        type.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.Dictionary<TKey, TValue>" &&
+        type is INamedTypeSymbol { TypeArguments.Length: 2 } n
+            ? (n.TypeArguments[0], n.TypeArguments[1])
+            : (null, null);
 
     /// <summary>A single-rank array `T[]` -> its element type, else null (decision 117). A T[] maps to the
     /// SAME JS array a List<T> does; the difference is only mutability (an array is fixed-size, so it is

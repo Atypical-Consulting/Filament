@@ -202,11 +202,12 @@ public static class ConstructSubset
             AssignmentExpressionSyntax a => JsAssignmentOperator(a) != null,
             InvocationExpressionSyntax => true,
             MemberAccessExpressionSyntax => true,
-            ElementAccessExpressionSyntax ea => IsIndexableFieldIndex(ea, model),
+            ElementAccessExpressionSyntax ea => IsIndexableFieldIndex(ea, model) || IsDictionaryFieldIndex(ea, model),
             InterpolatedStringExpressionSyntax => true,
             CastExpressionSyntax c => IsIntFromDouble(c, model),
             ObjectCreationExpressionSyntax oc =>
-                IsExceptionCreation(oc, model) || IsLocalRecordCreation(oc, model) || IsDateTimeCreation(oc, model),
+                IsExceptionCreation(oc, model) || IsLocalRecordCreation(oc, model) || IsDateTimeCreation(oc, model)
+                || IsDictionaryCreation(oc, model),
             // A T[] LITERAL (`new int[]{…}`, `new[]{…}`) -> a JS array literal. Decision 117. A sized array with
             // no initialiser (`new int[n]`) is NOT admitted -- it needs an n-defaults array, deferred.
             ArrayCreationExpressionSyntax ac => ac.Initializer is not null && IsArrayCreation(ac.Type.ElementType, model),
@@ -227,6 +228,16 @@ public static class ConstructSubset
         ea.ArgumentList.Arguments.Count == 1 &&
         model.GetSymbolInfo(ea.Expression).Symbol is IFieldSymbol f &&
         (TypeSubset.ListElement(f.Type) ?? TypeSubset.ArrayElement(f.Type)) is not null;
+
+    // Indexing a field whose type is a Dictionary<K,V> (decision 118). The generator emits `d.get(key)`.
+    static bool IsDictionaryFieldIndex(ElementAccessExpressionSyntax ea, SemanticModel model) =>
+        ea.ArgumentList.Arguments.Count == 1 &&
+        model.GetSymbolInfo(ea.Expression).Symbol is IFieldSymbol f &&
+        TypeSubset.DictionaryTypes(f.Type).Key is not null;
+
+    // `new Dictionary<K,V>()` / with a collection initialiser -> a JS Map. Decision 118.
+    static bool IsDictionaryCreation(ObjectCreationExpressionSyntax oc, SemanticModel model) =>
+        model.GetTypeInfo(oc).Type is { } t && TypeSubset.DictionaryTypes(t).Key is not null;
 
     // A T[] literal's element type is in the subset (a scalar). The generator emits `[a, b, c]`.
     static bool IsArrayCreation(TypeSyntax elementType, SemanticModel model) =>
