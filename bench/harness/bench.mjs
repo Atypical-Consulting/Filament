@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.20.0';   // 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.21.0';   // 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -414,6 +414,14 @@ const APPS = {
   listops: {
     readySelector: '#add',
     observeSelector: '#list',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract drives both directions of a checkbox @bind -- #set flips the bool
+  // (checkbox .checked tracks it) and a change on the checkbox flips the bool (#status class tracks it) --
+  // against Blazor's own DOM. The measurement of the checkbox-@bind widening (BENCH n°26).
+  checkbind: {
+    readySelector: '#box',
+    observeSelector: '#status',
     scenarios: [],
   },
   // Correctness-only: verifyContract clicks #toggle and asserts a MULTI-NODE @if body mounts/unmounts
@@ -1762,6 +1770,35 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         if (out.observed.after.href !== '/b') out.problems.push(`#link href after #toggle is "${out.observed.after.href}", expected "/b"`);
         if (out.observed.after.title !== 'second') out.problems.push(`#link title after #toggle is "${out.observed.after.title}", expected "second"`);
         if (out.observed.after.aria !== 'two') out.problems.push(`#link aria-label after #toggle is "${out.observed.after.aria}", expected "two"`);
+        return out;
+      });
+    }
+
+    if (app === 'checkbind') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#box') || !document.querySelector('#status') || !document.querySelector('#set')) {
+          out.problems.push('missing required element: #box/#status/#set'); return out;
+        }
+        const box = document.querySelector('#box');
+        const snap = () => ({ checked: box.checked, cls: document.querySelector('#status').getAttribute('class') });
+        out.observed.initial = snap();
+        const i = out.observed.initial;
+        if (i.checked !== false || i.cls !== 'off') {
+          out.problems.push(`#box/#status initial is ${JSON.stringify(i)}, expected {checked:false,cls:"off"}`); return out;
+        }
+        // DIRECTION 1 (field -> checkbox): #set writes on=true -> box.checked tracks it, #status class tracks it.
+        document.querySelector('#set').click();
+        out.observed.afterSet = snap();
+        const a = out.observed.afterSet;
+        if (a.checked !== true || a.cls !== 'on') {
+          out.problems.push(`#box/#status after #set is ${JSON.stringify(a)}, expected {checked:true,cls:"on"} (field->checkbox did not track)`); return out;
+        }
+        // DIRECTION 2 (checkbox -> field): a change on the checkbox (now unchecking) writes on -> #status tracks it.
+        box.checked = false;
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+        out.observed.afterUncheck = { checked: box.checked, cls: document.querySelector('#status').getAttribute('class') };
+        if (out.observed.afterUncheck.cls !== 'off') out.problems.push(`#status after uncheck is "${out.observed.afterUncheck.cls}", expected "off" (checkbox->field did not track)`);
         return out;
       });
     }

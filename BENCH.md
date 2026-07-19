@@ -3718,3 +3718,35 @@ node bench/harness/bench.mjs --dir bench/publish/filament-listops-gen   --app li
 ---
 
 *Fin de l'entrée n°25. Ne pas modifier — ajouter une entrée n°26 pour toute rectification.*
+
+---
+
+## Entrée n°26 — 2026-07-19 — Phase 4 : la liaison `@bind` sur une CASE À COCHER (bool) mesurée contre Blazor (CORRECTION)
+
+**`@bind` s'étend au type `bool` sur une case à cocher** (décision #107) : `@bind="on"` sur un `<input
+type="checkbox">`, pour un champ `on` **bool** déjà signal. Razor abaisse en `checked`=FormatValue(on) +
+onchange=CreateBinder ; pour un bool le convertisseur est la propriété `.checked` (identité, PAS de parsing → PAS
+de bord d'échec de parse). Le générateur émet `effect(() => { input.checked = on.value; })` +
+`listen(input, 'change', e => on.value = e.target.checked)`. Générateur seul, **runtime INCHANGÉ**. La voie `@bind`
+chaîne (n°104) reste octet pour octet.
+
+### Ce qui est mesuré
+
+`baseline/CheckBind.Blazor` : `@bind` sur une case à cocher ; `on` est **lu par le ternaire de classe `#status`**
+(`on ? "on" : "off"` — une chaîne fidèle, là où un `@on` brut rendrait « false » vs « False » de C#) ET assigné
+par `@bind`/`Set`, donc **signal bool**. Les DEUX sens : `#set` met `on=true` → `box.checked` et la classe suivent ;
+un `change` sur la case → `on` (et la classe) suivent. **`HARNESS_VERSION` 1.20.0 → 1.21.0**, divulgué.
+
+### Résultat
+
+| Label | `#box.checked`/`#status` : init → `#set` → décoche | verdict |
+|---|---|---|
+| **blazor-checkbind** (autorité) | `false/off → true/on → false/off` | contrat OK |
+| **filament-checkbind-gen** (générateur) | `false/off → true/on → false/off` | contrat OK |
+
+**Les deux rendent à l'identique, dans les deux sens.** La liaison bool à deux sens est **mesurée**. `git diff --
+src/filament-runtime` vide. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°26. Ne pas modifier — ajouter une entrée n°27 pour toute rectification.*

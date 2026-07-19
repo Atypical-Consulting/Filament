@@ -3784,3 +3784,22 @@ correction permanentes** ou hors-périmètre POC. §5 s'élargit d'un cran ; RAD
 **MESURÉ CONTRE BLAZOR (entrée n°25).** `baseline/ListOps.Blazor` et `filament-listops-gen` rendent **`0 → 3 → 0`**
 (`#add` puis `#clear`), à l'identique — `Clear()` réconcilie la liste à vide. Porte `canon`, snapshot, oracle.
 `HARNESS_VERSION` 1.19.0 → 1.20.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 107. La liaison `@bind` sur une case à cocher (champ bool signal) entre dans le §5 — la propriété `.checked`, sans convertisseur, sans parsing
+
+**Décision.** `@bind="on"` sur un `<input type="checkbox">`, pour un champ `on` **bool** déjà signal, rejoint le
+sous-ensemble — l'extension de la n°104 (chaîne) au type bool. Razor abaisse en `checked`=`BindConverter.FormatValue(
+on)` + `onchange`=`CreateBinder(...)`. Pour un bool, `TryBind` reconnaît l'attribut **`checked`** (au lieu de `value`)
+et émet la liaison sur la **PROPRIÉTÉ `.checked`** — déjà un bool, donc AUCUN parsing, AUCUN bord d'échec de parse
+(contrairement à un `@bind` int) : `effect(() => { input.checked = on.value; })` + `listen(input, 'change', e =>
+on.value = e.target.checked)`. Nouvelle API `IsBoolSignal`. Suite : **318 tests** (242 générateur + 58 subset + 18
+analyseur), runtime 214.
+
+**LA VOIE CHAÎNE RESTE OCTET POUR OCTET.** `TryBind` a été généralisé (cherche `value` OU `checked` ; string OU
+bool) ; le cas chaîne (n°104) émet les mêmes octets (snapshot `Bind` inchangé). GÉNÉRATEUR SEUL : `.checked` est
+une propriété DOM native ; `git diff -- src/filament-runtime` est vide.
+
+**MESURÉ CONTRE BLAZOR (entrée n°26), LES DEUX SENS.** `baseline/CheckBind.Blazor` et `filament-checkbind-gen`
+rendent **`false/off → true/on → false/off`** (`#set` puis décochage), à l'identique. `on` est signal via le ternaire
+de classe `#status` (un `@on` brut divergerait : « false » vs « False » — un bug d'affichage bool distinct, évité ici).
+`HARNESS_VERSION` 1.20.0 → 1.21.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
