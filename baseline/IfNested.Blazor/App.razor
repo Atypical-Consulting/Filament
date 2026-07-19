@@ -1,0 +1,21 @@
+@* Nested @if (BENCH n°19): an @if(other) inside an @if(show) branch. #a is present iff show && other.
+   Flattens to one list() with a decision-tree source () => show ? (other ? [0] : []) : []. Two toggles
+   exercise all four combinations, all direct children of #w, no wrapper.
+
+   No whitespace between </button> and @if, nor between the buttons, matching If.razor's contract:
+   Razor turns SOURCE whitespace between siblings into text nodes, and there is none here. *@
+
+<div id="w"><button id="tshow" @onclick="ToggleShow">show</button><button id="tother" @onclick="ToggleOther">other</button>@if (show)
+{
+    @if (other)
+    {
+        <span id="a">a</span>
+    }
+}</div>
+
+@code {
+    private bool show = true;
+    private bool other = true;
+    private void ToggleShow() { show = !show; }
+    private void ToggleOther() { other = !other; }
+}
