@@ -3864,3 +3864,48 @@ vide. Les témoins `Code/TryCatch.razor`, `Code/Throw.razor`, `Code/Lock.razor` 
 ---
 
 *Fin de l'entrée n°29. Ne pas modifier — ajouter une entrée n°30 pour toute rectification.*
+
+---
+
+## Entrée n°30 — 2026-07-19 — Phase 4 : le RECORD POSITIONNEL mesuré contre Blazor (CORRECTION)
+
+**Un record POSITIONNEL** (décision #111) : `record Item(string Name, int Rank)` rejoint le §5. Un record
+positionnel est la MÊME forme de données qu'un record à corps, écrite plus court, donc il compile vers le MÊME
+littéral objet (`{ name, rank }`) — son constructeur/`Equals`/`GetHashCode`/`Deconstruct` générés sont
+simplement inutilisés (une forme en lecture seule ; le sous-ensemble n'admet ni égalité de valeur ni
+déconstruction). La construction est EN LIGNE et mappe les arguments positionnels aux propriétés par ORDRE DU
+CONSTRUCTEUR : `new Item("alpha", 1)` → `{ name: 'alpha', rank: 1 }`. C'est la première construction d'objet-
+record admise en position d'expression (avant #111, un record ne se construisait QUE via le repli du site de
+construction `new Row(); row.X = …`, jamais en ligne). Générateur seul, **runtime INCHANGÉ**.
+
+### Ce qui est mesuré
+
+`baseline/PositionalRecord.Blazor` : un `@foreach` sur une `List<Item>` amorcée avec un item construit en ligne
+(`new List<Item> { new Item("alpha", 1) }`) ; `#add` en ajoute un second construit en ligne dans `.Add(new
+Item("beta", 2))`. `items` est lu par `@foreach` ET muté par `Add` → signal de version (chaque `Item` en lecture
+seule → jamais signal). La branche `positionalrecord` de `verifyContract` clique `#add` et exige `#list` :
+`["alpha: 1"]` → `["alpha: 1", "beta: 2"]`. **`HARNESS_VERSION` 1.24.0 → 1.25.0**, divulgué.
+
+```
+dotnet publish baseline/PositionalRecord.Blazor -c Release -o bench/publish/blazor-positionalrecord
+./bench/build-filament.sh filament-positionalrecord-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-positionalrecord/wwwroot --app positionalrecord --label blazor-positionalrecord       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-positionalrecord-gen   --app positionalrecord --label filament-positionalrecord-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#list` | verdict |
+|---|---|---|
+| **blazor-positionalrecord** (autorité) | `["alpha: 1"]` → `["alpha: 1", "beta: 2"]` | contrat OK |
+| **filament-positionalrecord-gen** (générateur) | `["alpha: 1"]` → `["alpha: 1", "beta: 2"]` | contrat OK |
+
+**Les deux rendent une puis deux `<li>`, à l'identique.** Le record positionnel devient un littéral objet et sa
+construction en ligne est mappée par ordre du constructeur — Blazor exécute le même C#. Le chemin PHARE Rows
+(record à corps, repli du site de construction) reste octet pour octet (snapshot Rows vert, changement additif).
+`git diff -- src/filament-runtime` vide. Le témoin `Code/RecordDecl.razor` bascule de refusé à compilé ; un record
+portant une MÉTHODE (`Code/RecordMember.razor`) reste refusé (c'est du comportement, pas une forme). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°30. Ne pas modifier — ajouter une entrée n°31 pour toute rectification.*

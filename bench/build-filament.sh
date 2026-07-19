@@ -195,6 +195,7 @@ ALL_LABELS=(
   filament-intbind-gen
   filament-codeblock-gen
   filament-trylock-gen
+  filament-positionalrecord-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -229,6 +230,7 @@ project_for() {
     filament-ifelsemulti-gen)                        echo "samples/filament-ifelsemulti-gen" ;;
     filament-ifnested-gen)                           echo "samples/filament-ifnested-gen" ;;
     filament-trylock-gen)                            echo "samples/filament-trylock-gen" ;;
+    filament-positionalrecord-gen)                   echo "samples/filament-positionalrecord-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -238,7 +240,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -282,6 +284,7 @@ razor_for() {
     filament-ifelsemulti-gen)                        echo "$REPO_ROOT/baseline/IfElseMultiBody.Blazor/App.razor" ;;
     filament-ifnested-gen)                           echo "$REPO_ROOT/baseline/IfNested.Blazor/App.razor" ;;
     filament-trylock-gen)                            echo "$REPO_ROOT/baseline/TryLock.Blazor/App.razor" ;;
+    filament-positionalrecord-gen)                   echo "$REPO_ROOT/baseline/PositionalRecord.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -318,6 +321,7 @@ generated_js_for() {
     filament-ifelsemulti-gen)                        echo "App.g.js" ;;
     filament-ifnested-gen)                           echo "App.g.js" ;;
     filament-trylock-gen)                            echo "App.g.js" ;;
+    filament-positionalrecord-gen)                   echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -350,6 +354,7 @@ title_for() {
     filament-ifelsemulti-gen)                        echo "IfElseMultiBody" ;;
     filament-ifnested-gen)                           echo "IfNested" ;;
     filament-trylock-gen)                            echo "TryLock" ;;
+    filament-positionalrecord-gen)                   echo "PositionalRecord" ;;
     *) return 1 ;;
   esac
 }
@@ -385,6 +390,7 @@ blazor_label_for() {
     filament-ifelsemulti-gen)                        echo "blazor-ifelsemulti" ;;
     filament-ifnested-gen)                           echo "blazor-ifnested" ;;
     filament-trylock-gen)                            echo "blazor-trylock" ;;
+    filament-positionalrecord-gen)                   echo "blazor-positionalrecord" ;;
     *) return 1 ;;
   esac
 }
@@ -428,6 +434,7 @@ css_for() {
     filament-ifelsemulti-gen)                        echo "$REPO_ROOT/baseline/IfElseMultiBody.Blazor/wwwroot/css/app.css" ;;
     filament-ifnested-gen)                           echo "$REPO_ROOT/baseline/IfNested.Blazor/wwwroot/css/app.css" ;;
     filament-trylock-gen)                            echo "$REPO_ROOT/baseline/TryLock.Blazor/wwwroot/css/app.css" ;;
+    filament-positionalrecord-gen)                   echo "$REPO_ROOT/baseline/PositionalRecord.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }
