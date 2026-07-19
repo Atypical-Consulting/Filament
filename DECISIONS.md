@@ -3821,3 +3821,23 @@ sur ces entrées. La regex + plage les rejette (revert), reproduisant Blazor. **
 à 7 dans Blazor ET dans le générateur. `TryBind` généralisé (chaîne/bool/int) ; les voies chaîne et bool restent
 octet pour octet. GÉNÉRATEUR SEUL ; `git diff -- src/filament-runtime` vide. `HARNESS_VERSION` 1.21.0 → 1.22.0,
 divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 109. Le bloc de code racine `@{ }` (déclaration locale) entre dans le §5 — une locale unique dans mount(), pas « une instruction sans lieu où tourner »
+
+**Décision.** Un bloc `@{ }` à la racine qui déclare une LOCALE (`@{ int total = 3 + 4; }`) lue par le template
+(`@total`) rejoint le sous-ensemble. `RegionOps` refusait tout C# racine hors `@foreach`/`@if` comme
+`[unsupported-template-statement]` (« aucune méthode de rendu où tourner »). Mais une **déclaration locale**
+s'exécute UNE FOIS dans `mount()`, là où l'arbre est construit — c'est exactement un `const total = 3 + 4;` unique,
+pas une instruction qui aurait besoin d'un re-rendu. `RegionOps` traduit donc une `LocalDeclarationStatementSyntax`
+en un nouveau `CodeOp` (les lignes JS), émis dans `_create` **avant** le markup qui lit la locale (ordre document).
+Le read `@total` résout la locale via le modèle sémantique ; elle n'est pas un signal (jamais réassignée) → texte
+statique `createTextNode(total)`. Suite : **322 tests** (246 générateur + 58 subset + 18 analyseur), runtime 214.
+
+**TOUTE AUTRE INSTRUCTION RESTE REFUSÉE.** Seule `LocalDeclarationStatementSyntax` devient un `CodeOp` ; une
+expression/un appel nu à la racine (`@{ Console.WriteLine(1); }`) reste `[unsupported-template-statement]` — il
+aurait besoin d'un re-rendu pour compter, ce qu'un module Filament n'a pas (`RootBareExpressionStatement_IsStillRefused`).
+Le témoin `RootCodeBlock.razor` bascule de refusé à compilé (`RootBareCodeBlock_NowCompiles_ToAOneTimeLocal`).
+
+**GÉNÉRATEUR SEUL.** `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°28) : `baseline/CodeBlock.Blazor` et
+`filament-codeblock-gen` rendent `#out` = `"7"`, à l'identique. `HARNESS_VERSION` 1.22.0 → 1.23.0, divulgué. §5
+s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.

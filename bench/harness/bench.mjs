@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.22.0';   // 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.23.0';   // 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -430,6 +430,13 @@ const APPS = {
   intbind: {
     readySelector: '#box',
     observeSelector: '#echo',
+    scenarios: [],
+  },
+  // Correctness-only (static, like compose): a root @{ } local declaration read by @total. verifyContract
+  // asserts #out renders "7" -- the one-time local, against Blazor's own DOM. BENCH n°28.
+  codeblock: {
+    readySelector: '#out',
+    observeSelector: '#out',
     scenarios: [],
   },
   // Correctness-only: verifyContract clicks #toggle and asserts a MULTI-NODE @if body mounts/unmounts
@@ -1778,6 +1785,18 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         if (out.observed.after.href !== '/b') out.problems.push(`#link href after #toggle is "${out.observed.after.href}", expected "/b"`);
         if (out.observed.after.title !== 'second') out.problems.push(`#link title after #toggle is "${out.observed.after.title}", expected "second"`);
         if (out.observed.after.aria !== 'two') out.problems.push(`#link aria-label after #toggle is "${out.observed.after.aria}", expected "two"`);
+        return out;
+      });
+    }
+
+    if (app === 'codeblock') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        const el = document.querySelector('#out');
+        if (!el) { out.problems.push('missing required element: #out'); return out; }
+        out.observed.text = el.textContent.trim();
+        // THE MEASUREMENT: the @{ int total = 3 + 4; } local ran and @total rendered "7".
+        if (out.observed.text !== '7') out.problems.push(`#out is "${out.observed.text}", expected "7"`);
         return out;
       });
     }

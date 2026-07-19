@@ -3785,3 +3785,34 @@ ici. `git diff -- src/filament-runtime` vide. §8 inchangé.
 ---
 
 *Fin de l'entrée n°27. Ne pas modifier — ajouter une entrée n°28 pour toute rectification.*
+
+---
+
+## Entrée n°28 — 2026-07-19 — Phase 4 : le bloc de code racine `@{ }` (déclaration locale) mesuré contre Blazor (CORRECTION)
+
+**Un bloc `@{ }` à la racine déclarant une LOCALE** (décision #109) : `@{ int total = 3 + 4; }` lu par `@total`
+rejoint le sous-ensemble. Une déclaration locale s'exécute **UNE FOIS** dans `mount()` (là où l'arbre est construit)
+— c'est un `const total = 3 + 4;` unique, pas « une instruction sans lieu où tourner ». Le read `@total` résout la
+locale (statique : elle ne change jamais → pas d'effet). Générateur seul, **runtime INCHANGÉ**. Une déclaration
+locale devient un `CodeOp` dans `RegionOps` ; toute AUTRE instruction reste refusée.
+
+### Ce qui est mesuré
+
+`baseline/CodeBlock.Blazor` : `@{ int total = 3 + 4; }` + `<span id="out">@total</span>`. Statique (comme compose) :
+le rendu initial EST la mesure. La branche `codeblock` de `verifyContract` exige `#out` = `"7"`. **`HARNESS_VERSION`
+1.22.0 → 1.23.0**, divulgué.
+
+### Résultat
+
+| Label | `#out` | verdict |
+|---|---|---|
+| **blazor-codeblock** (autorité) | `7` | contrat OK |
+| **filament-codeblock-gen** (générateur) | `7` | contrat OK |
+
+**Les deux rendent `7`, à l'identique.** La locale du bloc `@{ }` s'exécute et `@total` la lit — mesuré.
+`git diff -- src/filament-runtime` vide. Le témoin `RootCodeBlock.razor` bascule de refusé à compilé ; une
+instruction non-déclarative à la racine reste refusée. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°28. Ne pas modifier — ajouter une entrée n°29 pour toute rectification.*
