@@ -308,6 +308,8 @@ public static class Generate
 
     public static string LongCounterToTemp() => ToTemp(RepoPaths.LongCounterRazor, "LongCounter");
 
+    public static string FloatCounterToTemp() => ToTemp(RepoPaths.FloatCounterRazor, "FloatCounter");
+
     /// <summary>
     /// Emit a fixture from the Unsupported dir (some of which now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the

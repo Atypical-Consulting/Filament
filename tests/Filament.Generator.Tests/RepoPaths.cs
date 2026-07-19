@@ -155,6 +155,11 @@ public static class RepoPaths
 
     /// <summary>The long-via-BigInt SPEC (decisions 51/112). Never edited to make a gate pass.</summary>
     public static string LongCounterAnswerKey => Path.Combine(Root, "samples", "LongCounter", "longcounter.js");
+
+    public static string FloatCounterRazor => Path.Combine(Root, "baseline", "FloatCounter.Blazor", "App.razor");
+
+    /// <summary>The float-via-fround SPEC (decisions 51/113). Never edited to make a gate pass.</summary>
+    public static string FloatCounterAnswerKey => Path.Combine(Root, "samples", "FloatCounter", "floatcounter.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
