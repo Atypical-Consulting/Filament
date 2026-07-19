@@ -1,0 +1,23 @@
+@* Positional record (BENCH n°30, decision 111): `record Item(string Name, int Rank)` is a data shape
+   declared in its SHORTER positional form. It compiles to the SAME object literal a body record does
+   ({ name, rank }); its generated ctor/Equals/GetHashCode/Deconstruct are unused. The list starts with
+   one item built INLINE in a list literal (new Item("alpha", 1)); #add appends a second built inline in
+   .Add(new Item("beta", 2)). The click IS the measurement -- #list goes from one <li> ("alpha: 1") to
+   two (adding "beta: 2"), exactly as Blazor renders the same C#. items is read by @foreach AND mutated by
+   Add, so it is a version signal; each Item's props are read-only (never a signal). *@
+
+<ul id="list">@foreach (Item item in items)
+{<li @key="item.Name" class="row">@item.Name: @item.Rank</li>}</ul>
+
+<button id="add" @onclick="Add">add</button>
+
+@code {
+    record Item(string Name, int Rank);
+
+    private List<Item> items = new List<Item> { new Item("alpha", 1) };
+
+    private void Add()
+    {
+        items.Add(new Item("beta", 2));
+    }
+}
