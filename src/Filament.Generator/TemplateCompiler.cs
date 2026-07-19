@@ -521,8 +521,10 @@ public sealed class TemplateCompiler
     {
         if (node is MarkupElementIntermediateNode el && !LooksLikeComponent(el.TagName))
             foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
-                if ((DynamicAttributes.Contains(attr.AttributeName) || BooleanAttributes.Contains(attr.AttributeName))
-                    && DynamicValue(attr) is { } expr)
+                if (DynamicAttributes.Contains(attr.AttributeName) && ComposableValue(attr) is { } parts)
+                    foreach (var e in parts.OfType<CSharpExpressionAttributeValueIntermediateNode>())
+                        plan.FreeSlots.Add(e);
+                else if (BooleanAttributes.Contains(attr.AttributeName) && DynamicValue(attr) is { } expr)
                     plan.FreeSlots.Add(expr);
         foreach (var child in node.Children) CollectDynamicAttributes(child, plan);
     }
@@ -542,6 +544,63 @@ public sealed class TemplateCompiler
         if (csharp.Count != 1 || html.Count != 0) return null;
         var expr = string.Concat(csharp[0].Children.OfType<IntermediateToken>().Select(t => t.Content));
         return TryUnwrapEventCallback(expr, out _) ? null : csharp[0];
+    }
+
+    /// <summary>
+    /// The ordered value parts of an attribute that COMPOSES to a string, or null. Composable = every
+    /// child is a literal (HtmlAttributeValue) or an expression (CSharpExpressionAttributeValue) part,
+    /// there is at least one expression, and no expression part is an event handler. A control-flow value
+    /// node (CSharpCodeAttributeValue -- `class="@if(c){…}"`) makes it null, so that value stays on the
+    /// `unaccounted-attribute-value` refusal (distinct slice). The pure `@expr` case is the degenerate
+    /// composable value (one expression, no literals). The ONE predicate the harvest
+    /// (CollectDynamicAttributes) and the emission (EmitAttribute) both consult (decision 53).
+    /// </summary>
+    static IReadOnlyList<IntermediateNode>? ComposableValue(HtmlAttributeIntermediateNode attr)
+    {
+        var parts = attr.Children
+            .Where(c => c is HtmlAttributeValueIntermediateNode or CSharpExpressionAttributeValueIntermediateNode)
+            .ToList();
+        if (parts.Count != attr.Children.Count) return null;   // a non-value node (control flow) -> not composable
+        var exprs = parts.OfType<CSharpExpressionAttributeValueIntermediateNode>().ToList();
+        if (exprs.Count == 0) return null;                     // no expression -> the static-literal path handles it
+        foreach (var e in exprs)
+        {
+            var text = string.Concat(e.Children.OfType<IntermediateToken>().Select(t => t.Content));
+            if (TryUnwrapEventCallback(text, out _)) return null; // an event handler keeps its listen() path
+        }
+        return parts;
+    }
+
+    /// <summary>
+    /// Fold the ordered value parts into a single JS string expression, prefix-aware. Each part
+    /// contributes its Prefix (the literal text before it) then its body: a literal part appends its
+    /// content to a running buffer; an expression part flushes the buffer as a JS string term, then emits
+    /// SlotJs (never a splice). Terms are joined with ` + `. `class="badge @x rounded"` folds to
+    /// `'badge ' + x.value + ' rounded'`; the pure `class="@x"` folds to just `x.value` (byte-identical to
+    /// the reactive-`class` slice). `reactive` is true iff ANY expression part is reactive.
+    /// </summary>
+    (string js, bool reactive) ComposeAttributeValue(IReadOnlyList<IntermediateNode> parts)
+    {
+        var terms = new List<string>();
+        var buf = new System.Text.StringBuilder();
+        var reactive = false;
+        foreach (var part in parts)
+        {
+            if (part is HtmlAttributeValueIntermediateNode h)
+            {
+                buf.Append(h.Prefix);
+                buf.Append(string.Concat(h.Children.OfType<IntermediateToken>().Select(t => t.Content)));
+            }
+            else if (part is CSharpExpressionAttributeValueIntermediateNode c)
+            {
+                buf.Append(c.Prefix);
+                if (buf.Length > 0) { terms.Add(JsString(buf.ToString())); buf.Clear(); }
+                terms.Add(_code.SlotJs(c));
+                if (_code.SlotIsReactive(c)) reactive = true;
+            }
+        }
+        if (buf.Length > 0) terms.Add(JsString(buf.ToString()));
+        return (string.Join(" + ", terms), reactive);
     }
 
     /// <summary>Every @expression and @key in a subtree, in document order.</summary>
@@ -1261,17 +1320,17 @@ public sealed class TemplateCompiler
                 return;
             }
 
-            // REACTIVE / DYNAMIC ATTRIBUTE VALUE (the `class` slice, BENCH n°13). Only an allow-listed
-            // attribute whose value is a single pure C# expression reaches here as an emission; everything
-            // else (a non-allow-listed name, a concatenation, an event handler) falls through to the
-            // refusal below. Mirrors EmitBinding exactly: SlotJs is the front end's translation (never a
-            // splice), SlotIsReactive decides effect-vs-create-time. The effect lands in _bindings (before
-            // attach), so its first setAttr writes into the detached tree and makes no MutationRecord.
-            if (DynamicAttributes.Contains(name) && DynamicValue(attr) is { } valueNode)
+            // COMPOSED STRING ATTRIBUTE VALUE (the `class` slice: pure #94/n°13, mixed #96/n°15). An
+            // allow-listed string attribute folds its ordered value parts (literals + expressions) into one
+            // setAttr. The pure `@expr` case is the degenerate fold (one expression, no literals) and emits
+            // byte-identically -- the ReactiveAttr gate proves it. Reactive iff any expression part is
+            // reactive; the effect lands in _bindings (before attach), so its first setAttr writes into the
+            // detached tree and makes no MutationRecord.
+            if (DynamicAttributes.Contains(name) && ComposableValue(attr) is { } parts)
             {
-                var js = _code.SlotJs(valueNode);
+                var (js, reactive) = ComposeAttributeValue(parts);
                 _used.Add("setAttr");
-                if (_code.SlotIsReactive(valueNode))
+                if (reactive)
                 {
                     _used.Add("effect");
                     _bindings.Add($"effect(() => setAttr({v}, {JsString(name)}, {js}));");
@@ -1311,8 +1370,7 @@ public sealed class TemplateCompiler
                 $"{string.Join(", ", DynamicAttributes.Order())}; boolean present/absent: " +
                 $"{string.Join(", ", BooleanAttributes.Order())}); '{name}' is not one of them, and this is " +
                 "neither a resolved event handler nor a static value. A dynamic value on an un-measured " +
-                "attribute -- or a mixed literal+expression value (class=\"box @x\") -- has no measurement " +
-                "covering it. Refusing to emit.",
+                "attribute has no measurement covering it. Refusing to emit.",
                 attr.Source ?? el.Source);
             return;
         }
