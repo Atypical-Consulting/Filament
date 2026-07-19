@@ -3614,3 +3614,42 @@ accepté et divulgué, pas un nombre silencieusement faux en fonctionnement norm
 **LE PLAFOND HONNÊTE.** Première tranche de la frontière « sous-ensemble C# » (IntDivision ✓ → While → Switch →
 DoWhile). Seules les divisions `int` et `double` ; `long`/`decimal` restent refusées (types hors §5). §5 s'élargit
 d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 102. Les instructions `while`/`do-while`/`switch` (+`break`) entrent dans le §5 — une tranche « famille d'instructions »
+
+**Décision.** `while`, `do-while`, `switch` (labels constants + `default`) et `break` (requis par `switch`)
+rejoignent le sous-ensemble C#, chacune abaissée vers son homologue JS : `while`→`while`, `do-while`→`do…while`,
+`switch`→`switch/case/break`. Une seule tranche « famille d'instructions » (la n°84 avait établi les instructions
+comme une décision partagée unique). Suite : **304 tests** (228 générateur + 58 subset + 18 analyseur),
+runtime 214.
+
+**MONO-SOURCÉ DANS `ConstructSubset.ClassifyStatement` — L'ANALYSEUR SUIT.** Quatre entrées d'allowlist :
+`WhileStatementSyntax`, `DoStatementSyntax`, `BreakStatementSyntax`, et `SwitchStatementSyntax` **gardé** — admis
+seulement si TOUS ses labels sont `CaseSwitchLabelSyntax`/`DefaultSwitchLabelSyntax` (constants) ; un label PATTERN
+ou `when` tombe dans le refus par défaut. `break` est admis inconditionnellement — Roslyn garantit qu'il n'est
+valide que dans une boucle/switch. L'analyseur partage cette classification, donc `WhileLoop_IsFlagged` devient
+`IsNotFlagged` sans changement. Le générateur (`CSharpFrontEnd.Statement`) émet les mots-clés ; les cases du
+`switch` émettent leurs labels puis leurs statements (le `break` interne est un `BreakStatementSyntax`, émis comme
+toute instruction).
+
+**AUCUNE PRIMITIVE DE RUNTIME NOUVELLE.** `while`/`do`/`switch`/`break` sont des mots-clés JS ; `git diff --
+src/filament-runtime` est **vide**. Les émissions `for`/`foreach`/`if` restent octet pour octet.
+
+**BOUCLE + SIGNAL, FIDÈLE SUR LE DOM FINAL.** `while (n < 5) { n++; }` → `while (n.value < 5) { n.value++; }` (dans
+un `batch()` car le handler écrit `n` plus d'une fois, n°68). La valeur finale du signal correspond à C# ;
+d'éventuels runs d'effet intermédiaires (si non batchés) n'ajoutent que des rendus, jamais un état final faux — et
+l'oracle lit le DOM final. `switch` : C# interdit la chute implicite, donc chaque section non vide finit par
+`break`/`return` ; émettre le même `case…break` est fidèle.
+
+**LES TÉMOINS BASCULENT.** `Unsupported/Code/While.razor` et `Code/Switch.razor` **passent de refusés à compilés**
+(`LoopSwitchStatement_NowCompiles` ; retirés des théories de refus `CodeTests` ET `GateSubsetTests`) ;
+`Gate/DoWhile.razor` passe à compilé (`DoWhile_CompilesToJsDoWhile`) ; `ConstructSubsetTests` déplace while/do/
+switch-constant/break vers admis et **ajoute** un `switch` à label PATTERN toujours refusé.
+
+**MESURÉ CONTRE BLAZOR (entrée n°21).** `baseline/Loops.Blazor` (trois handlers : while, switch, do-while) et
+`filament-loops-gen` rendent **`0 → 5 → 9 → 3`** au fil des trois clics, à l'identique. Porte `canon`
+(alpha-équivalent), snapshot octet-exact, oracle Playwright. `HARNESS_VERSION` 1.15.0 → 1.16.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Deuxième tranche de la frontière « sous-ensemble C# » (IntDivision ✓ → While/Switch/DoWhile
+✓). Restent différés : `continue`, `goto`, `goto case`, instructions étiquetées, labels PATTERN/`when` de `switch`,
+switch-EXPRESSIONS (`x switch { … }`). §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
