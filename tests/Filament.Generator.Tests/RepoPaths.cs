@@ -175,6 +175,11 @@ public static class RepoPaths
 
     /// <summary>The LINQ-over-a-List SPEC (decisions 51/116). Never edited to make a gate pass.</summary>
     public static string LinqAnswerKey => Path.Combine(Root, "samples", "Linq", "linq.js");
+
+    public static string ArrayIndexRazor => Path.Combine(Root, "baseline", "ArrayIndex.Blazor", "App.razor");
+
+    /// <summary>The T[]-array SPEC (decisions 51/117). Never edited to make a gate pass.</summary>
+    public static string ArrayIndexAnswerKey => Path.Combine(Root, "samples", "ArrayIndex", "arrayindex.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
