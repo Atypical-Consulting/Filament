@@ -1,0 +1,20 @@
+@* Checkbox two-way binding (BENCH n°26): @bind="on" on a checkbox <input>. `on` is a BOOL signal --
+   read by the #status class ternary (a faithful string, unlike a raw @on which would render "false"
+   vs C#'s "False") AND assigned by @bind + Set. The checkbox's .checked property is the two-way surface
+   (already a bool, no BindConverter parsing). #set flips it programmatically; clicking the box flips the
+   field. *@
+
+<input id="box" type="checkbox" @bind="on" />
+
+<span id="status" class="@(on ? "on" : "off")">status</span>
+
+<button id="set" @onclick="Set">Set</button>
+
+@code {
+    private bool on = false;
+
+    private void Set()
+    {
+        on = true;
+    }
+}
