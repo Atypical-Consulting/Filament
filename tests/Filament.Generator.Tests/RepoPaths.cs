@@ -110,6 +110,11 @@ public static class RepoPaths
 
     /// <summary>The attribute-allowlist-widening SPEC (decisions 51/97). Never edited to make a gate pass.</summary>
     public static string MoreAttrsAnswerKey => Path.Combine(Root, "samples", "MoreAttrs", "moreattrs.js");
+
+    public static string BindRazor => Path.Combine(Root, "baseline", "Bind.Blazor", "App.razor");
+
+    /// <summary>The two-way-binding SPEC (decisions 51/104). Never edited to make a gate pass.</summary>
+    public static string BindAnswerKey => Path.Combine(Root, "samples", "Bind", "bind.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

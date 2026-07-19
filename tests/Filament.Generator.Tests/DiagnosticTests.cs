@@ -194,18 +194,20 @@ public class DiagnosticTests
     }
 
     /// <summary>
-    /// @bind lowers into value= + onchange= carrying BindConverter, so it arrives as a
-    /// dynamic attribute value rather than as a surviving '@bind'. Refused either way;
-    /// this test pins WHICH way, because a rule that fires for a reason you did not
-    /// measure is a rule you do not have.
+    /// @bind on a STRING SIGNAL now COMPILES (decision 104; see BindTests). This witness binds `text`,
+    /// which the fixture does not declare -- so it is not a string field that is a signal, and @bind
+    /// refuses [unsupported-bind] at its exact location (the recognised @bind pattern, refused for a true
+    /// reason, not the old dual dynamic-attribute/compound-expression pair). A non-string @bind and a
+    /// pure @bind-only field stay refused the same way (deferred).
     /// </summary>
     [Fact]
-    public void Bind_IsRefused_AtItsExactLocation()
+    public void Bind_OnANonStringSignal_IsRefused_AtItsExactLocation()
     {
         var d = Refused("Bind.razor");
 
-        Assert.Contains("Bind.razor(1,24): FIL0003: [dynamic-attribute]", d);
-        Assert.Contains("BindConverter", d);
+        Assert.Contains("Bind.razor(1,24): FIL0003: [unsupported-bind]", d);
+        Assert.Contains("signal", d);   // the message explains @bind needs a string field that is a signal
+        Assert.Contains("text", d);     // and names the bound field
     }
 
     /// <summary>

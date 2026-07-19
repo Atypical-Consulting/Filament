@@ -912,12 +912,17 @@ public sealed class TemplateCompiler
         var v = $"_el{_el++}";
         _create.Add($"const {v} = document.createElement({JsString(el.TagName)});");
 
+        // TWO-WAY BINDING (@bind): Razor lowers it to a synthesised value=/onchange pair; TryBind emits
+        // the reactive binding and hands back the two attributes it consumed, so the normal loop skips them.
+        var boundAttrs = TryBind(el, v);
+
         // Attributes are handled SEPARATELY from children and never by document order.
         // With the tag helper chain active Razor reorders them -- <button>'s "Click me"
         // content node arrives BEFORE its id/onclick attributes -- so walking children
         // in order and switching on node type is the only correct traversal.
         foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
-            EmitAttribute(el, v, attr);
+            if (!boundAttrs.Contains(attr))
+                EmitAttribute(el, v, attr);
 
         // A container whose children held C# does not have children in document order any
         // more -- it has a re-parsed STATEMENT LIST (decision 54). Its emission comes from
@@ -935,6 +940,58 @@ public sealed class TemplateCompiler
             if (c is not null) _create.Add($"insert({v}, {c});");
         }
         return v;
+    }
+
+    static string AttrCs(HtmlAttributeIntermediateNode attr) =>
+        string.Concat(attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>()
+            .SelectMany(c => c.Children.OfType<IntermediateToken>()).Select(t => t.Content));
+
+    /// <summary>The user's bound field inside a @bind-lowered `value` attribute: its single token that
+    /// carries a real source (the `BindConverter.FormatValue(` wrapper tokens are synthesised).</summary>
+    static string? BoundField(HtmlAttributeIntermediateNode valueAttr) =>
+        valueAttr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>()
+            .SelectMany(c => c.Children.OfType<IntermediateToken>())
+            .FirstOrDefault(t => t.Source is not null)?.Content.Trim();
+
+    /// <summary>
+    /// TWO-WAY BINDING (@bind). Razor lowers `@bind="text"` on an &lt;input&gt; to a synthesised `value`
+    /// attribute (`BindConverter.FormatValue(text)`) plus an `onchange` attribute
+    /// (`CreateBinder(this, __value => text = __value, …)`). For a STRING field the converter is identity,
+    /// so this compiles to a reactive value-property effect plus a change listener that writes the signal:
+    ///     effect(() =&gt; { input.value = text.value; });
+    ///     listen(input, 'change', (e) =&gt; { text.value = e.target.value; });
+    /// Scoped to a string field that is ALREADY a signal (see IsStringSignal). Returns the two consumed
+    /// attributes so the normal attribute loop skips them, or an empty set when this is not a @bind.
+    /// </summary>
+    HashSet<HtmlAttributeIntermediateNode> TryBind(MarkupElementIntermediateNode el, string v)
+    {
+        var attrs = el.Children.OfType<HtmlAttributeIntermediateNode>().ToList();
+        var valueAttr = attrs.FirstOrDefault(a =>
+            string.Equals(a.AttributeName, "value", StringComparison.OrdinalIgnoreCase) &&
+            AttrCs(a).Contains("BindConverter.FormatValue"));
+        var changeAttr = attrs.FirstOrDefault(a =>
+            string.Equals(a.AttributeName, "onchange", StringComparison.OrdinalIgnoreCase) &&
+            AttrCs(a).Contains("CreateBinder"));
+        if (valueAttr is null || changeAttr is null) return [];
+
+        var field = BoundField(valueAttr);
+        if (field is null || !_code.IsStringSignal(field))
+        {
+            Diag("unsupported-bind",
+                $"@bind on <{el.TagName}> binds '{Trunc(field ?? "?")}', which is not a string field that is " +
+                "already a signal. The @bind slice binds a STRING field the component also reads and assigns " +
+                "(so it is reactive); a non-string @bind needs BindConverter parsing, and a pure @bind-only " +
+                "field needs its reactivity marked from the template -- both deferred. Refusing to emit.",
+                valueAttr.Source);
+            return [valueAttr, changeAttr];   // consumed: the located refusal above is the one diagnostic
+        }
+
+        var js = _code.FieldJs(field);
+        _used.Add("effect");
+        _bindings.Add($"effect(() => {{ {v}.value = {js}.value; }});");
+        _used.Add("listen");
+        _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.value; }});");
+        return [valueAttr, changeAttr];
     }
 
     /// <summary>

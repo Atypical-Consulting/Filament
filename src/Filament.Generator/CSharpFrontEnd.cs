@@ -246,6 +246,17 @@ public sealed class CSharpFrontEnd
 
     public bool Declares(string name) => _fieldsByName.ContainsKey(name) || _methodsByName.ContainsKey(name);
     public bool IsMethod(string name) => _methodsByName.ContainsKey(name);
+
+    /// <summary>A `string` field that is already a SIGNAL (read by the template AND assigned outside
+    /// construction, conjunction rule #67). The `@bind` slice binds only such fields: for a string the
+    /// BindConverter is identity, and requiring an established signal sidesteps marking reactivity from
+    /// the template-side @bind lowering (a pure @bind-only field is a deferred, distinct case).</summary>
+    public bool IsStringSignal(string name) =>
+        _fieldsByName.TryGetValue(name, out var f) && f.IsSignal &&
+        f.Symbol.Type.SpecialType == SpecialType.System_String;
+
+    /// <summary>The JS name of a field (e.g. `text`), so a signal read is `{FieldJs}.value`.</summary>
+    public string? FieldJs(string name) => _fieldsByName.TryGetValue(name, out var f) ? f.Js : null;
     public IEnumerable<string> DeclaredNames => _fieldsByName.Keys.Concat(_methodsByName.Keys);
     public IEnumerable<string> MethodNames => _methodsByName.Keys;
 
