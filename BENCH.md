@@ -3750,3 +3750,38 @@ src/filament-runtime` vide. §8 inchangé.
 ---
 
 *Fin de l'entrée n°26. Ne pas modifier — ajouter une entrée n°27 pour toute rectification.*
+
+---
+
+## Entrée n°27 — 2026-07-19 — Phase 4 : la liaison `@bind` sur un ENTIER (parse fidèle) mesurée contre Blazor (CORRECTION)
+
+**`@bind` s'étend au type `int`** (décision #108) : `@bind="count"` sur un `<input>` texte, `count` un int déjà
+signal. Contrairement à chaîne/bool, ceci **PARSE** : le handler de `change` **reproduit `int.TryParse`**
+(invariant, `NumberStyles.Integer`) — une regex `/^\s*[+-]?\d+\s*$/` pour la forme acceptée, un contrôle de
+plage int32, et un **revert-sur-invalide** qui GARDE le champ et re-rend l'ancienne valeur. La valeur se formate
+via `String(count.value)` ; `@count` (int) s'affiche fidèlement. Générateur seul, **runtime INCHANGÉ**. Les voies
+chaîne (n°104) et bool (n°107) restent octet pour octet.
+
+### Ce qui est mesuré — Y COMPRIS LES BORDS
+
+`baseline/IntBind.Blazor`. La branche `intbind` de `verifyContract` teste QUATRE entrées : `#set` (champ→input,
+`0→42`), une entrée VALIDE (`"7"` → champ=7), une entrée INVALIDE (`"notanumber"` → **revert**, champ garde 7), et
+un DÉBORDEMENT (`"99999999999"` > int.MaxValue → **revert**, champ garde 7). Tester l'invalide et le débordement EST
+la mesure : c'est ce qui vérifie que la regex + plage + revert reproduit `BindConverter` exactement.
+**`HARNESS_VERSION` 1.21.0 → 1.22.0**, divulgué.
+
+### Résultat
+
+| Label | `#box.value`/`#echo` : init → set → « 7 » → « notanumber » → « 99999999999 » | verdict |
+|---|---|---|
+| **blazor-intbind** (autorité) | `0/0 → 42/42 → 7/7 → 7/7 → 7/7` | contrat OK |
+| **filament-intbind-gen** (générateur) | `0/0 → 42/42 → 7/7 → 7/7 → 7/7` | contrat OK |
+
+**Les deux rendent à l'identique, invalide ET débordement compris.** L'entrée invalide et le débordement
+**reviennent à 7** dans les DEUX — le parse fidèle à `int.TryParse` est **mesuré**, pas raisonné. C'est
+précisément le bord (« un nombre silencieusement faux ») que la §10 interdit, et l'oracle prouve qu'il n'existe pas
+ici. `git diff -- src/filament-runtime` vide. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°27. Ne pas modifier — ajouter une entrée n°28 pour toute rectification.*

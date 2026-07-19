@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.21.0';   // 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.22.0';   // 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -422,6 +422,14 @@ const APPS = {
   checkbind: {
     readySelector: '#box',
     observeSelector: '#status',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract drives int @bind through a valid, an INVALID, and an OVERFLOW entry --
+  // the last two must revert (keep the field) -- verifying the int.TryParse-mirroring parse against Blazor's
+  // own BindConverter. The measurement of the int-@bind widening (BENCH n°27).
+  intbind: {
+    readySelector: '#box',
+    observeSelector: '#echo',
     scenarios: [],
   },
   // Correctness-only: verifyContract clicks #toggle and asserts a MULTI-NODE @if body mounts/unmounts
@@ -1770,6 +1778,38 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         if (out.observed.after.href !== '/b') out.problems.push(`#link href after #toggle is "${out.observed.after.href}", expected "/b"`);
         if (out.observed.after.title !== 'second') out.problems.push(`#link title after #toggle is "${out.observed.after.title}", expected "second"`);
         if (out.observed.after.aria !== 'two') out.problems.push(`#link aria-label after #toggle is "${out.observed.after.aria}", expected "two"`);
+        return out;
+      });
+    }
+
+    if (app === 'intbind') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#box') || !document.querySelector('#echo') || !document.querySelector('#set')) {
+          out.problems.push('missing required element: #box/#echo/#set'); return out;
+        }
+        const box = document.querySelector('#box');
+        const echo = () => document.querySelector('#echo').textContent.trim();
+        const type = (s) => { box.value = s; box.dispatchEvent(new Event('change', { bubbles: true })); };
+        const snap = () => ({ value: box.value, echo: echo() });
+        out.observed.initial = snap();
+        if (box.value !== '0' || echo() !== '0') { out.problems.push(`initial ${JSON.stringify(snap())}, expected {value:"0",echo:"0"}`); return out; }
+        // field -> input
+        document.querySelector('#set').click();
+        out.observed.afterSet = snap();
+        if (box.value !== '42' || echo() !== '42') { out.problems.push(`after #set ${JSON.stringify(snap())}, expected 42/42`); return out; }
+        // VALID entry: input -> field
+        type('7');
+        out.observed.afterValid = snap();
+        if (box.value !== '7' || echo() !== '7') { out.problems.push(`after valid "7" ${JSON.stringify(snap())}, expected 7/7`); return out; }
+        // INVALID entry: must REVERT (keep field at 7)
+        type('notanumber');
+        out.observed.afterInvalid = snap();
+        if (echo() !== '7' || box.value !== '7') { out.problems.push(`after invalid ${JSON.stringify(snap())}, expected 7/7 (revert)`); return out; }
+        // OVERFLOW entry: > int.MaxValue must REVERT (keep field at 7)
+        type('99999999999');
+        out.observed.afterOverflow = snap();
+        if (echo() !== '7' || box.value !== '7') out.problems.push(`after overflow ${JSON.stringify(snap())}, expected 7/7 (revert)`);
         return out;
       });
     }

@@ -3803,3 +3803,21 @@ une propriété DOM native ; `git diff -- src/filament-runtime` est vide.
 rendent **`false/off → true/on → false/off`** (`#set` puis décochage), à l'identique. `on` est signal via le ternaire
 de classe `#status` (un `@on` brut divergerait : « false » vs « False » — un bug d'affichage bool distinct, évité ici).
 `HARNESS_VERSION` 1.20.0 → 1.21.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 108. La liaison `@bind` sur un ENTIER entre dans le §5 — un parse fidèle à `int.TryParse`, mesuré sur l'invalide ET le débordement
+
+**Décision.** `@bind="count"` sur un `<input>` texte, `count` un `int` déjà signal, rejoint le sous-ensemble —
+l'extension des n°104 (chaîne) et n°107 (bool) au type `int`. Contrairement à celles-ci, le type int **PARSE** :
+la valeur se formate en `String(count.value)`, et le handler de `change` **reproduit `int.TryParse`** (invariant,
+`NumberStyles.Integer`) : une regex `/^\s*[+-]?\d+\s*$/` (blancs de tête/queue, signe optionnel, chiffres — ni
+point décimal, ni hex, ni exposant), un contrôle de **plage int32**, et un **revert-sur-invalide** qui garde le
+champ et re-rend l'ancienne valeur, exactement comme `BindConverter`. Nouvelle API `IsIntSignal`. Suite : **321
+tests** (245 générateur + 58 subset + 18 analyseur), runtime 214.
+
+**POURQUOI PAS `Number()` — le bord que la §10 interdit.** `Number("")` = 0, `Number("0x10")` = 16, `Number("1e3")`
+= 1000 — aucun accepté par `int.TryParse(Integer)`. Un `Number()` naïf produirait un nombre silencieusement faux
+sur ces entrées. La regex + plage les rejette (revert), reproduisant Blazor. **MESURÉ, pas raisonné** : l'oracle
+(entrée n°27) teste une entrée invalide (`"notanumber"`) et un débordement (`"99999999999"`) — les DEUX reviennent
+à 7 dans Blazor ET dans le générateur. `TryBind` généralisé (chaîne/bool/int) ; les voies chaîne et bool restent
+octet pour octet. GÉNÉRATEUR SEUL ; `git diff -- src/filament-runtime` vide. `HARNESS_VERSION` 1.21.0 → 1.22.0,
+divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
