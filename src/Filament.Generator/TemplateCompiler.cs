@@ -163,6 +163,17 @@ public sealed class TemplateCompiler
     };
 
     /// <summary>
+    /// Attribute names whose value MAY be a compiled dynamic expression (reactive or create-time),
+    /// mirroring EmitBinding's text path. An ALLOWLIST, like PropertyAttributes and AllowedDirectives:
+    /// `class` is the MEASURED one (BENCH n°13); every other name keeps the dynamic-attribute refusal,
+    /// which is precisely what keeps @bind's lowered `value=` refused with its exact message. Widening
+    /// this set is a NEW measured slice each time -- boolean/present-absent attributes (disabled) need a
+    /// different emission (present/absent, not setAttr of "true"), so they are not admitted by adding a
+    /// name here.
+    /// </summary>
+    static readonly HashSet<string> DynamicAttributes = new(StringComparer.OrdinalIgnoreCase) { "class" };
+
+    /// <summary>
     /// A bare identifier, and nothing else. The ONE spelling this phase's template may
     /// use to name state or a handler; see NamedByTemplate().
     /// </summary>
@@ -268,6 +279,7 @@ public sealed class TemplateCompiler
             foreach (var child in method.Children) Collect(child, plan);
 
         CollectComponentBindings(method, plan);
+        CollectDynamicAttributes(method, plan);
 
         code.Compile(codeNodes, plan);
         _diagnostics.AddRange(code.Diagnostics);
@@ -482,6 +494,41 @@ public sealed class TemplateCompiler
                 foreach (var expr in attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>())
                     plan.FreeSlots.Add(expr);
         foreach (var child in node.Children) CollectComponentBindings(child, plan);
+    }
+
+    /// <summary>
+    /// Reactive/dynamic ATTRIBUTE values on plain elements (the reactive-`class` slice, BENCH n°13).
+    /// Collect() filters out HtmlAttributeIntermediateNode, so an attribute expression is never harvested
+    /// there; without a slot the front end never compiles it and SlotJs/SlotIsReactive cannot answer.
+    /// Harvest the value expression of an ALLOW-LISTED attribute into FreeSlots -- the same harvest
+    /// CollectComponentBindings does for a component's bound params -- so EmitAttribute can read SlotJs /
+    /// SlotIsReactive back off the SAME node. Two guards (in DynamicValue) keep everything else out: the
+    /// value must be a single pure C# expression (no literal part), and it must NOT be an event handler.
+    /// </summary>
+    void CollectDynamicAttributes(IntermediateNode node, TemplatePlan plan)
+    {
+        if (node is MarkupElementIntermediateNode el && !LooksLikeComponent(el.TagName))
+            foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
+                if (DynamicAttributes.Contains(attr.AttributeName) && DynamicValue(attr) is { } expr)
+                    plan.FreeSlots.Add(expr);
+        foreach (var child in node.Children) CollectDynamicAttributes(child, plan);
+    }
+
+    /// <summary>
+    /// The single pure C# expression value of an attribute that is NOT an event handler, or null. The ONE
+    /// predicate both the harvest (CollectDynamicAttributes) and the emission (EmitAttribute) consult, so
+    /// they cannot disagree about which attributes are dynamic values (decision 53: wiring described twice
+    /// drifts). Pure = exactly one CSharpExpressionAttributeValueIntermediateNode and NO literal
+    /// (HtmlAttributeValue) part -- a concatenation (`class="box @x"`) returns null and stays refused. An
+    /// event handler (its value unwraps as an EventCallback) returns null and keeps its listen() path.
+    /// </summary>
+    static CSharpExpressionAttributeValueIntermediateNode? DynamicValue(HtmlAttributeIntermediateNode attr)
+    {
+        var csharp = attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>().ToList();
+        var html = attr.Children.OfType<HtmlAttributeValueIntermediateNode>().ToList();
+        if (csharp.Count != 1 || html.Count != 0) return null;
+        var expr = string.Concat(csharp[0].Children.OfType<IntermediateToken>().Select(t => t.Content));
+        return TryUnwrapEventCallback(expr, out _) ? null : csharp[0];
     }
 
     /// <summary>Every @expression and @key in a subtree, in document order.</summary>
@@ -1201,11 +1248,35 @@ public sealed class TemplateCompiler
                 return;
             }
 
+            // REACTIVE / DYNAMIC ATTRIBUTE VALUE (the `class` slice, BENCH n°13). Only an allow-listed
+            // attribute whose value is a single pure C# expression reaches here as an emission; everything
+            // else (a non-allow-listed name, a concatenation, an event handler) falls through to the
+            // refusal below. Mirrors EmitBinding exactly: SlotJs is the front end's translation (never a
+            // splice), SlotIsReactive decides effect-vs-create-time. The effect lands in _bindings (before
+            // attach), so its first setAttr writes into the detached tree and makes no MutationRecord.
+            if (DynamicAttributes.Contains(name) && DynamicValue(attr) is { } valueNode)
+            {
+                var js = _code.SlotJs(valueNode);
+                _used.Add("setAttr");
+                if (_code.SlotIsReactive(valueNode))
+                {
+                    _used.Add("effect");
+                    _bindings.Add($"effect(() => setAttr({v}, {JsString(name)}, {js}));");
+                }
+                else
+                {
+                    _create.Add($"setAttr({v}, {JsString(name)}, {js});");
+                }
+                return;
+            }
+
             Diag("dynamic-attribute",
-                $"attribute '{name}' on <{el.TagName}> carries the C# expression \"{Trunc(expr)}\", which is " +
-                "neither a resolved event handler nor a static value. Dynamic attribute values are in Phase 2's " +
-                "declared scope but are NOT exercised by Counter, so this compiler refuses them rather than ship " +
-                "an emission path no measurement covers.",
+                $"attribute '{name}' on <{el.TagName}> carries the C# expression \"{Trunc(expr)}\". This " +
+                "compiler compiles a reactive/dynamic value only for ALLOW-LISTED attributes (currently: " +
+                $"{string.Join(", ", DynamicAttributes.Order())}); '{name}' is not one of them, and this is " +
+                "neither a resolved event handler nor a static value. A dynamic value on an un-measured " +
+                "attribute -- or a mixed literal+expression value (class=\"box @x\") -- has no measurement " +
+                "covering it. Refusing to emit.",
                 attr.Source ?? el.Source);
             return;
         }
