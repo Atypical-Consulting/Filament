@@ -20,14 +20,17 @@ public class ConstructSubsetTests
     [InlineData("if (b) { }")]
     [InlineData("for (;;) { }")]
     [InlineData("foreach (var y in ys) { }")]
+    [InlineData("while (b) { }")]                        // decision 102
+    [InlineData("do { } while (b);")]                    // decision 102
+    [InlineData("switch (x) { case 1: break; default: break; }")]  // decision 102: constant labels
+    [InlineData("break;")]                              // decision 102: needed inside a switch/loop
     [InlineData("return;")]
     [InlineData("{ }")]
     public void SupportedStatementKinds_ClassifyToNull(string body)
         => Assert.Null(ConstructSubset.ClassifyStatement(FirstStatement(body)));
 
     [Theory]
-    [InlineData("while (b) { }")]
-    [InlineData("switch (x) { }")]
+    [InlineData("switch (x) { case int y: break; }")]   // decision 102: PATTERN label still refused
     [InlineData("try { } catch { }")]
     [InlineData("throw new System.Exception();")]
     [InlineData("using (d) { }")]

@@ -109,9 +109,6 @@ public class GateSubsetTests
     // ---- spec 5's TYPE list -------------------------------------------------
     [InlineData("Code/TypeDateTime.razor", 5, 13, "FIL0002", "unsupported-type")]
     // ---- spec 5's STATEMENT list --------------------------------------------
-    [InlineData("Code/While.razor", 8, 9, "FIL0001", "unsupported-statement")]
-    [InlineData("Gate/DoWhile.razor", 8, 9, "FIL0001", "unsupported-statement")]
-    [InlineData("Code/Switch.razor", 8, 9, "FIL0001", "unsupported-statement")]
     [InlineData("Code/Goto.razor", 8, 9, "FIL0001", "unsupported-statement")]
     [InlineData("Code/TryCatch.razor", 8, 9, "FIL0001", "unsupported-statement")]
     // ---- spec 5's EXPRESSION list -------------------------------------------
@@ -187,7 +184,6 @@ public class GateSubsetTests
     [InlineData("Gate/CascadingParameterField.razor")]
     [InlineData("Gate/NotCSharp.razor")]
     [InlineData("Gate/JsInterop.razor")]
-    [InlineData("Gate/DoWhile.razor")]
     [InlineData("Gate/ListOp.razor")]
     public void EveryGateDiagnostic_IsLocated_AndCarriesOneOfTheSpecsThreeCodes(string fixture)
     {
@@ -616,6 +612,29 @@ public class NegativeControls
 
         Assert.Contains("Math.trunc(n.value / 2)", js);     // faithful truncation, not bare `/`
         Assert.DoesNotContain("[unsupported-expression]", js);
+    }
+
+    /// <summary>
+    /// DO-WHILE now COMPILES (decision 102): `do { … } while (cond);` maps to the JS namesake. It used
+    /// to be refused [unsupported-statement] @ (8,9). (while/switch land in CodeTests; do-while's witness
+    /// lives under Gate/.)
+    /// </summary>
+    [Fact]
+    public void DoWhile_CompilesToJsDoWhile()
+    {
+        var (exit, stderr, wrote) = Compile(
+            """
+            <p><span id="a">@n</span></p>
+            <button id="go" @onclick="Go">go</button>
+
+            @code {
+                private int n = 0;
+                private void Go() { n = 0; do { n = n + 1; } while (n < 3); }
+            }
+            """);
+
+        Assert.Equal(0, exit);
+        Assert.True(wrote, $"do-while should compile now (decision 102):\n{stderr}");
     }
 
     /// <summary>

@@ -21,12 +21,18 @@ public static class ConstructSubset
         IfStatementSyntax => null,
         ForStatementSyntax => null,
         ForEachStatementSyntax => null,
+        WhileStatementSyntax => null,
+        DoStatementSyntax => null,
+        BreakStatementSyntax => null,   // break is valid only inside a loop/switch (Roslyn enforces); switch needs it
+        // switch with CONSTANT case labels + default only; pattern / when-guard labels are deferred (fall to refusal).
+        SwitchStatementSyntax sw when sw.Sections.All(sec =>
+            sec.Labels.All(l => l is CaseSwitchLabelSyntax or DefaultSwitchLabelSyntax)) => null,
         ReturnStatementSyntax => null,
         BlockSyntax => null,
         _ => new Refusal("FIL0001", "unsupported-statement",
             $"{Describe(s)} is not in the C# subset. Section 5 admits local declarations, " +
-            "assignment and compound assignment, if/else, for, foreach, and calls to methods " +
-            "declared in the same component. Refusing to emit."),
+            "assignment and compound assignment, if/else, for, foreach, while, do-while, switch " +
+            "(constant labels), and calls to methods declared in the same component. Refusing to emit."),
     };
 
     /// <summary>True for a `[Parameter]` attribute in any of its written forms. The generator's

@@ -1700,6 +1700,41 @@ public sealed class CSharpFrontEnd
                 return lines;
             }
 
+            case WhileStatementSyntax w:
+            {
+                var lines = new List<string> { $"while ({Expr(w.Condition)}) {{" };
+                lines.AddRange(Nest(w.Statement));
+                lines.Add("}");
+                return lines;
+            }
+
+            case DoStatementSyntax dw:
+            {
+                var lines = new List<string> { "do {" };
+                lines.AddRange(Nest(dw.Statement));
+                lines.Add($"}} while ({Expr(dw.Condition)});");
+                return lines;
+            }
+
+            case BreakStatementSyntax:
+                return ["break;"];
+
+            // switch with constant case labels + default (pattern/when labels refused upstream in
+            // ClassifyStatement). Each case's `break` is a BreakStatementSyntax, emitted like any statement.
+            case SwitchStatementSyntax sw:
+            {
+                var lines = new List<string> { $"switch ({Expr(sw.Expression)}) {{" };
+                foreach (var section in sw.Sections)
+                {
+                    foreach (var label in section.Labels)
+                        lines.Add(label is CaseSwitchLabelSyntax cl ? $"case {Expr(cl.Value)}:" : "default:");
+                    foreach (var stmt in section.Statements)
+                        lines.AddRange(Nest(stmt));
+                }
+                lines.Add("}");
+                return lines;
+            }
+
             case ReturnStatementSyntax r:
                 return [r.Expression is null ? "return;" : $"return {Expr(r.Expression)};"];
 

@@ -43,8 +43,6 @@ public class CodeTests
     /// </summary>
     [Theory]
     // ---- statements outside section 5's list (FIL0001) ----------------------
-    [InlineData("While.razor", 8, 9, "FIL0001", "unsupported-statement")]
-    [InlineData("Switch.razor", 8, 9, "FIL0001", "unsupported-statement")]
     [InlineData("TryCatch.razor", 8, 9, "FIL0001", "unsupported-statement")]
     [InlineData("Throw.razor", 8, 9, "FIL0001", "unsupported-statement")]
     [InlineData("Using.razor", 8, 9, "FIL0001", "unsupported-statement")]
@@ -137,6 +135,28 @@ public class CodeTests
 
             Assert.True(exit == 0, $"integer division should compile now (decision 101):\n{stderr}");
             Assert.Contains("Math.trunc(currentCount.value / 2)", File.ReadAllText(outPath));
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// WHILE and SWITCH statements now COMPILE (decision 102): they map to their JS namesakes. They used
+    /// to be refused [unsupported-statement] @ (8,9).
+    /// </summary>
+    [Theory]
+    [InlineData("While.razor", "while (currentCount.value < 10)")]
+    [InlineData("Switch.razor", "switch (currentCount.value)")]
+    public void LoopSwitchStatement_NowCompiles(string fixture, string expected)
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", fixture), outPath);
+
+            Assert.True(exit == 0, $"{fixture} should compile now (decision 102):\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains(expected, js);
+            Assert.DoesNotContain("[unsupported-statement]", js);
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }

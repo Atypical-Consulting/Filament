@@ -23,8 +23,9 @@ public class ConstructSubsetAnalyzerTests
     // ---- statement kinds ----------------------------------------------------
 
     [Fact]
-    public async Task WhileLoop_IsFlagged()
-        => await Method("        {|FIL0001:while (b) { }|}").RunAsync();
+    public async Task WhileLoop_IsNotFlagged()
+        // while / do-while / switch entered §5 at decision 102 (single-sourced via ConstructSubset).
+        => await Method("        while (b) { }").RunAsync();
 
     [Fact]
     public async Task TryCatch_IsFlagged()
@@ -41,9 +42,11 @@ public class ConstructSubsetAnalyzerTests
 
     [Fact]
     public async Task UnsupportedStatement_IsFlaggedOnce_NotItsInnards()
+        // switch entered §5 at decision 102, so try/catch is the still-unsupported witness: the try
+        // is flagged once and its supported innards (x = 1) are NOT separately flagged.
         => await Method(
             "        int x = 0;\n" +
-            "        {|FIL0001:switch (x) { default: break; }|}").RunAsync();
+            "        {|FIL0001:try { x = 1; } catch { }|}").RunAsync();
 
     // ---- member kinds -------------------------------------------------------
 

@@ -38,6 +38,11 @@ public static class RepoPaths
     /// <summary>The integer-division SPEC (decisions 51/87). Never edited to make a gate pass.</summary>
     public static string DivideIntAnswerKey => Path.Combine(Root, "samples", "DivideInt", "divideint.js");
 
+    public static string LoopsRazor => Path.Combine(Root, "baseline", "Loops.Blazor", "App.razor");
+
+    /// <summary>The loop/switch-statement SPEC (decisions 51/102). Never edited to make a gate pass.</summary>
+    public static string LoopsAnswerKey => Path.Combine(Root, "samples", "Loops", "loops.js");
+
     /// <summary>Parent + sibling child (Greeting.razor) — the file Blazor compiles. Static-leaf composition.</summary>
     public static string ComposeRazor => Path.Combine(Root, "baseline", "Compose.Blazor", "App.razor");
 
