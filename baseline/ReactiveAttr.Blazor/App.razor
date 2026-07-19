@@ -1,0 +1,28 @@
+@* Root component. Rendered directly into #app by Program.cs.
+
+   The markup below is the SHARED DOM CONTRACT and must not be altered. The blank
+   lines between the three siblings are part of the contract (Blazor ships them as
+   "\n\n" text nodes; so does the generator; so does reactiveattr.js). See counter.js.
+
+   The point of this app is class="@statusClass" -- a REACTIVE string attribute. The
+   `class` binding updates in lockstep with the @currentCount text binding as state
+   changes, which is what the DOM-contract oracle asserts against Blazor's own DOM. *@
+
+<h1 id="title">Counter</h1>
+
+<p id="status" class="@statusClass">Current count: <span id="counter-value">@currentCount</span></p>
+
+<button id="increment" @onclick="Increment">Click me</button>
+
+@code {
+    private int currentCount = 0;
+    private string statusClass = "zero";
+
+    private void Increment()
+    {
+        currentCount++;
+        statusClass = "counting";
+    }
+}
+@* Only what the component actually uses: the Web namespace supplies @onclick. *@
+@using Microsoft.AspNetCore.Components.Web
