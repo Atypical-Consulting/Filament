@@ -1,0 +1,8 @@
+@* Root @{ } code block (BENCH n°28): a local declaration at template root, read by @total. It runs
+   ONCE in mount() as a const -- the initial render IS the measurement (like compose): #out shows "7". *@
+
+@{
+    int total = 3 + 4;
+}
+
+<p>Total: <span id="out">@total</span></p>
