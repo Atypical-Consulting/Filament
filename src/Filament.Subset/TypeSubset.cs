@@ -15,7 +15,7 @@ public static class TypeSubset
     static readonly HashSet<SpecialType> Scalars = new()
     {
         SpecialType.System_Int32, SpecialType.System_Int64,
-        SpecialType.System_Single, SpecialType.System_Double,
+        SpecialType.System_Single, SpecialType.System_Double, SpecialType.System_Decimal,
         SpecialType.System_Boolean, SpecialType.System_String,
     };
 

@@ -270,8 +270,15 @@ public sealed class CSharpFrontEnd
     {
         public string Js = "";
         public bool Reactive;
-        public bool IsFloat;   // the slot's expression is float-typed -> the template must format it (decision 113)
+        public bool IsFloat;     // the slot's expression is float-typed -> the template must format it (decision 113)
+        public bool IsDecimal;   // the slot's expression is decimal-typed -> format it through __decStr (decision 114)
     }
+
+    /// <summary>The decimal helpers this module actually used (`decAdd`, `decStr`, …). A `decimal` value is a
+    /// boxed { m: BigInt mantissa, s: scale } (JS has no native decimal), so its arithmetic is helper calls, not
+    /// operators. The template compiler emits exactly these, in a fixed order, when the set is non-empty
+    /// (decision 114). The template adds `decStr` when it formats a decimal display.</summary>
+    public readonly HashSet<string> DecimalHelpers = [];
 
     // ---- the public surface the template compiler consumes ------------------
 
@@ -325,6 +332,11 @@ public sealed class CSharpFrontEnd
     /// coercion (`node.data = x`) would print the DOUBLE string, not C#'s float string (0.1f -> "0.1", not
     /// "0.10000000149011612"). So the template formats a float display through its __f32 helper (decision 113).</summary>
     public bool SlotIsFloat(IntermediateNode node) => Get(node).IsFloat;
+
+    /// <summary>The slot's expression is decimal-typed. A decimal is a boxed { m, s } object; displaying it
+    /// means rendering that object as C#'s decimal string (scale preserved: {m:110n,s:2} -> "1.10"), which the
+    /// template does through the emitted __decStr helper (decision 114).</summary>
+    public bool SlotIsDecimal(IntermediateNode node) => Get(node).IsDecimal;
 
     /// <summary>What to emit for a container whose children held template C#, in order.</summary>
     /// <summary>
@@ -1166,6 +1178,7 @@ public sealed class CSharpFrontEnd
         SpecialType.System_Int64 => "0n",   // long's JS home is BigInt (decision 112); default(long) is 0L -> 0n
         SpecialType.System_Single => "0",   // default(float) is 0f -> 0 (exactly representable; decision 113)
         SpecialType.System_Double => "0",
+        SpecialType.System_Decimal => "{ m: 0n, s: 0 }",   // default(decimal) is 0m -> the boxed zero (decision 114)
         SpecialType.System_Boolean => "false",
         SpecialType.System_String => "null",
         _ => "null",
@@ -1465,6 +1478,7 @@ public sealed class CSharpFrontEnd
                 Js = Expr(e),
                 Reactive = IsReactive(e),
                 IsFloat = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Single,
+                IsDecimal = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Decimal,
             };
         }
     }
@@ -2042,6 +2056,15 @@ public sealed class CSharpFrontEnd
 
         if (from == SpecialType.System_Int32 && to == SpecialType.System_Int64) return $"BigInt({js})";
         if (from == SpecialType.System_Int64 && to == SpecialType.System_Double) return $"Number({js})";
+
+        // int -> decimal (decision 114): C# widens the int to a decimal; JS must box it as { m, s }. A LITERAL
+        // in a decimal context is already the object (NumericLiteral), so this fires only on a non-literal int
+        // (a field/local/expression) used where a decimal is expected -- e.g. `price * quantity`.
+        if (from == SpecialType.System_Int32 && to == SpecialType.System_Decimal)
+        {
+            DecimalHelpers.Add("decFromInt");
+            return $"__decFromInt({js})";
+        }
         return js;
     }
 
@@ -2089,8 +2112,27 @@ public sealed class CSharpFrontEnd
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.IsFloatDivision(b, _model):
                 return $"{Expr(b.Left)} / {Expr(b.Right)}";
 
+            // DECIMAL arithmetic/comparison -> the __dec* helpers (decision 114): a decimal is a boxed { m, s }
+            // object, so `a + b` is __decAdd(a, b), never the `+` operator (which would add two objects to NaN).
+            // Checked BEFORE JsBinaryOperator so no decimal binary ever slips through to a raw operator.
+            case BinaryExpressionSyntax b when EitherDecimal(b):
+                return DecimalBinary(b);
+
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.JsBinaryOperator(b) is { } op:
                 return $"{Expr(b.Left)} {op} {Expr(b.Right)}";
+
+            // A decimal unary op (decision 114): `-x` negates the boxed mantissa (__decNeg), `+x` is identity.
+            // Intercepted BEFORE JsPrefixOperator so `-x` never becomes `-{m,s}` (which is NaN).
+            case PrefixUnaryExpressionSyntax p when _model.GetTypeInfo(p).Type?.SpecialType == SpecialType.System_Decimal:
+                if (p.Kind() == SyntaxKind.UnaryPlusExpression) return Expr(p.Operand);
+                if (p.Kind() == SyntaxKind.UnaryMinusExpression)
+                {
+                    DecimalHelpers.Add("decNeg");
+                    return $"__decNeg({Expr(p.Operand)})";
+                }
+                return Refuse("unsupported-expression",
+                    $"decimal '{p.OperatorToken.Text}' is not in the subset (only unary + and - are). Refusing to emit.",
+                    p.SpanStart);
 
             case PrefixUnaryExpressionSyntax p when Filament.Subset.ConstructSubset.JsPrefixOperator(p) is { } op:
                 return $"{op}{Expr(p.Operand)}";
@@ -2256,6 +2298,54 @@ public sealed class CSharpFrontEnd
         return $"{mi.Js}({string.Join(", ", inv.ArgumentList.Arguments.Select(a => Expr(a.Expression)))})";
     }
 
+    /// <summary>A C# decimal -> `{ m: <mantissa>n, s: <scale> }` (decision 114). decimal.GetBits gives the
+    /// exact 96-bit mantissa and the base-10 scale (0..28), which IS the value with no rounding: 1.10m is
+    /// mantissa 110, scale 2 -> "{ m: 110n, s: 2 }", and __decStr renders it "1.10" (the trailing zero the
+    /// scale records). The sign rides on the mantissa's BigInt.</summary>
+    // True when either operand is decimal (after C#'s implicit conversions): the operation is a decimal one,
+    // whatever its result type -- `a + b` is decimal, and `a > b` is bool but its operands are decimal.
+    bool EitherDecimal(BinaryExpressionSyntax b) =>
+        _model.GetTypeInfo(b.Left).ConvertedType?.SpecialType == SpecialType.System_Decimal ||
+        _model.GetTypeInfo(b.Right).ConvertedType?.SpecialType == SpecialType.System_Decimal;
+
+    /// <summary>A decimal binary -> a __dec* helper call (decision 114). +, -, * are exact base-10 on the
+    /// { m, s } representation; the six comparisons go through __decCmp (scale-aligned). Division and modulo are
+    /// REFUSED: faithful decimal division needs System.Decimal's 28-29-significant-digit rounding, which is a
+    /// separate, larger problem -- refusing beats a silently wrong quotient (section 10).</summary>
+    string DecimalBinary(BinaryExpressionSyntax b)
+    {
+        var l = Expr(b.Left);
+        var r = Expr(b.Right);
+        string Use(string helper, string js) { DecimalHelpers.Add(helper); return js; }
+        return b.Kind() switch
+        {
+            SyntaxKind.AddExpression => Use("decAdd", $"__decAdd({l}, {r})"),
+            SyntaxKind.SubtractExpression => Use("decSub", $"__decSub({l}, {r})"),
+            SyntaxKind.MultiplyExpression => Use("decMul", $"__decMul({l}, {r})"),
+            SyntaxKind.LessThanExpression => Use("decCmp", $"(__decCmp({l}, {r}) < 0)"),
+            SyntaxKind.LessThanOrEqualExpression => Use("decCmp", $"(__decCmp({l}, {r}) <= 0)"),
+            SyntaxKind.GreaterThanExpression => Use("decCmp", $"(__decCmp({l}, {r}) > 0)"),
+            SyntaxKind.GreaterThanOrEqualExpression => Use("decCmp", $"(__decCmp({l}, {r}) >= 0)"),
+            SyntaxKind.EqualsExpression => Use("decCmp", $"(__decCmp({l}, {r}) === 0)"),
+            SyntaxKind.NotEqualsExpression => Use("decCmp", $"(__decCmp({l}, {r}) !== 0)"),
+            _ => Refuse("unsupported-expression",
+                $"decimal '{b.OperatorToken.Text}' is not in the subset: section 5 admits decimal +, -, * and the " +
+                "comparisons. Division and modulo need System.Decimal's 28-digit rounding, which is deferred. " +
+                "Refusing to emit.", b.SpanStart),
+        };
+    }
+
+    static string DecimalObject(decimal d)
+    {
+        var bits = decimal.GetBits(d);
+        var mantissa = ((System.Numerics.BigInteger)(uint)bits[2] << 64)
+                     | ((System.Numerics.BigInteger)(uint)bits[1] << 32)
+                     | (uint)bits[0];
+        if ((bits[3] & unchecked((int)0x80000000)) != 0) mantissa = -mantissa;
+        var scale = (bits[3] >> 16) & 0xFF;
+        return $"{{ m: {mantissa.ToString(System.Globalization.CultureInfo.InvariantCulture)}n, s: {scale} }}";
+    }
+
     /// <summary>$"a {b}" -> `a ${b}`. A template literal, which is the same construct.</summary>
     string Interpolated(InterpolatedStringExpressionSyntax s)
     {
@@ -2321,6 +2411,19 @@ public sealed class CSharpFrontEnd
                 int i => $"Math.fround({i.ToString(inv)})",
                 _ => Refuse("unsupported-type",
                     $"the numeric literal {Trunc(lit.ToString())} is float-typed but not numeric. Refusing to emit.",
+                    lit.SpanStart, "FIL0002"),
+            };
+
+        // A literal in a DECIMAL context -> a { m: mantissa, s: scale } object (decision 114). `decimal` is a
+        // 128-bit base-10 type with TRACKED SCALE (1.10m keeps its trailing zero); JS has no native decimal, so
+        // it is a boxed BigInt mantissa + scale, and its arithmetic is the __dec* helpers (exact base-10).
+        if (_model.GetTypeInfo(lit).ConvertedType?.SpecialType == SpecialType.System_Decimal)
+            return lit.Token.Value switch
+            {
+                decimal d => DecimalObject(d),
+                int i => DecimalObject(i),
+                _ => Refuse("unsupported-type",
+                    $"the numeric literal {Trunc(lit.ToString())} is decimal-typed but not numeric. Refusing to emit.",
                     lit.SpanStart, "FIL0002"),
             };
 

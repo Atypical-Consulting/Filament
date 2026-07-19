@@ -60,12 +60,10 @@ public class CodeTests
     [InlineData("Constructor.razor", 5, 5, "FIL0001", "unsupported-member")]
     [InlineData("NestedClass.razor", 5, 5, "FIL0001", "unsupported-member")]
     // ---- types outside section 5's list (FIL0002) ---------------------------
-    // long LEFT this list at decision 112 and float at decision 113 (both compile now -> TypeLong_NowCompiles /
-    // TypeFloat_NowCompiles). long -> BigInt (exact past 2^53). float -> Math.fround per operation + a shortest-
-    // round-trip-through-float32 display formatter (the emitted __f32), which reproduces C#'s float.ToString
-    // exactly. decimal/DateTime STAY refused (JS has no faithful representation: decimal has no native type,
-    // DateTime no BCL).
-    [InlineData("TypeDecimal.razor", 5, 13, "FIL0002", "unsupported-type")]
+    // long (112), float (113) and decimal (114) all LEFT this list -- they compile now (TypeLong_NowCompiles /
+    // TypeFloat_NowCompiles / TypeDecimal_NowCompiles). long -> BigInt; float -> Math.fround + __f32 display;
+    // decimal -> a boxed { m, s } (BigInt mantissa + scale) with the emitted __dec helpers (exact base-10, scale
+    // preserved). object/DateTime/Dict/Array STAY refused (object is untyped; DateTime has no BCL to map).
     [InlineData("TypeObject.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeDict.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeArray.razor", 5, 13, "FIL0002", "unsupported-type")]
@@ -88,7 +86,7 @@ public class CodeTests
     //
     // The coverage does not disappear, it moves OUT to the new edge -- which is the only
     // place a subset boundary can be tested once the middle works:
-    //   List<decimal>    the CONTAINER is in the subset, the ELEMENT is not (long is now IN, decision 112)
+    //   List<DateTime>   the CONTAINER is in the subset, the ELEMENT is not (int/long/float/decimal are IN now)
     //   List<int> = null the type is in the subset, the C# default has no array to be
     //   a method in a record: a data SHAPE cannot carry behaviour
     //
@@ -230,6 +228,28 @@ public class CodeTests
             Assert.True(exit == 0, $"a float field should compile now (decision 113):\n{stderr}");
             var js = File.ReadAllText(outPath);
             Assert.Contains("Math.fround(", js);             // the float literal/arithmetic is frounded
+            Assert.DoesNotContain("[unsupported-type]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A `decimal` field now COMPILES (decision 114, closing the TypeDecimal deferral): decimal is a boxed
+    /// { m: BigInt mantissa, s: scale } object (JS has no native decimal), exact in base 10 with the scale
+    /// preserved. It used to be refused [unsupported-type] @ (5,13). object/DateTime STAY refused.
+    /// </summary>
+    [Fact]
+    public void TypeDecimal_NowCompiles_ToABoxedMantissaScale()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeDecimal.razor"), outPath);
+
+            Assert.True(exit == 0, $"a decimal field should compile now (decision 114):\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains("m:", js);                       // a boxed { m: <mantissa>n, s: <scale> }
+            Assert.Contains("n, s:", js);
             Assert.DoesNotContain("[unsupported-type]", js);
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }

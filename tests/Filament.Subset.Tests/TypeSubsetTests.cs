@@ -27,10 +27,12 @@ public class TypeSubsetTests
     [InlineData("long x;", "x")]                          // decision 112: long -> BigInt
     [InlineData("float x;", "x")]                         // decision 113: float -> Math.fround + shortest-round-trip display
     [InlineData("double x;", "x")]
+    [InlineData("decimal x;", "x")]                       // decision 114: decimal -> boxed { m, s } + __dec helpers
     [InlineData("bool x;", "x")]
     [InlineData("string x;", "x")]
     [InlineData("List<int> x;", "x")]
     [InlineData("List<long> x;", "x")]                    // decision 112: List<long> -> array of BigInt
+    [InlineData("List<decimal> x;", "x")]                // decision 114: List<decimal> -> array of boxed { m, s }
     [InlineData("List<string> x;", "x")]
     public void InSubsetTypes_ClassifyToNull(string decls, string field)
     {
@@ -39,10 +41,9 @@ public class TypeSubsetTests
     }
 
     [Theory]
-    [InlineData("decimal x;", "x")]
     [InlineData("object x;", "x")]
     [InlineData("DateTime x;", "x")]
-    [InlineData("List<decimal> x;", "x")]                 // the ELEMENT is out of subset (long/float are now IN)
+    [InlineData("List<DateTime> x;", "x")]                // the ELEMENT is out of subset (int/long/float/decimal are IN)
     public void OutOfSubsetTypes_ClassifyToUnsupportedType(string decls, string field)
     {
         var t = TypeOfField(decls, field);

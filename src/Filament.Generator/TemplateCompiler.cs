@@ -1605,6 +1605,14 @@ public sealed class TemplateCompiler
             js = $"__f32({js})";
         }
 
+        // A DECIMAL value is a boxed { m, s } object; displaying it renders that object as C#'s decimal string
+        // (scale preserved: { m: 110n, s: 2 } -> "1.10") through the emitted __decStr helper (decision 114).
+        if (_code.SlotIsDecimal(expr))
+        {
+            _code.DecimalHelpers.Add("decStr");
+            js = $"__decStr({js})";
+        }
+
         // NOT REACTIVE -> no signal, no effect, no .value: one write, at create time. The
         // source can never change, so an effect around it would be a subscription to nothing --
         // machinery serving machinery, which is the thing this POC refuses. rows.js's @row.Id
@@ -1634,6 +1642,22 @@ public sealed class TemplateCompiler
         handler = m.Groups["h"].Value.Trim();
         return handler.Length > 0;
     }
+
+    /// <summary>The decimal helper library (decision 114), in emission order. A decimal is { m: BigInt, s: int }.
+    /// add/sub align scales then add/subtract mantissas; mul multiplies mantissas and ADDS scales (so 1.0m*1.0m
+    /// keeps scale 2 -> "1.00"); cmp scale-aligns then compares; neg flips the mantissa's sign; fromInt boxes an
+    /// int at scale 0; str renders the mantissa with the point at `scale`, preserving trailing zeros. These match
+    /// System.Decimal for +, -, *, comparison and display; division (28-digit rounding) is refused, not emitted.</summary>
+    static readonly (string Name, string Code)[] DecimalHelperSource =
+    {
+        ("decAdd", "function __decAdd(a, b) { const s = a.s > b.s ? a.s : b.s; return { m: a.m * 10n ** BigInt(s - a.s) + b.m * 10n ** BigInt(s - b.s), s: s }; }"),
+        ("decSub", "function __decSub(a, b) { const s = a.s > b.s ? a.s : b.s; return { m: a.m * 10n ** BigInt(s - a.s) - b.m * 10n ** BigInt(s - b.s), s: s }; }"),
+        ("decMul", "function __decMul(a, b) { return { m: a.m * b.m, s: a.s + b.s }; }"),
+        ("decNeg", "function __decNeg(a) { return { m: -a.m, s: a.s }; }"),
+        ("decCmp", "function __decCmp(a, b) { const s = a.s > b.s ? a.s : b.s; const am = a.m * 10n ** BigInt(s - a.s), bm = b.m * 10n ** BigInt(s - b.s); return am < bm ? -1 : am > bm ? 1 : 0; }"),
+        ("decFromInt", "function __decFromInt(i) { return { m: BigInt(i), s: 0 }; }"),
+        ("decStr", "function __decStr(d) {\n  let neg = d.m < 0n, g = (neg ? -d.m : d.m).toString();\n  if (d.s > 0) { while (g.length <= d.s) g = '0' + g; const i = g.length - d.s; g = g.slice(0, i) + '.' + g.slice(i); }\n  return (neg ? '-' : '') + g;\n}"),
+    };
 
     string Render(List<string> module, List<string> prologue, string runtimeSpecifier, string sourceName)
     {
@@ -1665,6 +1689,19 @@ public sealed class TemplateCompiler
             sb.Append("  }\n");
             sb.Append("  return String(x);\n");
             sb.Append("}\n\n");
+        }
+
+        if (_code.DecimalHelpers.Count > 0)
+        {
+            // C#'s `decimal` is a 128-bit base-10 type with tracked scale; JS has no native decimal, so a value
+            // is a boxed { m: BigInt mantissa, s: scale } and its arithmetic is exact base-10 on that. Emitted
+            // (not runtime exports) so decimal stays generator-only. Only the helpers actually used are emitted,
+            // in this fixed order. Decision 114. Division/modulo are refused (System.Decimal's 28-digit rounding).
+            sb.Append("// -- decimal: boxed { m, s } (BigInt mantissa + scale), exact base-10 -- C# System.Decimal --\n");
+            foreach (var (name, code) in DecimalHelperSource)
+                if (_code.DecimalHelpers.Contains(name))
+                    sb.Append(code).Append('\n');
+            sb.Append('\n');
         }
 
         if (module.Count > 0)
