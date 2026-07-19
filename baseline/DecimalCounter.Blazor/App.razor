@@ -1,0 +1,20 @@
+@* decimal -> boxed { m, s } + __dec helpers (BENCH n°33, decision 114): a `decimal` accumulator whose
+   behaviour NO binary float can reproduce. `total` starts at 1.10m -- a value whose TRAILING ZERO is part
+   of its scale (a double would render "1.1"). Each #add adds 1.05m: in C# decimal, 1.10m + 1.05m = 2.15m,
+   then 3.20m -- the trailing zero preserved AND the arithmetic exact in base 10 (a double would give
+   3.2000000000000002). Filament boxes a decimal as { m: BigInt mantissa, s: scale } and does base-10
+   arithmetic on it, so #value renders "1.10" -> "2.15" -> "3.20", exactly as Blazor renders the same C#
+   decimal. total is read by @total AND assigned by Add -> a signal. *@
+
+<p><span id="value">@total</span></p>
+
+<button id="add" @onclick="Add">add</button>
+
+@code {
+    private decimal total = 1.10m;
+
+    private void Add()
+    {
+        total = total + 1.05m;
+    }
+}
