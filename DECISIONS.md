@@ -3525,3 +3525,53 @@ divulgué.
 IfElseMultiBody ✓ → IfNested → Foreach). Restent différés : contrôle de flux **imbriqué** dans une branche
 (`IfNested`, tranche 3), `@foreach` en élément (tranche 4), nœuds texte intercalés. §5 s'élargit d'un cran ;
 RADICAL reste **« ni éliminée ni établie »**.
+
+## 100. Le `@if` IMBRIQUÉ dans une branche entre dans le §5 — une source ARBRE DE DÉCISION récursive aplatit la structure en un seul `list()`
+
+**Décision.** Un `@if`/`@else` **imbriqué** dans une branche `@if` (que les n°98/n°99 refusaient : un corps de
+branche ne pouvait être que du markup) rejoint le sous-ensemble compilé. Toute la structure imbriquée est
+**aplatie** en un **unique** `list()` au conteneur, dont la source est un **arbre de décision** (ternaire imbriqué)
+sur toutes les conditions : `@if (show) { @if (other) { <a> } }` →
+`list(_w, () => (show.value) ? ((other.value) ? [0] : []) : [], (i) => i, (i) => ifBody0_0(), _if0)`. Chaque nœud
+feuille (à n'importe quelle profondeur) reçoit un index global et un constructeur ; la présence DOM d'une feuille
+est la **conjonction** de ses conditions englobantes. Suite : **296 tests** (223 générateur + 55 subset + 18
+analyseur), runtime 214.
+
+**LE `?:` COURT-CIRCUITÉ REPRODUIT L'ÉVALUATION DU `@if` IMBRIQUÉ.** `(show.value) ? ((other.value) ? … : …) : …`
+n'évalue `other.value` que si `show.value` est vrai — exactement comme un `@if (other)` imbriqué n'évalue sa
+condition que dans la branche `@if (show)`. L'effet `list()` ne s'abonne donc à `other` que tant que `show` est
+vrai, comme le feraient deux `list()` imbriqués. Sémantique de rendu ET d'abonnement fidèles. `MarkConditionReads`
+descend déjà récursivement (`DescendantNodes().OfType<IfStatementSyntax>()`), donc `other` est hissé en signal
+sans changement.
+
+**LES n°82 ET n°98 RESTENT OCTET POUR OCTET — LE CAS SANS IMBRICATION EST L'ANCIEN `IfSourceRanges`.** `IfBranch.Body`
+devient une liste de `TemplateOp` (markup **ou** `IfOp` imbriqué). `IfSourceRanges` (n°99) est **remplacé** par un
+`IfExpr` récursif : une branche tout-markup rend `[indices]` (comme n°98/n°99), une branche dont l'unique contenu
+est un `@if` imbriqué rend l'arbre récursif parenthésé. Pour une chaîne sans imbrication, `IfExpr` produit
+`(c0) ? [0] : (c1) ? [1] : [2]` — **identique** à l'ancien `IfSourceRanges`. Vérifié : **25 tests de régression
+`@if` verts** (If/IfElse/IfMultiBody/IfElseMultiBody/RootIf/RootForeach, snapshots inchangés). Seul reste spécial le
+chemin rapide n°81 (`Branches.Count == 1 && Body is [MarkupOp]`).
+
+**AUCUNE PRIMITIVE DE RUNTIME NOUVELLE.** L'aplatissement réemploie `list()` ; `git diff -- src/filament-runtime`
+**vide**. L'ancre-commentaire reste la seule divergence `+1` divulguée (n°81/20).
+
+**LES TÉMOINS DE BORD, ET UN NOUVEAU.** `BranchBody` admet : tout-markup OU un **unique** `@if` imbriqué. Une
+branche **mélangeant** markup et `@if` imbriqué, **plusieurs** `@if` frères, ou un `@foreach` imbriqué, restent
+refusés `[unsupported-if-body]` — un **nouveau témoin** `IfNestedMixed.razor`
+(`@if (show) { <p id="x">x</p>@if (other) { <span id="a"> } }`) est refusé à `(2,1)` et gardé sous test, pour que
+la frontière « contenu unique » reste éprouvée. `Foreach.razor` reste refusé `[unsupported-foreach]`.
+`IfNested.razor` **bascule de refusé à compilé** (`IfNested_NowCompiles_ToADecisionTreeConditionalList`).
+
+**VALIDITÉ BLAZOR VÉRIFIÉE EN AMONT (n°97).** `dotnet build baseline/IfNested.Blazor` réussit ; `BuildRenderTree`
+donne `if (show) { if (other) { AddMarkupContent(<span a>) } }` (feuille présente ssi `show && other`, sans
+conteneur). La clé `ifnested.js` en descend.
+
+**MESURÉ CONTRE BLAZOR (entrée n°19), TRIPLE.** (1) Porte `canon` (alpha-équivalent). (2) Snapshot octet-exact.
+(3) Oracle Playwright : `baseline/IfNested.Blazor` et `filament-ifnested-gen` rendent **`a → «» → a → «» → a`** au
+fil des deux bascules, à l'identique — `#a` suit `show && other`, les conditions interne et externe mesurées
+séparément. `HARNESS_VERSION` 1.13.0 → 1.14.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Troisième tranche de la frontière « complétude du contrôle de flux » (IfMultiBody ✓ →
+IfElseMultiBody ✓ → IfNested ✓ → Foreach). Restent différés : branche **mixte** markup+imbriqué, **plusieurs**
+`@if` imbriqués frères, `@foreach` imbriqué, `@foreach` en élément (tranche 4), nœuds texte intercalés. §5
+s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
