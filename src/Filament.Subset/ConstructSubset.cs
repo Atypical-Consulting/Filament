@@ -111,6 +111,14 @@ public static class ConstructSubset
         b.IsKind(SyntaxKind.DivideExpression) &&
         model.GetTypeInfo(b).Type?.SpecialType == SpecialType.System_Double;
 
+    /// <summary>Integer division: a DivideExpression whose RESULT type is int. Faithful in JS via
+    /// Math.trunc (truncation toward zero, exactly C#'s int/int: 7/2 = 3, -7/2 = -3), and for 32-bit
+    /// ints the quotient is exact in a JS double. Kept OUT of JsBinaryOperator (syntactic) because,
+    /// like IsFaithfulDivision, admission is TYPE-dependent. CSharpFrontEnd emits the Math.trunc.</summary>
+    public static bool IsIntegerDivision(BinaryExpressionSyntax b, SemanticModel model) =>
+        b.IsKind(SyntaxKind.DivideExpression) &&
+        model.GetTypeInfo(b).Type?.SpecialType == SpecialType.System_Int32;
+
     /// <summary>null = the expression FORM is in §5; non-null = the FIL0001 refusal — the decision
     /// behind Expr()'s default. Call-, member- and name-level refusals INSIDE a blessed form
     /// (invocation target, member access, identifier resolution) are separate concerns, not this.</summary>
@@ -120,11 +128,11 @@ public static class ConstructSubset
         // TRUE reason rather than the generic "arithmetic operators are admitted" text (decision 77).
         if (e is BinaryExpressionSyntax bin && bin.IsKind(SyntaxKind.DivideExpression))
         {
-            if (IsFaithfulDivision(bin, model)) return null;               // double result: in §5
-            return new Refusal("FIL0001", "unsupported-expression",         // int/int: refused, truthfully
-                $"{Describe(bin)} is integer division: C# truncates 7/2 to 3 where JS's `/` yields 3.5, " +
-                "so emitting `/` would be a silently wrong number (spec 10). Section 5's `/` requires a " +
-                "double operand. Refusing to emit.");
+            if (IsFaithfulDivision(bin, model)) return null;               // double result: verbatim `/`
+            if (IsIntegerDivision(bin, model)) return null;                // int result: Math.trunc (CSharpFrontEnd)
+            return new Refusal("FIL0001", "unsupported-expression",         // neither int nor double: refused
+                $"{Describe(bin)} divides operands whose result is neither int nor double; only those two " +
+                "numeric divisions are in section 5 (int via Math.trunc, double verbatim). Refusing to emit.");
         }
 
         var supported = e switch

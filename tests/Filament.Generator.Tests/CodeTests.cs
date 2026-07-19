@@ -57,7 +57,6 @@ public class CodeTests
     // C# and 3.5 in JS. Refused DELIBERATELY rather than emitted as `/` -- that would be
     // a silently wrong number, which is section 10's forbidden mode, and Math.trunc()
     // around it is a mapping neither answer key states.
-    [InlineData("IntDivision.razor", 8, 24, "FIL0001", "unsupported-expression")]
     // ---- members outside "fields and methods" (FIL0001) ---------------------
     [InlineData("Property.razor", 5, 5, "FIL0001", "unsupported-member")]
     [InlineData("Constructor.razor", 5, 5, "FIL0001", "unsupported-member")]
@@ -120,6 +119,26 @@ public class CodeTests
         {
             if (File.Exists(outPath)) File.Delete(outPath);
         }
+    }
+
+    /// <summary>
+    /// INTEGER DIVISION now COMPILES (decision 101, closing #87's deferral): C# int/int truncates toward
+    /// zero, so `currentCount / 2` lowers to Math.trunc(currentCount.value / 2) -- faithful, not the bare
+    /// `/` that would render 3.5 where C# renders 3. It used to be refused [unsupported-expression] @ (8,24).
+    /// </summary>
+    [Fact]
+    public void IntDivision_NowCompiles_ToMathTrunc()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(
+                Path.Combine(RepoPaths.Unsupported, "Code", "IntDivision.razor"), outPath);
+
+            Assert.True(exit == 0, $"integer division should compile now (decision 101):\n{stderr}");
+            Assert.Contains("Math.trunc(currentCount.value / 2)", File.ReadAllText(outPath));
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }
 
     /// <summary>

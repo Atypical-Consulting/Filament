@@ -1822,6 +1822,12 @@ public sealed class CSharpFrontEnd
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.IsFaithfulDivision(b, _model):
                 return $"{Expr(b.Left)} / {Expr(b.Right)}";
 
+            // Integer division: C# int/int truncates toward zero (7/2 = 3); JS `/` is float. Math.trunc
+            // restores it. The call parenthesizes its argument, so operand precedence is already handled
+            // by Expr(). int/int is admitted upstream in ClassifyExpression (result-type dependent).
+            case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.IsIntegerDivision(b, _model):
+                return $"Math.trunc({Expr(b.Left)} / {Expr(b.Right)})";
+
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.JsBinaryOperator(b) is { } op:
                 return $"{Expr(b.Left)} {op} {Expr(b.Right)}";
 

@@ -112,9 +112,10 @@ public class ConstructSubsetTests
     [InlineData("_rows[0]")]
     [InlineData("(int)dbl")]
     [InlineData("$\"n={i}\"")]
-    [InlineData("dbl / 2.0")]   // double / double -> double result: faithful
+    [InlineData("dbl / 2.0")]   // double / double -> double result: faithful (verbatim /)
     [InlineData("dbl / i")]     // double / int    -> double result: faithful
     [InlineData("i / dbl")]     // int / double    -> double result: faithful
+    [InlineData("i / 2")]       // int / int       -> int result: faithful via Math.trunc (decision 101)
     public void SupportedExpressionForms_ClassifyToNull(string exprSrc)
     {
         var (e, m) = ParseExpr(exprSrc);
@@ -122,7 +123,6 @@ public class ConstructSubsetTests
     }
 
     [Theory]
-    [InlineData("i / 2")]                                              // integer division
     [InlineData("await System.Threading.Tasks.Task.FromResult(0)")]   // await
     [InlineData("(long)i")]                                            // cast that is not int-from-double
     [InlineData("new int[0]")]                                        // array creation

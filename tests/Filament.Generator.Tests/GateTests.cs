@@ -262,6 +262,8 @@ public static class Generate
 
     public static string DivideToTemp() => ToTemp(RepoPaths.DivideRazor, "Divide");
 
+    public static string DivideIntToTemp() => ToTemp(RepoPaths.DivideIntRazor, "DivideInt");
+
     public static string ComposeToTemp() => ToTemp(RepoPaths.ComposeRazor, "Compose");
 
     public static string RootForeachToTemp() => ToTemp(RepoPaths.RootForeachRazor, "RootForeach");

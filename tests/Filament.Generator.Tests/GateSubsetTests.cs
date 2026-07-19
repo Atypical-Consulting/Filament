@@ -295,8 +295,8 @@ public class NegativeControls
     /// <summary>
     /// Section 5's expressions: arithmetic and comparison operators, &amp;&amp;, ||, !,
     /// ternary, string interpolation. Double division is covered by
-    /// Section5_DoubleDivision_CompilesClean; integer division stays refused
-    /// (IntegerDivision_IsRefused_LoudAndLocated).
+    /// Section5_DoubleDivision_CompilesClean; integer division by
+    /// IntegerDivision_CompilesToMathTrunc (both in §5, decision 101).
     /// </summary>
     [Fact]
     public void Section5_Operators_CompileClean()
@@ -592,20 +592,18 @@ public class NegativeControls
     // reported, not banked.
 
     /// <summary>
-    /// INTEGER DIVISION IS REFUSED, AND CORRECTLY: C#'s int/int truncates (7/2 == 3) where JS's `/`
-    /// yields 3.5, so emitting `/` would be a silently wrong NUMBER -- section 10's forbidden mode.
-    /// Loud and located, writes no file.
+    /// INTEGER DIVISION ENTERED §5 (decision 101, closing #87's deferral). C#'s int/int truncates toward
+    /// zero (7/2 == 3) where JS's `/` yields 3.5, so the FAITHFUL lowering is Math.trunc(a / b) -- which
+    /// restores the truncation instead of emitting the silently-wrong bare `/`. `n = n / 2` compiles to
+    /// `n.value = Math.trunc(n.value / 2)`, NOT `n.value = n.value / 2`.
     ///
-    /// DOUBLE division is NOT here anymore: it ENTERED §5 (see Section5_DoubleDivision_CompilesClean),
-    /// because for double operands C#'s `/` and JS's `/` are the same IEEE-754 op and there is no
-    /// mismatch to protect against. Closing that disclosed false positive is what this change is.
-    /// The refusal message is also fixed: it no longer claims "Section 5 admits ... arithmetic
-    /// operators" while refusing a division -- it names the integer-truncation mismatch instead.
+    /// DOUBLE division (Section5_DoubleDivision_CompilesClean) still maps to `/` verbatim (same IEEE-754
+    /// op). Both numeric divisions are now in §5; long/decimal division stay refused (types not in §5).
     /// </summary>
     [Fact]
-    public void IntegerDivision_IsRefused_LoudAndLocated()
+    public void IntegerDivision_CompilesToMathTrunc()
     {
-        var (exit, stderr, wrote) = Compile(
+        var js = Compiles(
             """
             <p><span id="a">@n</span></p>
             <button id="go" @onclick="Go">go</button>
@@ -616,13 +614,8 @@ public class NegativeControls
             }
             """);
 
-        Assert.NotEqual(0, exit);
-        Assert.False(wrote, "a refusal must write no file");
-        Assert.Contains("FIL0001: [unsupported-expression]", stderr);
-        Assert.Contains("DivideExpression", stderr);       // still named, via Describe(bin)
-        Assert.Contains("integer division", stderr);        // the true reason, not the old self-contradiction
-        // loud and located, never silent: that is what keeps this off the blocking list.
-        Assert.Matches(@"\(\d+,\d+\): FIL0001", stderr);
+        Assert.Contains("Math.trunc(n.value / 2)", js);     // faithful truncation, not bare `/`
+        Assert.DoesNotContain("[unsupported-expression]", js);
     }
 
     /// <summary>

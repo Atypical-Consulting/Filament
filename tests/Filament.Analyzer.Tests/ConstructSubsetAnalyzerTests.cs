@@ -81,8 +81,10 @@ public class ConstructSubsetAnalyzerTests
         "    void M() {\n" + statements + "\n    }");
 
     [Fact]
-    public async Task IntegerDivision_IsFlagged()
-        => await Body("        int x = {|FIL0001:i / 2|};").RunAsync();
+    public async Task IntegerDivision_IsNotFlagged()
+        // int/int is faithful in JS via Math.trunc -> in §5 -> no diagnostic (single-sourced via
+        // ConstructSubset; decision 101 closed #87's deferral).
+        => await Body("        int x = i / 2;").RunAsync();
 
     [Fact]
     public async Task Await_IsFlagged()
@@ -92,9 +94,10 @@ public class ConstructSubsetAnalyzerTests
             "    }").RunAsync();
 
     [Fact]
-    public async Task DivisionNestedInSupportedExpression_IsFlaggedOnce()
-        // outer `+` is supported; only the `i / 2` sub-expression is flagged, once.
-        => await Body("        int x = {|FIL0001:i / 2|} + 1;").RunAsync();
+    public async Task UnsupportedCastNestedInSupportedExpression_IsFlaggedOnce()
+        // outer `+` is supported; only the still-unsupported `(long)i` sub-expression is flagged, once.
+        // (int division moved into §5 at decision 101, so it is no longer the nesting witness here.)
+        => await Body("        long x = {|FIL0001:(long)i|} + 1;").RunAsync();
 
     [Fact]
     public async Task SupportedExpressions_ProduceNoDiagnostics()
