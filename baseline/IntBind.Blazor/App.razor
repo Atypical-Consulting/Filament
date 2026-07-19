@@ -1,0 +1,19 @@
+@* Integer two-way binding (BENCH n°27): @bind="count" on a text <input>, count an int SIGNAL. Unlike
+   string/bool, this PARSES: the change handler mirrors int.TryParse (invariant, NumberStyles.Integer) --
+   a regex + int32-range check + revert-on-invalid, so an unparseable entry keeps the field and reverts
+   the input. @count (int) renders faithfully as text ("0"/"42"). #set flips it programmatically. *@
+
+<input id="box" @bind="count" />
+
+<span id="echo">@count</span>
+
+<button id="set" @onclick="Set">Set</button>
+
+@code {
+    private int count = 0;
+
+    private void Set()
+    {
+        count = 42;
+    }
+}
