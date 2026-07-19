@@ -3768,3 +3768,19 @@ Restent différés : `e => …` (objet évènement), `async () => …`, un corps
 autres témoins `Unsupported` sont soit **non-viables par fidélité** (`float`/`long` : l'arithmétique diverge en JS ;
 `decimal`/`DateTime`), soit **déjà supportés** au cas réel (`List<T>` de scalaires, records), soit des **portes de
 correction permanentes** ou hors-périmètre POC. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+
+## 106. `List<T>.Clear()` entre dans le §5 — la dernière opération de liste, vidage en place + bump de version
+
+**Décision.** `.Clear()` rejoint les opérations `List<T>` du §5 (indexation, `.Count`, `.Add`, `.RemoveAt`). Une
+`List<T>` mappe un tableau vivant + un signal de version (rows.js) ; `.Clear()` vide le tableau **en place**
+(`items.length = 0`), et le bump de version automatique (piloté par `MutatedList`) re-lance le `list()`, donc
+`@foreach` se réconcilie à VIDE. Deux lignes : `MutatedList` reconnaît `"Clear"`, `ListMutation` émet
+`{recv}.length = 0;`. Suite : **315 tests** (239 générateur + 58 subset + 18 analyseur), runtime 214.
+
+**GÉNÉRATEUR SEUL.** `length = 0` est du JS natif ; `git diff -- src/filament-runtime` est vide. Le témoin
+`Gate/ListOp.razor` **bascule de refusé à compilé** (retiré de deux théories `GateSubsetTests`).
+
+**MESURÉ CONTRE BLAZOR (entrée n°25).** `baseline/ListOps.Blazor` et `filament-listops-gen` rendent **`0 → 3 → 0`**
+(`#add` puis `#clear`), à l'identique — `Clear()` réconcilie la liste à vide. Porte `canon`, snapshot, oracle.
+`HARNESS_VERSION` 1.19.0 → 1.20.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
