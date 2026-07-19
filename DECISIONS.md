@@ -3938,3 +3938,35 @@ contrat contre Blazor. C'est la mesure qui PROUVE le mapping. Les témoins `Code
 basculent refusés → compilés ; `float`/`decimal`/`DateTime` restent refusés (pas de représentation JS fidèle :
 `float` exigerait un formateur simple précision, `decimal` n'a pas de type natif, `DateTime` pas de BCL).
 `HARNESS_VERSION` 1.25.0 → 1.26.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 113. Le type `float` entre dans le §5 — arrondi simple précision par Math.fround, affiché par un formateur émis ; supersède le refus « l'affichage float est un vrai obstacle »
+
+**Décision.** Le type `float` (Single) rejoint le sous-ensemble §5, mappé sur un nombre JS arrondi à la simple
+précision par `Math.fround`. Il était refusé, catalogué « non viable — l'affichage float exigerait un formateur
+simple précision » — le TROISIÈME over-refus de cette session (après #111 records et #112 long). J'avais VÉRIFIÉ
+empiriquement (13 valeurs contre `float.ToString` de C#) qu'un formateur JS « plus courte décimale qui fait
+l'aller-retour à travers float32 » reproduit C# EXACTEMENT, et (4 expressions composées) que `Math.fround` par
+opération reproduit l'arithmétique float de C#. `TypeSubset.Scalars` admet `System_Single` (donc `List<float>`).
+Suite : **341 tests** (264 générateur / 59 subset / 18 analyzer), runtime 214. **LEÇON : le seau « non viable par
+la fidélité » a eu tort DEUX fois de suite — vérifier une primitive JS fidèle AVANT de rejeter.**
+
+**LES DEUX MOITIÉS, CHACUNE VÉRIFIÉE.** (1) ARITHMÉTIQUE : C# arrondit le `float` à CHAQUE opération, donc chaque
+op float est enveloppée dans `Math.fround` (`Expr` enveloppe le résultat de `ExprCore` quand `Type` est Single et
+le nœud est une opération binaire/unaire) ; un littéral float devient `Math.fround(<décimale>)` (stocké arrondi) ;
+la division float est une nouvelle variante (`IsFloatDivision`, résultat Single) émise en `/` nu que l'enveloppe
+arrondit. (2) AFFICHAGE : un `float` est un double arrondi ; sa coercion nue imprimerait la chaîne DOUBLE
+(`0.1f` → "0.10000000149011612"), pas la chaîne float de C# ("0.1"). Le générateur suit le TYPE du slot
+(`Slot.IsFloat`, exposé par `SlotIsFloat`) et, à l'affichage, enveloppe la valeur dans `__f32` — un formateur qui
+essaie des précisions croissantes jusqu'à ce qu'un candidat fasse l'aller-retour à travers float32.
+
+**`__f32` EST ÉMIS, PAS UN EXPORT RUNTIME.** Le formateur est écrit dans le module (une fonction de niveau module,
+émise une fois quand un affichage float existe, comme la fonction `createItem` d'une `list()`), et NON ajouté au
+runtime. Donc `float` reste GÉNÉRATEUR SEUL, cohérent avec toute la série #94–#112 : `git diff -- src/filament-runtime`
+vide. Le pare-feu runtime tient.
+
+**MESURÉ (entrée n°32).** `baseline/FloatCounter.Blazor` (`total` un float part de 0.1f, `#add` ajoute 0.2f) et
+`filament-floatcounter-gen` rendent `#value` `"0.1" → "0.3" → "0.5"`, à l'identique — une implémentation adossée à
+`number` aurait rendu "0.30000000000000004" et échoué le contrat contre Blazor. C'est la mesure qui PROUVE le
+mapping. Les témoins `Code/TypeFloat.razor` et `float` basculent refusés → compilés ; `decimal`/`DateTime` restent
+refusés (`decimal` n'a pas de type natif JS ; `DateTime` pas de BCL). `HARNESS_VERSION` 1.26.0 → 1.27.0, divulgué.
+§5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.

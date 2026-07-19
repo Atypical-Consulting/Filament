@@ -197,6 +197,7 @@ ALL_LABELS=(
   filament-trylock-gen
   filament-positionalrecord-gen
   filament-longcounter-gen
+  filament-floatcounter-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -233,6 +234,7 @@ project_for() {
     filament-trylock-gen)                            echo "samples/filament-trylock-gen" ;;
     filament-positionalrecord-gen)                   echo "samples/filament-positionalrecord-gen" ;;
     filament-longcounter-gen)                        echo "samples/filament-longcounter-gen" ;;
+    filament-floatcounter-gen)                       echo "samples/filament-floatcounter-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -242,7 +244,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -288,6 +290,7 @@ razor_for() {
     filament-trylock-gen)                            echo "$REPO_ROOT/baseline/TryLock.Blazor/App.razor" ;;
     filament-positionalrecord-gen)                   echo "$REPO_ROOT/baseline/PositionalRecord.Blazor/App.razor" ;;
     filament-longcounter-gen)                        echo "$REPO_ROOT/baseline/LongCounter.Blazor/App.razor" ;;
+    filament-floatcounter-gen)                       echo "$REPO_ROOT/baseline/FloatCounter.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -326,6 +329,7 @@ generated_js_for() {
     filament-trylock-gen)                            echo "App.g.js" ;;
     filament-positionalrecord-gen)                   echo "App.g.js" ;;
     filament-longcounter-gen)                        echo "App.g.js" ;;
+    filament-floatcounter-gen)                       echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -360,6 +364,7 @@ title_for() {
     filament-trylock-gen)                            echo "TryLock" ;;
     filament-positionalrecord-gen)                   echo "PositionalRecord" ;;
     filament-longcounter-gen)                        echo "LongCounter" ;;
+    filament-floatcounter-gen)                       echo "FloatCounter" ;;
     *) return 1 ;;
   esac
 }
@@ -397,6 +402,7 @@ blazor_label_for() {
     filament-trylock-gen)                            echo "blazor-trylock" ;;
     filament-positionalrecord-gen)                   echo "blazor-positionalrecord" ;;
     filament-longcounter-gen)                        echo "blazor-longcounter" ;;
+    filament-floatcounter-gen)                       echo "blazor-floatcounter" ;;
     *) return 1 ;;
   esac
 }
@@ -442,6 +448,7 @@ css_for() {
     filament-trylock-gen)                            echo "$REPO_ROOT/baseline/TryLock.Blazor/wwwroot/css/app.css" ;;
     filament-positionalrecord-gen)                   echo "$REPO_ROOT/baseline/PositionalRecord.Blazor/wwwroot/css/app.css" ;;
     filament-longcounter-gen)                        echo "$REPO_ROOT/baseline/LongCounter.Blazor/wwwroot/css/app.css" ;;
+    filament-floatcounter-gen)                       echo "$REPO_ROOT/baseline/FloatCounter.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }

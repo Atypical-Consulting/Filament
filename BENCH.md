@@ -3954,3 +3954,48 @@ représentation JS fidèle). §8 inchangé.
 ---
 
 *Fin de l'entrée n°31. Ne pas modifier — ajouter une entrée n°32 pour toute rectification.*
+
+---
+
+## Entrée n°32 — 2026-07-20 — Phase 4 : le type `float` (→ Math.fround) mesuré contre Blazor (CORRECTION)
+
+**Le type `float`** (décision #113) rejoint le §5, mappé sur un nombre JS **arrondi à la simple précision par
+`Math.fround`**. Deux moitiés de fidélité, chacune VÉRIFIÉE empiriquement contre C# : (1) **l'arithmétique** — C#
+calcule le `float` en simple précision et arrondit à CHAQUE opération, donc chaque op est enveloppée dans
+`Math.fround` (un littéral est stocké arrondi) ; `(a+b)*c` arrondit la somme interne d'abord, exactement comme
+`Math.fround(Math.fround(a+b)*c)`. (2) **l'affichage** — un `float` est un double arrondi dont la coercion nue
+imprimerait la chaîne DOUBLE (`0.1f` → "0.10000000149011612"), pas la chaîne float de C# ("0.1") ; il passe donc
+par un formateur `__f32` qui trouve la plus COURTE décimale qui fait l'aller-retour à travers float32 — exactement
+`float.ToString` de C#. `__f32` est ÉMIS dans le module (pas un export runtime), donc **runtime INCHANGÉ**.
+
+### Ce qui est mesuré
+
+`baseline/FloatCounter.Blazor` : `total` (un `float`) part de 0.1f ; chaque `#add` ajoute 0.2f. En `float` C#,
+0.1f + 0.2f = 0.3f (imprimé "0.3") — mais un double JS calcule 0.1 + 0.2 = 0.30000000000000004. `total` est lu par
+`@total` ET assigné par `Add` → signal. La branche `floatcounter` de `verifyContract` clique `#add` deux fois et
+exige `#value` : `"0.1" → "0.3" → "0.5"`. **`HARNESS_VERSION` 1.26.0 → 1.27.0**, divulgué.
+
+```
+dotnet publish baseline/FloatCounter.Blazor -c Release -o bench/publish/blazor-floatcounter
+./bench/build-filament.sh filament-floatcounter-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-floatcounter/wwwroot --app floatcounter --label blazor-floatcounter       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-floatcounter-gen   --app floatcounter --label filament-floatcounter-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#value` | verdict |
+|---|---|---|
+| **blazor-floatcounter** (autorité) | `"0.1" → "0.3" → "0.5"` | contrat OK |
+| **filament-floatcounter-gen** (générateur) | `"0.1" → "0.3" → "0.5"` | contrat OK |
+
+**Les deux rendent `"0.3"` puis `"0.5"`, à l'identique.** C'est la mesure QUI PROUVE le mapping : une
+implémentation adossée à `number` aurait rendu `"0.30000000000000004"` et ÉCHOUÉ le contrat contre Blazor — le
+`Math.fround` par opération PLUS le formateur `__f32` reproduisent le `float` C# exactement. `git diff --
+src/filament-runtime` vide (le formateur est émis dans le module). Le témoin `Code/TypeFloat.razor` (champ float)
+et `TypeSubset`/`float` basculent de refusés à compilés ; `decimal`/`DateTime` restent refusés (pas de type natif /
+pas de BCL). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°32. Ne pas modifier — ajouter une entrée n°33 pour toute rectification.*
