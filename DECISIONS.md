@@ -3687,3 +3687,40 @@ trois chaînes en attributs chaîne). Porte `canon`, snapshot, oracle. `HARNESS_
 **LE PLAFOND HONNÊTE — FAIBLE NOUVEAUTÉ, DIVULGUÉE.** Aucune forme d'émission nouvelle : preuve mesurée que les deux
 listes blanches se généralisent (booléen par nom, chaîne par nom + préfixe `data-*`). Restent différés : `value`
 (pour @bind), et tout autre nom non mesuré. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 104. La LIAISON BIDIRECTIONNELLE `@bind` (champ chaîne signal) entre dans le §5 — le motif de lowering de Razor RECONNU et abaissé en effet-valeur + écouteur change
+
+**Décision.** `@bind="text"` sur un `<input>`, pour un champ `text` **chaîne** **déjà signal**, rejoint le
+sous-ensemble. Razor abaisse `@bind` en une paire d'attributs synthétisés — `value` = `BindConverter.FormatValue(
+text)` et `onchange` = `EventCallback.Factory.CreateBinder(this, __value => text = __value, …)`. Le générateur
+**reconnaît ce motif** (`TryBind`) : pour une chaîne le convertisseur est l'**IDENTITÉ**, donc il émet une liaison
+à deux sens sans jamais toucher `BindConverter` —
+    `effect(() => { input.value = text.value; });`  (la PROPRIÉTÉ `value`, pas l'attribut : c'est elle qu'un input
+    affiche après interaction utilisateur)
+    `listen(input, 'change', (e) => { text.value = e.target.value; });`
+et **consomme** les deux attributs synthétisés (la boucle d'attributs normale les saute). Suite : **312 tests**
+(236 générateur + 58 subset + 18 analyseur), runtime 214.
+
+**SCOPÉ À UN CHAMP CHAÎNE DÉJÀ SIGNAL — CE QUI ÉVITE LE PONT DE RÉACTIVITÉ.** `@bind` n'est admis que si le champ
+lié est une **chaîne** (`IsStringSignal`) ET déjà un **signal** (lu par le template ET assigné hors construction,
+n°67). Exiger un signal établi évite d'avoir à MARQUER la réactivité depuis le lowering côté template (un champ
+uniquement lié par `@bind`, non lu ailleurs, aurait besoin de ce marquage — différé). Le champ est extrait du token
+utilisateur (celui qui porte une source réelle ; les tokens du wrapper `BindConverter` sont synthétisés).
+
+**AUCUNE PRIMITIVE DE RUNTIME NOUVELLE.** `effect`/`listen` shippent déjà ; `input.value` et `e.target.value` sont
+des builtins DOM. `git diff -- src/filament-runtime` est **vide**. Deux nouvelles API sur `CSharpFrontEnd`
+(`IsStringSignal`, `FieldJs`), aucun changement d'émission ailleurs.
+
+**LE TÉMOIN CHANGE DE RAISON, PLUS PRÉCISE.** `Unsupported/Bind.razor` (`@bind="text"` sans `@code` déclarant
+`text`) refusait `[dynamic-attribute]` + `[compound-expression]` (la paire lowered). Il refuse désormais **UN seul**
+`[unsupported-bind]` à `(1,24)` — le motif `@bind` est reconnu et refusé pour une VRAIE raison (« pas un champ
+chaîne qui est un signal »). `@bind` non-chaîne et `@bind`-seul restent refusés de même.
+
+**MESURÉ CONTRE BLAZOR (entrée n°23), LES DEUX SENS.** `baseline/Bind.Blazor` et `filament-bind-gen` rendent à
+l'identique : `#set` change `text` → `input.value` suit (`hi→world`) ; un `change` sur l'input → `text`/`#echo`
+suivent (`world→typed`). Porte `canon`, snapshot, oracle. `HARNESS_VERSION` 1.17.0 → 1.18.0, divulgué.
+
+**LE PLAFOND HONNÊTE.** Première capacité RÉELLE au-delà des élargissements de sous-ensemble : une liaison à deux
+sens, reconnue depuis le lowering de Razor. Restent différés : `@bind` non-chaîne (int/bool → `BindConverter`
+parse), `@bind` sur un champ non-lu-ailleurs (marquage de réactivité), `@bind:event="oninput"`, `@bind` sur un
+composant. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
