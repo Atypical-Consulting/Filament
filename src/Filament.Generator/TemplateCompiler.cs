@@ -298,6 +298,7 @@ public sealed class TemplateCompiler
 
         CollectComponentBindings(method, plan);
         CollectDynamicAttributes(method, plan);
+        CollectLambdaHandlers(method, plan);
 
         code.Compile(codeNodes, plan);
         _diagnostics.AddRange(code.Diagnostics);
@@ -523,6 +524,29 @@ public sealed class TemplateCompiler
     /// SlotIsReactive back off the SAME node. Two guards (in DynamicValue) keep everything else out: the
     /// value must be a single pure C# expression (no literal part), and it must NOT be an event handler.
     /// </summary>
+    /// <summary>An inline no-argument, non-async lambda: `() => …`. The `e => …` (event object) and
+    /// `async () => …` forms are NOT this -- they stay refused (deferred), so the regex is deliberately
+    /// anchored to `()`.</summary>
+    static bool IsNoArgLambda(string handler) => Regex.IsMatch(handler.Trim(), @"^\(\s*\)\s*=>");
+
+    /// <summary>
+    /// Harvest inline lambda EVENT handlers into plan.LambdaHandlers so CSharpFrontEnd wraps each body as
+    /// a synthetic method and translates it (decision 105) -- the same "answer it from the compiler, not a
+    /// regex" harvest CollectDynamicAttributes does for reactive attributes.
+    /// </summary>
+    void CollectLambdaHandlers(IntermediateNode node, TemplatePlan plan)
+    {
+        if (node is MarkupElementIntermediateNode el && !LooksLikeComponent(el.TagName))
+            foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
+                if (TryUnwrapEventCallback(AttrCs(attr), out var handler) && IsNoArgLambda(handler))
+                {
+                    var name = attr.AttributeName;
+                    var domEvent = name.StartsWith("on", StringComparison.Ordinal) ? name[2..] : name;
+                    plan.LambdaHandlers.Add(new LambdaHandler(attr, domEvent, handler));
+                }
+        foreach (var child in node.Children) CollectLambdaHandlers(child, plan);
+    }
+
     void CollectDynamicAttributes(IntermediateNode node, TemplatePlan plan)
     {
         if (node is MarkupElementIntermediateNode el && !LooksLikeComponent(el.TagName))
@@ -1381,6 +1405,21 @@ public sealed class TemplateCompiler
 
             if (TryUnwrapEventCallback(expr, out var handler))
             {
+                var domEvent = name.StartsWith("on", StringComparison.Ordinal) ? name[2..] : name;
+
+                // INLINE LAMBDA HANDLER (decision 105). CSharpFrontEnd wrapped `() => currentCount++` as a
+                // synthetic method and TRANSLATED its body (currentCount -> currentCount.value, via the
+                // semantic model, NOT a splice). Emit the arrow directly -- this is the ONE handler that is
+                // not a bare @code method name, and it is safe precisely because the compiler translated it.
+                if (_code.LambdaBodyJs(attr) is { } lambdaLines)
+                {
+                    _used.Add("listen");
+                    var arrow = "() => {\n" + string.Join("\n", lambdaLines.Select(l => "  " + l)) + "\n}";
+                    if (_code.LambdaBatched(attr)) { _used.Add("batch"); arrow = $"() => batch({arrow})"; }
+                    _events.Add($"listen({v}, {JsString(domEvent)}, {arrow});");
+                    return;
+                }
+
                 // Razor pre-lowers to Blazor semantics: the value is already
                 // EventCallback.Factory.Create<MouseEventArgs>(this, Increment).
                 // Filament has no EventCallback and no `this`; it has listen().
@@ -1391,7 +1430,6 @@ public sealed class TemplateCompiler
                 if (!NamedByTemplate(handler, $"the handler for '{name}' on <{el.TagName}>", authored,
                         mustBeCallable: true)) return;
 
-                var domEvent = name.StartsWith("on", StringComparison.Ordinal) ? name[2..] : name;
                 _used.Add("listen");
 
                 // RECORDED, not emitted: whether this handler's body is inlined depends on

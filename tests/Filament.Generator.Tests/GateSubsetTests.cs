@@ -117,7 +117,6 @@ public class GateSubsetTests
     // both: the template handler is caught by the binding gate (a handler must NAME a
     // method), the @code local is caught by its declared TYPE (System.Func<int>) before the
     // lambda body is ever reached. Asserted as measured, not as first guessed.
-    [InlineData("HandlerLambda.razor", 1, 34, "FIL0003", "compound-expression")]
     [InlineData("Code/Lambda.razor", 8, 9, "FIL0002", "unsupported-type")]
     [InlineData("BindingUnresolved.razor", 1, 30, "FIL0001", "unresolved-name")]
     [InlineData("Code/ConsoleCall.razor", 8, 9, "FIL0001", "unsupported-call")]

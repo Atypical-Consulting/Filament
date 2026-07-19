@@ -56,7 +56,21 @@ public sealed class TemplatePlan
     /// answered by the compiler's own table and not by spelling (decision 57).
     /// </summary>
     public List<IntermediateNode> FreeSlots { get; } = [];
+
+    /// <summary>
+    /// Every inline lambda EVENT HANDLER -- `@onclick="() => currentCount++"` (decision 105). Each is
+    /// wrapped as a synthetic method `void __filament_lambda_k() { … }` in the compilation, so its body
+    /// goes through the SAME marking + translation the @code method bodies do (decision 57's reason again:
+    /// "is this name a signal?" is answered by the compiler, not a regex). Keyed by the attribute node so
+    /// emission can read the translated body back.
+    /// </summary>
+    public List<LambdaHandler> LambdaHandlers { get; } = [];
 }
+
+/// <param name="Attr">the event attribute node, the key emission looks the body up by</param>
+/// <param name="DomEvent">the DOM event name, e.g. "click"</param>
+/// <param name="RawHandler">the unwrapped handler text, e.g. "() => currentCount++" (CSharpFrontEnd parses it)</param>
+public sealed record LambdaHandler(IntermediateNode Attr, string DomEvent, string RawHandler);
 
 /// <summary>One container's children, in document order, as the raw material of a re-parse.</summary>
 public sealed class TemplateRegion

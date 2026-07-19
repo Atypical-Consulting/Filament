@@ -115,6 +115,11 @@ public static class RepoPaths
 
     /// <summary>The two-way-binding SPEC (decisions 51/104). Never edited to make a gate pass.</summary>
     public static string BindAnswerKey => Path.Combine(Root, "samples", "Bind", "bind.js");
+
+    public static string LambdaHandlerRazor => Path.Combine(Root, "baseline", "LambdaHandler.Blazor", "App.razor");
+
+    /// <summary>The lambda-handler SPEC (decisions 51/105). Never edited to make a gate pass.</summary>
+    public static string LambdaHandlerAnswerKey => Path.Combine(Root, "samples", "LambdaHandler", "lambdahandler.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

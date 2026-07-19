@@ -92,6 +92,36 @@ public sealed class CSharpFrontEnd
     /// <summary>Every method body, TRANSLATED DURING Compile() and cached. See _sealed.</summary>
     readonly Dictionary<string, List<string>> _bodies = new(StringComparer.Ordinal);
 
+    /// <summary>Inline lambda EVENT handlers (decision 105): the synthetic method for each, kept SEPARATE
+    /// from _methods so it is marked + translated but never emitted as a top-level function (it is inlined
+    /// into its listen()). Keyed to the attribute node so emission reads the translated body back.</summary>
+    readonly List<(IntermediateNode Attr, MethodInfo Method)> _lambdaMethods = [];
+    readonly Dictionary<IntermediateNode, List<string>> _lambdaBodies = new();
+    readonly HashSet<IntermediateNode> _lambdaBatched = [];
+
+    /// <summary>The translated body lines of an inline lambda event handler, or null if the attribute is
+    /// not one. See decision 105.</summary>
+    public IReadOnlyList<string>? LambdaBodyJs(IntermediateNode attr) =>
+        _lambdaBodies.TryGetValue(attr, out var lines) ? lines : null;
+
+    /// <summary>Whether the lambda handler writes more than once, so its arrow needs batch() (decision 68).</summary>
+    public bool LambdaBatched(IntermediateNode attr) => _lambdaBatched.Contains(attr);
+
+    /// <summary>The C# method body block of a no-arg, non-async lambda (`() => …`), e.g. "{ currentCount++; }",
+    /// or null if it is not that form (an `e => …` or `async` lambda, or unparseable).</summary>
+    static string? LambdaMethodBody(string raw)
+    {
+        if (SyntaxFactory.ParseExpression(raw.Trim()) is not ParenthesizedLambdaExpressionSyntax lam) return null;
+        if (lam.ParameterList.Parameters.Count != 0) return null;
+        if (lam.Modifiers.Any(m => m.IsKind(SyntaxKind.AsyncKeyword))) return null;
+        return lam.Body switch
+        {
+            BlockSyntax b => b.ToFullString(),
+            ExpressionSyntax e => "{ " + e.ToFullString() + "; }",
+            _ => null,
+        };
+    }
+
     /// <summary>Every @expression/@key the template reads -> its translation. See Slot.</summary>
     readonly Dictionary<IntermediateNode, Slot> _slots = [];
 
@@ -392,6 +422,21 @@ public sealed class CSharpFrontEnd
                 }
             _src.Literal("\n}\n");
         }
+
+        // Lambda event handlers (decision 105): each body as a synthetic method at class scope, so it is
+        // marked + translated exactly like a @code method body. Mapped to the attribute's source so a
+        // diagnostic inside the lambda points at the handler. Bodies that are not the no-arg lambda form
+        // are skipped here (the harvest regex admits only `() => …`, so this is belt-and-braces).
+        var lambdaNames = new List<(IntermediateNode Attr, string Name)>();
+        for (var k = 0; k < plan.LambdaHandlers.Count; k++)
+        {
+            if (LambdaMethodBody(plan.LambdaHandlers[k].RawHandler) is not { } mbody) continue;
+            var lname = $"__filament_lambda_{k}";
+            lambdaNames.Add((plan.LambdaHandlers[k].Attr, lname));
+            _src.Literal($"void {lname}() ");
+            _src.Node(plan.LambdaHandlers[k].Attr, mbody);
+            _src.Literal("\n");
+        }
         _src.Literal("}\n");
 
         var text = _src.ToString();
@@ -470,19 +515,34 @@ public sealed class CSharpFrontEnd
         if (_diagnostics.Count > 0) return;
         if (!CheckJsNameCollisions()) return;
 
+        // Lambda event handlers (decision 105): find each synthetic method now that the tree is bound,
+        // as SEPARATE MethodInfos -- so the reactivity passes and Body() below cover them (a lambda's
+        // `currentCount++` marks `currentCount` a signal, exactly as a @code method's would), but they are
+        // NEVER emitted as top-level functions (they inline into their listen()).
+        foreach (var (attr, name) in lambdaNames)
+        {
+            var syntax = FindMethod(classes[1], name);
+            if (syntax?.Body is null || _model.GetDeclaredSymbol(syntax) is not { } sym) continue;
+            _lambdaMethods.Add((attr, new MethodInfo { Name = name, Syntax = syntax, Symbol = sym }));
+        }
+
         // 2. reactivity, in the order the rule requires:
         //    (a) the construction sites, so an assignment inside one is not a write;
         //    (b) who assigns what, outside those;
         //    (c) what the template reads -- FROM SYMBOLS, resolved in the right scope.
         foreach (var mi in _methods) MarkConstructionSites(mi.Syntax);
+        foreach (var (_, lm) in _lambdaMethods) MarkConstructionSites(lm.Syntax);
         foreach (var mi in _methods) MarkAssignments(mi.Syntax);
+        foreach (var (_, lm) in _lambdaMethods) MarkAssignments(lm.Syntax);
         foreach (var mi in _methods) MarkListMutations(mi.Syntax);
+        foreach (var (_, lm) in _lambdaMethods) MarkListMutations(lm.Syntax);
         MarkTemplateReads(slots);
         MarkConditionReads(classes[1], regionMethods);
 
         // 3. the call graph: who calls whom, for the inlining arbitrage AND for the emission
         //    order (callees before callers -- see MethodsInDependencyOrder).
         foreach (var mi in _methods) MarkCalls(mi.Syntax);
+        foreach (var (_, lm) in _lambdaMethods) MarkCalls(lm.Syntax, lm);
 
         // 4. TRANSLATE EVERYTHING, NOW -- not lazily at emission. Every diagnostic this input
         //    can produce must exist before Compile() returns, because that is when the caller
@@ -493,6 +553,11 @@ public sealed class CSharpFrontEnd
             f.List.Changed = Unique(f.Js + "Changed");
         }
         foreach (var mi in _methods) _bodies[mi.Name] = Body(mi.Syntax.Body!);
+        foreach (var (attr, lm) in _lambdaMethods)
+        {
+            _lambdaBodies[attr] = Body(lm.Syntax.Body!);
+            if (CountWrites(lm, []) > 1) _lambdaBatched.Add(attr);
+        }
         TranslateSlots(slots);
         foreach (var (container, method) in plan.Regions.Zip(regionMethods))
             _ops[container.Container] = RegionOps(FindMethod(classes[1], method).Body!.Statements, markers);
@@ -1163,9 +1228,13 @@ public sealed class CSharpFrontEnd
     }
 
     /// <summary>Count @code's own calls to each method, and record the edges. See CallsTo and MethodsInDependencyOrder.</summary>
-    void MarkCalls(MethodDeclarationSyntax method)
+    void MarkCalls(MethodDeclarationSyntax method) => MarkCalls(method, _methodsByName[method.Identifier.Text]);
+
+    /// <summary>The caller is passed in (rather than looked up by name) so a lambda handler's synthetic
+    /// method -- which is NOT in _methodsByName -- can still record the @code methods its body calls,
+    /// bumping their CallUses correctly (decision 105).</summary>
+    void MarkCalls(MethodDeclarationSyntax method, MethodInfo caller)
     {
-        var caller = _methodsByName[method.Identifier.Text];
         foreach (var inv in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
             if (_model.GetSymbolInfo(inv).Symbol is IMethodSymbol s &&
                 _methodsByName.TryGetValue(s.Name, out var callee) &&

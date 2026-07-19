@@ -370,7 +370,6 @@ public class DiagnosticTests
     /// having both reasons).
     /// </summary>
     [Theory]
-    [InlineData("HandlerLambda.razor", 1, 34, "compound-expression", "() => currentCount++")]
     [InlineData("HandlerLambdaArgs.razor", 1, 36, "compound-expression", "e => Console.WriteLine(e.ClientX)")]
     [InlineData("HandlerAsync.razor", 1, 34, "compound-expression", "async () => { await Task.Delay(1); count++; }")]
     [InlineData("HandlerUnresolved.razor", 1, 34, "unresolved-name", "NoSuchMethodAnywhere")]
@@ -381,6 +380,31 @@ public class DiagnosticTests
 
         Assert.Contains($"{fixture}({line},{col}): FIL0003: [{reason}]", d);
         Assert.Contains(mentions, d);
+    }
+
+    /// <summary>
+    /// A NO-ARG inline lambda handler now COMPILES (decision 105): `@onclick="() => currentCount++"` wraps
+    /// its body as a synthetic method, TRANSLATES it through the semantic model (currentCount -> its signal
+    /// read when reactive; a plain let otherwise), and emits `listen(el, 'click', () => …)` -- NOT a
+    /// verbatim splice. It used to be refused [compound-expression]. `e => …` (event object) and `async` lambdas
+    /// stay refused (see EventHandlerOutsideTheSubset_IsRefused_NeverSplicedVerbatim).
+    /// </summary>
+    [Fact]
+    public void HandlerLambda_NowCompiles_ToAnInlineArrow()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "HandlerLambda.razor"), outPath);
+
+            Assert.True(exit == 0, $"a no-arg lambda handler should compile now (decision 105):\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains("listen(", js);
+            Assert.Contains("currentCount++", js);          // the translated body (not a signal here: not displayed)
+            Assert.DoesNotContain("[compound-expression]", js);
+            Assert.DoesNotContain("() => currentCount++", js);   // NOT spliced verbatim; it is an emitted arrow
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }
 
     /// <summary>
@@ -557,7 +581,6 @@ public class DiagnosticTests
     [InlineData("DirectiveAttribute.razor")]
     [InlineData("Ref.razor")]
     [InlineData("Splat.razor")]
-    [InlineData("HandlerLambda.razor")]
     [InlineData("HandlerLambdaArgs.razor")]
     [InlineData("HandlerAsync.razor")]
     [InlineData("HandlerUnresolved.razor")]
@@ -595,7 +618,6 @@ public class DiagnosticTests
     [InlineData("Component.razor")]
     // The handler cases especially: this generator DID write these files, and the module
     // it wrote looked perfect and had a dead button.
-    [InlineData("HandlerLambda.razor")]
     [InlineData("HandlerUnresolved.razor")]
     [InlineData("CodeSeamIsJs.razor")]
     [InlineData("HandlerIsState.razor")]
