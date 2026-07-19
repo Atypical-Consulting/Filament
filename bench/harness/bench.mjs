@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.15.0';   // 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.16.0';   // 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -313,6 +313,14 @@ const APPS = {
   divideint: {
     readySelector: '#halve',
     observeSelector: '#divide-value',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks three buttons whose handlers use while/switch/do-while and
+  // asserts #v goes 0 -> 5 -> 9 -> 3, against Blazor's own rendered values. The measurement of the
+  // loop/switch-statement widening (BENCH n°21).
+  loops: {
+    readySelector: '#bwhile',
+    observeSelector: '#v',
     scenarios: [],
   },
   // Correctness-only: verifyContract asserts the COMPOSED DOM (#greeting = "Hello, World").
@@ -1780,6 +1788,33 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
             `#divide-value after #halve is "${out.observed.afterHalve}", expected "3" ` +
             `("3.5" would mean the generator emitted a bare / instead of Math.trunc)`);
         }
+        return out;
+      });
+    }
+
+    if (app === 'loops') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        for (const sel of ['#bwhile', '#bswitch', '#bdo', '#v']) {
+          if (!document.querySelector(sel)) out.problems.push(`missing required element: ${sel}`);
+        }
+        if (out.problems.length) return out;
+
+        const read = () => document.querySelector('#v').textContent.trim();
+        out.observed.initial = read();
+        if (read() !== '0') { out.problems.push(`#v initial is "${read()}", expected "0"`); return out; }
+        // while: n -> 5
+        document.querySelector('#bwhile').click();
+        out.observed.afterWhile = read();
+        if (read() !== '5') { out.problems.push(`#v after #bwhile is "${read()}", expected "5" (while loop)`); return out; }
+        // switch: n(5) -> case 5 -> 9
+        document.querySelector('#bswitch').click();
+        out.observed.afterSwitch = read();
+        if (read() !== '9') { out.problems.push(`#v after #bswitch is "${read()}", expected "9" (switch case 5)`); return out; }
+        // do-while: n -> 3 (body runs at least once)
+        document.querySelector('#bdo').click();
+        out.observed.afterDo = read();
+        if (read() !== '3') out.problems.push(`#v after #bdo is "${read()}", expected "3" (do-while loop)`);
         return out;
       });
     }

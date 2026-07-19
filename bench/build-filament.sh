@@ -186,6 +186,7 @@ ALL_LABELS=(
   filament-ifelsemulti-gen
   filament-ifnested-gen
   filament-divideint-gen
+  filament-loops-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -200,6 +201,7 @@ project_for() {
     filament-rows-gen|filament-rows-gen-stats)       echo "samples/filament-rows-gen" ;;
     filament-divide-gen)                             echo "samples/filament-divide-gen" ;;
     filament-divideint-gen)                          echo "samples/filament-divideint-gen" ;;
+    filament-loops-gen)                              echo "samples/filament-loops-gen" ;;
     filament-compose-gen)                            echo "samples/filament-compose-gen" ;;
     filament-rootforeach-gen)                        echo "samples/filament-rootforeach-gen" ;;
     filament-rootif-gen)                             echo "samples/filament-rootif-gen" ;;
@@ -220,7 +222,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -244,6 +246,7 @@ razor_for() {
     filament-rows-gen|filament-rows-gen-stats)       echo "$REPO_ROOT/baseline/Rows.Blazor/RowsApp.razor" ;;
     filament-divide-gen)                             echo "$REPO_ROOT/baseline/Divide.Blazor/App.razor" ;;
     filament-divideint-gen)                          echo "$REPO_ROOT/baseline/DivideInt.Blazor/App.razor" ;;
+    filament-loops-gen)                              echo "$REPO_ROOT/baseline/Loops.Blazor/App.razor" ;;
     filament-compose-gen)                            echo "$REPO_ROOT/baseline/Compose.Blazor/App.razor" ;;
     filament-rootforeach-gen)                        echo "$REPO_ROOT/baseline/RootForeach.Blazor/App.razor" ;;
     filament-rootif-gen)                             echo "$REPO_ROOT/baseline/RootIf.Blazor/App.razor" ;;
@@ -271,6 +274,7 @@ generated_js_for() {
     filament-rows-gen|filament-rows-gen-stats)       echo "Rows.g.js" ;;
     filament-divide-gen)                             echo "Divide.g.js" ;;
     filament-divideint-gen)                          echo "DivideInt.g.js" ;;
+    filament-loops-gen)                              echo "Loops.g.js" ;;
     filament-compose-gen)                            echo "App.g.js" ;;
     filament-rootforeach-gen)                        echo "App.g.js" ;;
     filament-rootif-gen)                             echo "App.g.js" ;;
@@ -294,6 +298,7 @@ title_for() {
     filament-rows-gen|filament-rows-gen-stats)       echo "Rows" ;;
     filament-divide-gen)                             echo "Divide" ;;
     filament-divideint-gen)                          echo "DivideInt" ;;
+    filament-loops-gen)                              echo "Loops" ;;
     filament-compose-gen)                            echo "Compose" ;;
     filament-rootforeach-gen)                        echo "RootForeach" ;;
     filament-rootif-gen)                             echo "RootIf" ;;
@@ -320,6 +325,7 @@ blazor_label_for() {
     filament-rows-gen|filament-rows-gen-stats)       echo "blazor-rows-nojit" ;;
     filament-divide-gen)                             echo "blazor-divide" ;;
     filament-divideint-gen)                          echo "blazor-divideint" ;;
+    filament-loops-gen)                              echo "blazor-loops" ;;
     filament-compose-gen)                            echo "blazor-compose" ;;
     filament-rootforeach-gen)                        echo "blazor-rootforeach" ;;
     filament-rootif-gen)                             echo "blazor-rootif" ;;
@@ -354,6 +360,7 @@ css_for() {
     filament-rows-gen|filament-rows-gen-stats)       echo "$REPO_ROOT/baseline/Rows.Blazor/wwwroot/css/app.css" ;;
     filament-divide-gen)                             echo "$REPO_ROOT/baseline/Divide.Blazor/wwwroot/css/app.css" ;;
     filament-divideint-gen)                          echo "$REPO_ROOT/baseline/DivideInt.Blazor/wwwroot/css/app.css" ;;
+    filament-loops-gen)                              echo "$REPO_ROOT/baseline/Loops.Blazor/wwwroot/css/app.css" ;;
     filament-compose-gen)                            echo "$REPO_ROOT/baseline/Compose.Blazor/wwwroot/css/app.css" ;;
     filament-rootforeach-gen)                        echo "$REPO_ROOT/baseline/RootForeach.Blazor/wwwroot/css/app.css" ;;
     filament-rootif-gen)                             echo "$REPO_ROOT/baseline/RootIf.Blazor/wwwroot/css/app.css" ;;

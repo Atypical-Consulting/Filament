@@ -35,6 +35,7 @@ samples/filament-rows-gen/Rows.g.js
 samples/filament-if-gen/If.g.js
 samples/filament-divide-gen/Divide.g.js
 samples/filament-divideint-gen/DivideInt.g.js
+samples/filament-loops-gen/Loops.g.js
 samples/filament-compose-gen/App.g.js
 samples/filament-rootforeach-gen/App.g.js
 samples/filament-rootif-gen/App.g.js
