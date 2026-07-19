@@ -1,0 +1,30 @@
+@* try/catch/throw/lock (BENCH n°29, decision 110): the #go handler THROWS inside a try, CATCHES the
+   throw (+5), then runs a lock body (+1) -- so each click adds 6. try/catch/finally maps to the JS
+   namesake, `throw new Exception(msg)` to `throw new Error(msg)`, and `lock (x) { … }` to a bare block
+   (JS is single-threaded, so a lock can never be contended). The click IS the measurement: #count goes
+   0 -> 6 -> 12, exactly as Blazor runs the same C#. A CAUGHT throw is faithful; an UNCAUGHT one is the
+   disclosed edge (C# surfaces a .NET exception, JS a bare Error) and is NOT what this app measures. *@
+
+<p>Count: <span id="count">@count</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private int count = 0;
+
+    private void Go()
+    {
+        try
+        {
+            throw new System.Exception("boom");
+        }
+        catch
+        {
+            count = count + 5;
+        }
+        lock (this)
+        {
+            count = count + 1;
+        }
+    }
+}
