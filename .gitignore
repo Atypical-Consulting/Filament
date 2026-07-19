@@ -45,6 +45,7 @@ samples/filament-boolattr-gen/App.g.js
 samples/filament-mixedattr-gen/App.g.js
 samples/filament-stringattrs-gen/App.g.js
 samples/filament-moreattrs-gen/App.g.js
+samples/filament-bind-gen/App.g.js
 samples/filament-ifmulti-gen/App.g.js
 samples/filament-ifelsemulti-gen/App.g.js
 samples/filament-ifnested-gen/App.g.js

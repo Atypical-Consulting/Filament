@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.17.0';   // 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.18.0';   // 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -390,6 +390,14 @@ const APPS = {
   moreattrs: {
     readySelector: '#toggle',
     observeSelector: '#s',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract exercises BOTH directions of @bind — #set changes the field (input
+  // value tracks it) and a change event on the input (the field/#echo track it) — against Blazor's own
+  // rendered DOM. The measurement of the two-way-binding widening (BENCH n°23).
+  bind: {
+    readySelector: '#box',
+    observeSelector: '#echo',
     scenarios: [],
   },
   // Correctness-only: verifyContract clicks #toggle and asserts a MULTI-NODE @if body mounts/unmounts
@@ -1738,6 +1746,39 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         if (out.observed.after.href !== '/b') out.problems.push(`#link href after #toggle is "${out.observed.after.href}", expected "/b"`);
         if (out.observed.after.title !== 'second') out.problems.push(`#link title after #toggle is "${out.observed.after.title}", expected "second"`);
         if (out.observed.after.aria !== 'two') out.problems.push(`#link aria-label after #toggle is "${out.observed.after.aria}", expected "two"`);
+        return out;
+      });
+    }
+
+    if (app === 'bind') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#box') || !document.querySelector('#echo') || !document.querySelector('#set')) {
+          out.problems.push('missing required element: #box/#echo/#set'); return out;
+        }
+        const box = document.querySelector('#box');
+        const echo = () => document.querySelector('#echo').textContent.trim();
+        const snap = () => ({ value: box.value, echo: echo() });
+        out.observed.initial = snap();
+        const i = out.observed.initial;
+        if (i.value !== 'hi' || i.echo !== 'hi') {
+          out.problems.push(`#box/#echo initial is ${JSON.stringify(i)}, expected {value:"hi",echo:"hi"}`);
+          return out;
+        }
+        // DIRECTION 1 (field -> input): #set writes text -> the input's value effect tracks it.
+        document.querySelector('#set').click();
+        out.observed.afterSet = snap();
+        const a = out.observed.afterSet;
+        if (a.value !== 'world' || a.echo !== 'world') {
+          out.problems.push(`#box/#echo after #set is ${JSON.stringify(a)}, expected {value:"world",echo:"world"} (field->input did not track)`);
+          return out;
+        }
+        // DIRECTION 2 (input -> field): a change event on the input writes text -> #echo tracks it.
+        box.value = 'typed';
+        box.dispatchEvent(new Event('change', { bubbles: true }));
+        out.observed.afterType = { value: box.value, echo: echo() };
+        const t = out.observed.afterType;
+        if (t.echo !== 'typed') out.problems.push(`#echo after change is "${t.echo}", expected "typed" (input->field did not track)`);
         return out;
       });
     }

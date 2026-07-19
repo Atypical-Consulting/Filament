@@ -3546,3 +3546,70 @@ node bench/harness/bench.mjs --dir bench/publish/filament-moreattrs-gen   --app 
 ---
 
 *Fin de l'entrée n°22. Ne pas modifier — ajouter une entrée n°23 pour toute rectification.*
+
+---
+
+## Entrée n°23 — 2026-07-19 — Phase 4 : la LIAISON BIDIRECTIONNELLE `@bind` (sur un champ chaîne signal) mesurée contre Blazor (CORRECTION)
+
+**`@bind` entre dans le sous-ensemble** (décision #104) : `@bind="text"` sur un `<input>`, pour un champ `text`
+**chaîne** qui est **déjà un signal**, rejoint le sous-ensemble. Razor abaisse `@bind` en une paire synthétisée
+`value=`/`onchange` (`BindConverter.FormatValue` + `CreateBinder`) ; pour une chaîne le convertisseur est
+l'IDENTITÉ, donc le générateur reconnaît le motif et émet **une liaison à DEUX sens** : un effet sur la propriété
+`value` (`effect(() => { input.value = text.value; })`) + un écouteur `change` qui écrit le signal
+(`listen(input, 'change', e => text.value = e.target.value)`). Générateur seul, **runtime INCHANGÉ**. Artefact
+**fabriqué et mesuré**.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/Bind.Blazor` : `<input id="box" @bind="text" />`, un `<span id="echo">@text</span>`, et un bouton `#set`
+qui fait `text = "world"`. `text` est **lu par le template** (`@text` ET `@bind`) ET **assigné** (`Set`), donc un
+**signal chaîne**. Les DEUX sens sont mesurés : (1) champ→input : `#set` change `text` → l'effet met à jour
+`input.value` ; (2) input→champ : un évènement `change` sur l'input → `text` (et `#echo`) suivent. Un générateur
+qui n'aurait câblé qu'un sens, ou lié l'ATTRIBUT `value` au lieu de la PROPRIÉTÉ, l'oracle le verrait.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.18.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`). La branche `bind` de `verifyContract` lit `#box.value` et
+`#echo.textContent`. Initial `{value:"hi", echo:"hi"}`, clique `#set` → `{value:"world", echo:"world"}` (champ→
+input), puis met `#box.value="typed"` et dispatche un `change` → `{echo:"typed"}` (input→champ).
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/Bind.Blazor -c Release -o bench/publish/blazor-bind
+./bench/build-filament.sh filament-bind-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-bind/wwwroot --app bind --label blazor-bind       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-bind-gen   --app bind --label filament-bind-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#box.value`/`#echo` : initial → `#set` → change | verdict |
+|---|---|---|
+| **blazor-bind** (autorité) | `hi/hi` → `world/world` → `typed/typed` | contrat OK |
+| **filament-bind-gen** (générateur) | `hi/hi` → `world/world` → `typed/typed` | contrat OK |
+
+**Les deux rendent à l'identique, dans les DEUX sens.** `#set` propage le champ vers l'input ; un `change` propage
+l'input vers le champ (et `#echo`) — la liaison bidirectionnelle est **mesurée**, pas raisonnée.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4.
+- **`HARNESS_VERSION` 1.17.0 → 1.18.0, DIVULGUÉ.** `bench.mjs` a changé (branche `bind` + entrée `APPS`).
+- **RUNTIME INCHANGÉ.** `effect`/`listen` shippent déjà ; `.value` et `e.target.value` sont des builtins DOM.
+  `git diff -- src/filament-runtime` est vide.
+- **TRANCHE ÉTROITE.** `@bind` seulement sur un champ **chaîne** qui est **déjà un signal** (le convertisseur est
+  l'identité, et exiger un signal établi évite de marquer la réactivité depuis le lowering template). Restent
+  différés : `@bind` non-chaîne (int/bool → `BindConverter` parse), `@bind` sur un champ non-lu-ailleurs (marquage
+  de réactivité), `@bind:event="oninput"`, `@bind` sur un composant. Le témoin `Bind.razor` (champ non déclaré)
+  reste refusé, désormais `[unsupported-bind]` à `(1,24)`. §8 inchangé : RADICAL reste « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°23. Ne pas modifier — ajouter une entrée n°24 pour toute rectification.*
