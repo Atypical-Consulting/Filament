@@ -1,0 +1,21 @@
+@* LINQ over a List (BENCH n°35, decision 116): `_nums.Where(x => x > 0).Count()` compiles to
+   `_nums.filter(x => x > 0).length` -- the common LINQ operators map to JS array methods (Where -> filter,
+   Select -> map, Count -> length, Any -> some, …). The source List is already a materialised JS array, so the
+   eager array methods are faithful to a LINQ chain ending in a scalar, and the predicate lambda translates
+   through the same machinery as the rest of @code. #go counts the positives in [-2, 3, -1, 5, 0] -- so #value
+   goes "0" -> "2", exactly as Blazor runs the same C# LINQ. No runtime primitive is added: it is pure array
+   methods. count is read by @count AND assigned by Go -> a signal; _nums is never mutated -> a plain array. *@
+
+<p>Positives: <span id="value">@count</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private int count = 0;
+    private System.Collections.Generic.List<int> _nums = new System.Collections.Generic.List<int> { -2, 3, -1, 5, 0 };
+
+    private void Go()
+    {
+        count = _nums.Where(x => x > 0).Count();
+    }
+}
