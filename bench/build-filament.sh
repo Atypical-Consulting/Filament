@@ -189,6 +189,7 @@ ALL_LABELS=(
   filament-loops-gen
   filament-moreattrs-gen
   filament-bind-gen
+  filament-lambdahandler-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -214,6 +215,7 @@ project_for() {
     filament-stringattrs-gen)                        echo "samples/filament-stringattrs-gen" ;;
     filament-moreattrs-gen)                          echo "samples/filament-moreattrs-gen" ;;
     filament-bind-gen)                               echo "samples/filament-bind-gen" ;;
+    filament-lambdahandler-gen)                      echo "samples/filament-lambdahandler-gen" ;;
     filament-ifmulti-gen)                            echo "samples/filament-ifmulti-gen" ;;
     filament-ifelsemulti-gen)                        echo "samples/filament-ifelsemulti-gen" ;;
     filament-ifnested-gen)                           echo "samples/filament-ifnested-gen" ;;
@@ -226,7 +228,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -261,6 +263,7 @@ razor_for() {
     filament-stringattrs-gen)                        echo "$REPO_ROOT/baseline/StringAttrs.Blazor/App.razor" ;;
     filament-moreattrs-gen)                          echo "$REPO_ROOT/baseline/MoreAttrs.Blazor/App.razor" ;;
     filament-bind-gen)                               echo "$REPO_ROOT/baseline/Bind.Blazor/App.razor" ;;
+    filament-lambdahandler-gen)                      echo "$REPO_ROOT/baseline/LambdaHandler.Blazor/App.razor" ;;
     filament-ifmulti-gen)                            echo "$REPO_ROOT/baseline/IfMultiBody.Blazor/App.razor" ;;
     filament-ifelsemulti-gen)                        echo "$REPO_ROOT/baseline/IfElseMultiBody.Blazor/App.razor" ;;
     filament-ifnested-gen)                           echo "$REPO_ROOT/baseline/IfNested.Blazor/App.razor" ;;
@@ -291,6 +294,7 @@ generated_js_for() {
     filament-stringattrs-gen)                        echo "App.g.js" ;;
     filament-moreattrs-gen)                          echo "App.g.js" ;;
     filament-bind-gen)                               echo "App.g.js" ;;
+    filament-lambdahandler-gen)                      echo "App.g.js" ;;
     filament-ifmulti-gen)                            echo "App.g.js" ;;
     filament-ifelsemulti-gen)                        echo "App.g.js" ;;
     filament-ifnested-gen)                           echo "App.g.js" ;;
@@ -317,6 +321,7 @@ title_for() {
     filament-stringattrs-gen)                        echo "StringAttrs" ;;
     filament-moreattrs-gen)                          echo "MoreAttrs" ;;
     filament-bind-gen)                               echo "Bind" ;;
+    filament-lambdahandler-gen)                      echo "LambdaHandler" ;;
     filament-ifmulti-gen)                            echo "IfMultiBody" ;;
     filament-ifelsemulti-gen)                        echo "IfElseMultiBody" ;;
     filament-ifnested-gen)                           echo "IfNested" ;;
@@ -346,6 +351,7 @@ blazor_label_for() {
     filament-stringattrs-gen)                        echo "blazor-stringattrs" ;;
     filament-moreattrs-gen)                          echo "blazor-moreattrs" ;;
     filament-bind-gen)                               echo "blazor-bind" ;;
+    filament-lambdahandler-gen)                      echo "blazor-lambdahandler" ;;
     filament-ifmulti-gen)                            echo "blazor-ifmulti" ;;
     filament-ifelsemulti-gen)                        echo "blazor-ifelsemulti" ;;
     filament-ifnested-gen)                           echo "blazor-ifnested" ;;
@@ -383,6 +389,7 @@ css_for() {
     filament-stringattrs-gen)                        echo "$REPO_ROOT/baseline/StringAttrs.Blazor/wwwroot/css/app.css" ;;
     filament-moreattrs-gen)                          echo "$REPO_ROOT/baseline/MoreAttrs.Blazor/wwwroot/css/app.css" ;;
     filament-bind-gen)                               echo "$REPO_ROOT/baseline/Bind.Blazor/wwwroot/css/app.css" ;;
+    filament-lambdahandler-gen)                      echo "$REPO_ROOT/baseline/LambdaHandler.Blazor/wwwroot/css/app.css" ;;
     filament-ifmulti-gen)                            echo "$REPO_ROOT/baseline/IfMultiBody.Blazor/wwwroot/css/app.css" ;;
     filament-ifelsemulti-gen)                        echo "$REPO_ROOT/baseline/IfElseMultiBody.Blazor/wwwroot/css/app.css" ;;
     filament-ifnested-gen)                           echo "$REPO_ROOT/baseline/IfNested.Blazor/wwwroot/css/app.css" ;;

@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.18.0';   // 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.19.0';   // 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -398,6 +398,14 @@ const APPS = {
   bind: {
     readySelector: '#box',
     observeSelector: '#echo',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #inc (an inline `() => count++` lambda handler) and asserts
+  // #count goes 0 -> 1 -> 2, against Blazor's own rendered value. The measurement of the lambda-handler
+  // widening (BENCH n°24) -- a splice instead of a translated arrow would leave #count at 0 (dead button).
+  lambdahandler: {
+    readySelector: '#inc',
+    observeSelector: '#count',
     scenarios: [],
   },
   // Correctness-only: verifyContract clicks #toggle and asserts a MULTI-NODE @if body mounts/unmounts
@@ -1746,6 +1754,27 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         if (out.observed.after.href !== '/b') out.problems.push(`#link href after #toggle is "${out.observed.after.href}", expected "/b"`);
         if (out.observed.after.title !== 'second') out.problems.push(`#link title after #toggle is "${out.observed.after.title}", expected "second"`);
         if (out.observed.after.aria !== 'two') out.problems.push(`#link aria-label after #toggle is "${out.observed.after.aria}", expected "two"`);
+        return out;
+      });
+    }
+
+    if (app === 'lambdahandler') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#inc') || !document.querySelector('#count')) {
+          out.problems.push('missing required element: #inc/#count'); return out;
+        }
+        const read = () => document.querySelector('#count').textContent.trim();
+        out.observed.initial = read();
+        if (read() !== '0') { out.problems.push(`#count initial is "${read()}", expected "0"`); return out; }
+        document.querySelector('#inc').click();
+        out.observed.afterInc = read();
+        // THE MEASUREMENT: the inline lambda `() => count++` was TRANSLATED and fired. A verbatim splice
+        // would leave #count at "0" (a button that renders, loads, and does nothing -- decision 68).
+        if (read() !== '1') { out.problems.push(`#count after #inc is "${read()}", expected "1"`); return out; }
+        document.querySelector('#inc').click();
+        out.observed.afterSecond = read();
+        if (read() !== '2') out.problems.push(`#count after 2nd #inc is "${read()}", expected "2"`);
         return out;
       });
     }

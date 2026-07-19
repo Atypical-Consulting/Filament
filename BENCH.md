@@ -3613,3 +3613,70 @@ l'input vers le champ (et `#echo`) — la liaison bidirectionnelle est **mesuré
 ---
 
 *Fin de l'entrée n°23. Ne pas modifier — ajouter une entrée n°24 pour toute rectification.*
+
+---
+
+## Entrée n°24 — 2026-07-19 — Phase 4 : le HANDLER LAMBDA en ligne (`() => count++`) mesuré contre Blazor (CORRECTION)
+
+**Le handler lambda sans argument entre dans le sous-ensemble** (décision #105) : `@onclick="() => count++"`
+— un lambda **en ligne**, pas un nom de méthode `@code` — rejoint le sous-ensemble. Le corps du lambda est
+**enveloppé** en une méthode synthétique `void __filament_lambda_k() { … }` dans la compilation, puis **traduit
+par le modèle sémantique** (comme un corps de méthode `@code` : `count++` → `count.value++` quand `count` est un
+signal), et émis en `listen(el, 'click', () => { … })` — une flèche émise, PAS une épissure verbatim (la leçon
+n°57 : « ce nom est-il un signal ? » se répond par le compilateur, pas par l'orthographe). Générateur seul,
+**runtime INCHANGÉ**. Artefact **fabriqué et mesuré**.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/LambdaHandler.Blazor` : un compteur piloté par le lambda en ligne, `<span id="count">@count</span>` +
+`<button id="inc" @onclick="() => count++">`. `count` est lu par `@count` ET assigné par le lambda → **hissé en
+signal** (le marquage de réactivité passe automatiquement sur la méthode synthétique du lambda). Le clic EST la
+mesure : `#count` va `0 → 1 → 2`. Une épissure verbatim (`() => count++` splicé) laisserait `#count` à `0` (le
+bouton mort de la n°68). Les formes `e => …` (objet évènement) et `async () => …` restent refusées.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.19.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`). La branche `lambdahandler` de `verifyContract` lit `#count`, exige
+l'initial `"0"`, clique `#inc` → `"1"`, reclique → `"2"`.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/LambdaHandler.Blazor -c Release -o bench/publish/blazor-lambdahandler
+./bench/build-filament.sh filament-lambdahandler-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-lambdahandler/wwwroot --app lambdahandler --label blazor-lambdahandler       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-lambdahandler-gen   --app lambdahandler --label filament-lambdahandler-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#count` : initial → `#inc` → `#inc` | verdict |
+|---|---|---|
+| **blazor-lambdahandler** (autorité) | `0` → `1` → `2` | contrat OK |
+| **filament-lambdahandler-gen** (générateur) | `0` → `1` → `2` | contrat OK |
+
+**Les deux rendent `0 → 1 → 2`, à l'identique.** Le lambda en ligne est **traduit** (`count → count.value`) et
+tire au clic — le pont sémantique (envelopper-traduire-émettre) est **mesuré**, pas raisonné.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4.
+- **`HARNESS_VERSION` 1.18.0 → 1.19.0, DIVULGUÉ.** `bench.mjs` a changé (branche `lambdahandler` + entrée `APPS`).
+- **RUNTIME INCHANGÉ.** `listen` shippe déjà ; une flèche est un builtin JS. `git diff -- src/filament-runtime`
+  est vide. Les handlers à nom de méthode (Counter) restent octet pour octet.
+- **PONT SÉMANTIQUE, PAS UNE ÉPISSURE.** Le corps du lambda passe par la MÊME compilation + traduction que les
+  méthodes `@code`, donc un corps hors sous-ensemble se refuse tout seul (localisation approximative au niveau de
+  l'attribut, divulguée). La leçon n°57 (Roslyn, pas la regex) tenue.
+- **TRANCHE ÉTROITE.** Lambda **sans argument, non-async** seulement. `e => …` (objet évènement, `HandlerLambdaArgs`)
+  et `async () => …` (`HandlerAsync`) **restent refusés** `[compound-expression]`, témoins de bord. §8 inchangé :
+  RADICAL reste « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°24. Ne pas modifier — ajouter une entrée n°25 pour toute rectification.*
