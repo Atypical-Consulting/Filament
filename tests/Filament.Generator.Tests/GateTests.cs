@@ -300,6 +300,8 @@ public static class Generate
 
     public static string IntBindToTemp() => ToTemp(RepoPaths.IntBindRazor, "IntBind");
 
+    public static string CodeBlockToTemp() => ToTemp(RepoPaths.CodeBlockRazor, "CodeBlock");
+
     /// <summary>
     /// Emit a fixture from the Unsupported dir (some of which now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the

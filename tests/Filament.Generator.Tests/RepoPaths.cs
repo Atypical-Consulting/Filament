@@ -135,6 +135,11 @@ public static class RepoPaths
 
     /// <summary>The int-@bind SPEC (decisions 51/104). Never edited to make a gate pass.</summary>
     public static string IntBindAnswerKey => Path.Combine(Root, "samples", "IntBind", "intbind.js");
+
+    public static string CodeBlockRazor => Path.Combine(Root, "baseline", "CodeBlock.Blazor", "App.razor");
+
+    /// <summary>The root-@{ }-code-block SPEC (decisions 51/89). Never edited to make a gate pass.</summary>
+    public static string CodeBlockAnswerKey => Path.Combine(Root, "samples", "CodeBlock", "codeblock.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
