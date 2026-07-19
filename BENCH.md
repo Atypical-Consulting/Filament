@@ -4088,3 +4088,45 @@ brut, pas la date. `git diff -- src/filament-runtime` vide (le formateur est ém
 ---
 
 *Fin de l'entrée n°34. Ne pas modifier — ajouter une entrée n°35 pour toute rectification.*
+
+---
+
+## Entrée n°35 — 2026-07-20 — Phase 4 : LINQ sur une List mesuré contre Blazor (CORRECTION)
+
+**Les opérateurs LINQ courants sur une `List`** (décision #116) rejoignent le §5, mappés sur les méthodes de
+tableau JS : `Where` → `filter`, `Select` → `map`, `Count` → `length`, `Any` → `some`, `All` → `every`,
+`ToList`/`ToArray` → le tableau. Une List EST déjà un tableau JS matérialisé (décision rows.js 1), donc les méthodes
+EAGER de JS sont fidèles à une chaîne LINQ qui se termine par un scalaire (Count/Any/All) ou ToList. Le lambda
+prédicat `x => x > 0` se traduit par la MÊME machinerie que le reste de @code (son paramètre est un local ordinaire,
+qu'`Identifier` résout par son nom), donc il reste `x => x > 0`. **AUCUNE primitive runtime ajoutée** : ce sont des
+méthodes de tableau JS pures. Le reste de LINQ (GroupBy, OrderBy, Range, surcharges d'agrégat) est refusé.
+
+### Ce qui est mesuré
+
+`baseline/Linq.Blazor` : `_nums = [-2, 3, -1, 5, 0]` ; `#go` fait `count = _nums.Where(x => x > 0).Count()` →
+`_nums.filter(x => x > 0).length` = 2. `count` est lu par `@count` ET assigné par `Go` → signal ; `_nums` n'est
+jamais muté → tableau nu. La branche `linq` de `verifyContract` clique `#go` et exige `#value` : `"0" → "2"`.
+**`HARNESS_VERSION` 1.29.0 → 1.30.0**, divulgué.
+
+```
+dotnet publish baseline/Linq.Blazor -c Release -o bench/publish/blazor-linq
+./bench/build-filament.sh filament-linq-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-linq/wwwroot --app linq --label blazor-linq       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-linq-gen   --app linq --label filament-linq-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#value` | verdict |
+|---|---|---|
+| **blazor-linq** (autorité) | `"0" → "2"` | contrat OK |
+| **filament-linq-gen** (générateur) | `"0" → "2"` | contrat OK |
+
+**Les deux comptent `2` positifs, à l'identique.** `_nums.Where(x => x > 0).Count()` devient
+`_nums.filter(x => x > 0).length` — Blazor exécute le même LINQ. `git diff -- src/filament-runtime` vide (méthodes
+de tableau pures, aucun helper). Le témoin `Gate/Linq.razor` bascule de refusé à compilé ; `Enumerable.Range` et le
+reste de LINQ restent refusés (`Code/Linq.razor` : Range → une locale `IEnumerable`, refusée à son type). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°35. Ne pas modifier — ajouter une entrée n°36 pour toute rectification.*

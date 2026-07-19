@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.29.0';   // 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.30.0';   // 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -484,6 +484,14 @@ const APPS = {
   // .AddDays tick arithmetic + a faithful "MM/dd/yyyy HH:mm:ss" formatter, with calendar-correct day rollover.
   datetimecounter: {
     readySelector: '#add',
+    observeSelector: '#value',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #go and asserts #value goes "0" -> "2", against Blazor's own DOM.
+  // The measurement of the LINQ widening (BENCH n°35): `_nums.Where(x => x > 0).Count()` over [-2,3,-1,5,0]
+  // lowers to `_nums.filter(x => x > 0).length` = 2 -- LINQ operators as JS array methods.
+  linq: {
+    readySelector: '#go',
     observeSelector: '#value',
     scenarios: [],
   },
@@ -1969,6 +1977,24 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         document.querySelector('#go').click();
         out.observed.afterSecond = read();
         if (read() !== '12') out.problems.push(`#count after 2nd #go is "${read()}", expected "12"`);
+        return out;
+      });
+    }
+
+    if (app === 'linq') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#go') || !document.querySelector('#value')) {
+          out.problems.push('missing required element: #go/#value'); return out;
+        }
+        const read = () => document.querySelector('#value').textContent.trim();
+        out.observed.initial = read();
+        if (read() !== '0') { out.problems.push(`#value initial is "${read()}", expected "0"`); return out; }
+        // THE MEASUREMENT: _nums.Where(x => x > 0).Count() over [-2,3,-1,5,0] -> filter(x=>x>0).length -> 2.
+        // A LINQ chain that did nothing (or a dead handler) would leave #value at "0".
+        document.querySelector('#go').click();
+        out.observed.afterGo = read();
+        if (read() !== '2') out.problems.push(`#value after #go is "${read()}", expected "2"`);
         return out;
       });
     }
