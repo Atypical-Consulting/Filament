@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.9.0';   // 1.9.0: 'boolattr' contract (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.10.0';   // 1.10.0: 'mixedattr' contract (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -349,6 +349,15 @@ const APPS = {
   boolattr: {
     readySelector: '#toggle',
     observeSelector: '#target',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #increment and asserts a COMPOSED `class` value on #status
+  // ("badge @statusClass rounded") tracks state -- the whole string, literals surviving around the
+  // reactive token -- against Blazor's own rendered DOM. The measurement of the mixed-`class` widening
+  // (BENCH n°15).
+  mixedattr: {
+    readySelector: '#increment',
+    observeSelector: '#status',
     scenarios: [],
   },
 };
@@ -1606,6 +1615,44 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         }
         if (out.observed.afterProp !== false) {
           out.problems.push(`#target .disabled after #toggle is ${out.observed.afterProp}, expected false`);
+        }
+        return out;
+      });
+    }
+
+    if (app === 'mixedattr') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        for (const sel of ['#increment', '#status', '#counter-value']) {
+          if (!document.querySelector(sel)) out.problems.push(`missing required element: ${sel}`);
+        }
+        if (out.problems.length) return out;
+
+        const cls = () => document.querySelector('#status').getAttribute('class');
+        const txt = () => document.querySelector('#counter-value').textContent.trim();
+        out.observed.initialClass = cls();
+        out.observed.initialText = txt();
+        // Blazor's own initial render: the composed class is "badge zero rounded", count "0". If either
+        // already read the post-click value the assertions below would be vacuous.
+        if (out.observed.initialClass !== 'badge zero rounded') {
+          out.problems.push(`#status class initial is "${out.observed.initialClass}", expected "badge zero rounded"`);
+          return out;
+        }
+        if (out.observed.initialText !== '0') {
+          out.problems.push(`#counter-value initial is "${out.observed.initialText}", expected "0"`);
+          return out;
+        }
+        document.querySelector('#increment').click();
+        out.observed.afterClass = cls();
+        out.observed.afterText = txt();
+        // THE MEASUREMENT: the mixed `class` value re-composes on state change -- the literals survive
+        // around the reactive token, in order and spacing, against Blazor's OWN rendered DOM. A dropped
+        // literal or mis-ordered prefix would show as a class other than "badge counting rounded".
+        if (out.observed.afterClass !== 'badge counting rounded') {
+          out.problems.push(`#status class after #increment is "${out.observed.afterClass}", expected "badge counting rounded"`);
+        }
+        if (out.observed.afterText !== '1') {
+          out.problems.push(`#counter-value after #increment is "${out.observed.afterText}", expected "1"`);
         }
         return out;
       });

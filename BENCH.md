@@ -2961,3 +2961,80 @@ pas raisonnée.
 ---
 
 *Fin de l'entrée n°14. Ne pas modifier — ajouter une entrée n°15 pour toute rectification.*
+
+---
+
+## Entrée n°15 — 2026-07-19 — Phase 4 : la valeur `class` MIXTE (littéral+expression) mesurée contre Blazor (CORRECTION)
+
+**Sous-tranche différée des n°13/n°14 fermée** : une **valeur `class` mixte** (`class="badge @statusClass rounded"`)
+entre dans le sous-ensemble (décision #96). Les n°13/n°14 refusaient explicitement « valeur mixte littéral+expression
+(`class="box @x"`) » ; c'est cette réserve-là qui tombe. C'est la forme `class` la plus courante du monde réel
+(`"btn @variant"`, `"badge @statusClass rounded"`). Razor livre la valeur en **parties ordonnées, chacune portant un
+`Prefix`** (le texte qui la précède) ; le compilateur les **plie** en une seule concaténation. La n°13 admettait le
+`@expr` **pur** ; le pur est le pli **dégénéré** (une expression, aucun littéral). L'élargissement est **générateur
+seul** ; l'artefact est **fabriqué et mesuré** — même protocole que les n°9→14.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/MixedAttr.Blazor` : le compteur de la n°13 dont l'attribut devient `class="badge @statusClass rounded"` — un
+littéral en tête (`badge `), une expression réactive (`statusClass`), un littéral en queue (` rounded`). `statusClass`
+est **lu par le template** ET **assigné hors construction**, donc **hissé en signal**, et la liaison entière devient
+`effect(() => setAttr(_el1, 'class', 'badge ' + statusClass.value + ' rounded'))` — la composition préfixe-consciente :
+chaque partie apporte son `Prefix` puis son corps ; un littéral s'accumule dans un tampon, une expression vide le tampon
+en terme chaîne puis émet `SlotJs`. La forme mesurée exerce **les deux vidages** (au milieu à l'expression, en queue au
+littéral final). Un générateur qui aurait laissé tomber un littéral ou mal ordonné un préfixe rendrait une classe autre
+que `badge counting rounded` — et l'oracle le verrait.
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.10.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`, aucun run de poids/vitesse). La branche `mixedattr` de `verifyContract`
+lit la **chaîne `class` entière** de `#status` (doit valoir « badge zero rounded ») et le texte de `#counter-value`
+(« 0 »), clique `#increment`, et exige « badge counting rounded » / « 1 ». Vérifier la chaîne ENTIÈRE est la mesure :
+elle prouve que les littéraux survivent autour du jeton réactif, dans l'ordre et l'espacement exacts de Blazor.
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/MixedAttr.Blazor -c Release -o bench/publish/blazor-mixedattr
+./bench/build-filament.sh filament-mixedattr-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-mixedattr/wwwroot --app mixedattr --label blazor-mixedattr       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-mixedattr-gen   --app mixedattr --label filament-mixedattr-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#status` class / `#counter-value` : initial → `#increment` | verdict |
+|---|---|---|
+| **blazor-mixedattr** (autorité) | `badge zero rounded` / `0` → `badge counting rounded` / `1` | contrat OK |
+| **filament-mixedattr-gen** (générateur) | `badge zero rounded` / `0` → `badge counting rounded` / `1` | contrat OK |
+
+**Les deux rendent `badge zero rounded / 0 → badge counting rounded / 1`, à l'identique.** La valeur `class` mixte se
+recompose au clic — les littéraux survivant autour du signal `statusClass`, en phase avec la liaison de texte — la
+composition est **mesurée**, pas raisonnée.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4 (app triviale, décision du propriétaire).
+- **`HARNESS_VERSION` 1.9.0 → 1.10.0, DIVULGUÉ (n°31/43/59).** `bench.mjs` a changé (branche `mixedattr` + entrée
+  `APPS`), donc son hash change ; le numéro monte. Aucune mesure de poids antérieure n'est invalidée.
+- **RUNTIME INCHANGÉ.** `setAttr` existait déjà ; la composition est une concaténation de chaînes JS dans le code émis.
+  `git diff -- src/filament-runtime` est vide.
+- **LE PUR EST INCHANGÉ, PROUVÉ.** Le pli **remplace** (généralise) la branche `class` ; le `class="@x"` pur émet
+  `setAttr(_el, 'class', statusClass.value)` **octet pour octet** comme avant — la porte et le snapshot `ReactiveAttr`
+  restent verts sans modification, c'est la preuve que la généralisation est transparente.
+- **TRANCHE ÉTROITE — `class` seulement.** Un prédicat unique `ComposableValue` (récolte + émission, n°53) ; `DynamicValue`
+  reste pour la voie booléenne `disabled`. La valeur mixte sur un **autre nom** reste refusée `dynamic-attribute` (test
+  `MixedValueOnNonAllowed` à `(1,12)`) ; le **contrôle de flux** dans un attribut (`class="@if(c){…}"`) reste refusé
+  `unaccounted-attribute-value` (`ComposableValue` renvoie null pour un `CSharpCodeAttributeValue` — tranche distincte).
+  Général à N parties, mesuré sur une expression (deux vidages). Restent différés : contrôle de flux, `disabled` chaîne,
+  autres noms. §8 inchangé : RADICAL reste « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°15. Ne pas modifier — ajouter une entrée n°16 pour toute rectification.*
