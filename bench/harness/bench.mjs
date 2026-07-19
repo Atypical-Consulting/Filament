@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.23.0';   // 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.24.0';   // 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -437,6 +437,14 @@ const APPS = {
   codeblock: {
     readySelector: '#out',
     observeSelector: '#out',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #go (a handler that THROWS inside a try, CATCHES it +5, then
+  // runs a lock body +1) and asserts #count goes 0 -> 6 -> 12, against Blazor's own DOM. The measurement of
+  // the try/catch/throw/lock widening (BENCH n°29): a caught throw is faithful, lock is a no-op block.
+  trylock: {
+    readySelector: '#go',
+    observeSelector: '#count',
     scenarios: [],
   },
   // Correctness-only: verifyContract clicks #toggle and asserts a MULTI-NODE @if body mounts/unmounts
@@ -1899,6 +1907,28 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         document.querySelector('#inc').click();
         out.observed.afterSecond = read();
         if (read() !== '2') out.problems.push(`#count after 2nd #inc is "${read()}", expected "2"`);
+        return out;
+      });
+    }
+
+    if (app === 'trylock') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#go') || !document.querySelector('#count')) {
+          out.problems.push('missing required element: #go/#count'); return out;
+        }
+        const read = () => document.querySelector('#count').textContent.trim();
+        out.observed.initial = read();
+        if (read() !== '0') { out.problems.push(`#count initial is "${read()}", expected "0"`); return out; }
+        document.querySelector('#go').click();
+        out.observed.afterGo = read();
+        // THE MEASUREMENT: the try THREW, the catch caught it (+5) and the lock body ran (+1) -- so one
+        // click adds 6. A dropped catch would leave the throw uncaught (#count stuck at "0"); a dropped
+        // lock body would leave #count at "5". Blazor runs the same C# to exactly 6.
+        if (read() !== '6') { out.problems.push(`#count after #go is "${read()}", expected "6"`); return out; }
+        document.querySelector('#go').click();
+        out.observed.afterSecond = read();
+        if (read() !== '12') out.problems.push(`#count after 2nd #go is "${read()}", expected "12"`);
         return out;
       });
     }

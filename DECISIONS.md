@@ -3841,3 +3841,30 @@ Le témoin `RootCodeBlock.razor` bascule de refusé à compilé (`RootBareCodeBl
 **GÉNÉRATEUR SEUL.** `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°28) : `baseline/CodeBlock.Blazor` et
 `filament-codeblock-gen` rendent `#out` = `"7"`, à l'identique. `HARNESS_VERSION` 1.22.0 → 1.23.0, divulgué. §5
 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 110. `try`/`catch`/`throw`/`lock` entrent dans le §5 — mappés sur leurs homonymes JS ; un `throw` intercepté est fidèle, un verrou est un bloc nu
+
+**Décision.** Les instructions `try`/`catch`/`finally`, `throw` et `lock` rejoignent le sous-ensemble §5, chacune
+mappée sur sa forme JS. `try`/`catch`/`finally` → l'homonyme JS (un `catch` sans liaison ou `catch (name)` ; les
+autres formes de filtre restent refusées). `throw new Exception(msg)` → `throw new Error(msg)` : `Exception.Message`
+(C#) et `Error.message` (JS) portent la même chaîne. `lock (x) { … }` → un bloc **NU** `{ … }` : JS est mono-thread,
+donc un verrou ne peut jamais être disputé, et la cible (`this`) est abandonnée — elle n'a aucun sens dans la
+fermeture `mount()`. `ClassifyStatement` admet les trois nœuds ; `Statement()` les émet. Suite : **328 tests**
+(252 générateur + 58 subset + 18 analyseur), runtime 214.
+
+**`new Exception(...)` EST LA SEULE CRÉATION D'OBJET DU §5.** Elle était refusée par `ClassifyExpression`
+(`ObjectCreationExpression` hors liste). Un nouveau prédicat `IsExceptionCreation` l'admet — SI et seulement si le
+type créé est `System.Exception` (ou un sous-type, remonté par `BaseType`) ; tout autre `new` reste refusé, car un
+module Filament n'a pas de BCL (`new StringBuilder()` n'a rien à devenir). `Expr()` la traduit en `new Error(args)`.
+
+**LE BORD DIVULGUÉ : le `throw` NON intercepté.** Un `throw` **intercepté** est fidèle — le flux reprend au `catch`,
+identique en C# et JS. Un `throw` **NON intercepté** diverge sur la SURFACE de l'erreur : C#/Blazor fait remonter une
+exception .NET via l'UI d'erreur, JS un `Error` nu dans la console. L'app mesurée n'exerce QUE le cas intercepté ;
+le bord non intercepté est divulgué, non mesuré.
+
+**GÉNÉRATEUR SEUL** — trois formes JS ordinaires, aucune nouvelle primitive runtime. `git diff -- src/filament-runtime`
+vide. MESURÉ (entrée n°29) : `baseline/TryLock.Blazor` (le gestionnaire `#go` lance dans un `try`, l'intercepte `+5`,
+puis exécute un `lock` `+1`) et `filament-trylock-gen` rendent `#count` : `0 → 6 → 12`, à l'identique — Blazor exécute
+le même C#. Les témoins `Code/TryCatch.razor`, `Code/Throw.razor`, `Code/Lock.razor` basculent de refusés à compilés ;
+`using` et `goto` restent refusés (pas d'`IDisposable` à disposer, pas d'abaissement de `goto` étiqueté).
+`HARNESS_VERSION` 1.23.0 → 1.24.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.

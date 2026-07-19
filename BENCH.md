@@ -3816,3 +3816,51 @@ instruction non-déclarative à la racine reste refusée. §8 inchangé.
 ---
 
 *Fin de l'entrée n°28. Ne pas modifier — ajouter une entrée n°29 pour toute rectification.*
+
+---
+
+## Entrée n°29 — 2026-07-19 — Phase 4 : `try`/`catch`/`throw`/`lock` mesurés contre Blazor (CORRECTION)
+
+**Les instructions `try`/`catch`/`finally`, `throw` et `lock`** (décision #110) rejoignent le sous-ensemble §5,
+mappées sur leurs formes JS :
+
+- `try`/`catch`/`finally` → l'homonyme JS (un `catch` sans liaison → un `catch {}` sans liaison).
+- `throw new Exception(msg)` → `throw new Error(msg)` : `Exception.Message` (C#) et `Error.message` (JS) portent
+  la même chaîne. `new Exception(...)` est la SEULE création d'objet admise en §5 (`IsExceptionCreation`) —
+  tout autre `new` reste refusé (un module Filament n'a pas de BCL). Un `throw` **INTERCEPTÉ** est fidèle ;
+  un `throw` **NON intercepté** est le bord divulgué (C# fait remonter une exception .NET, JS un `Error` nu) et
+  n'est PAS ce que cette app mesure.
+- `lock (x) { … }` → un bloc **NU** `{ … }` : JS est mono-thread, donc un verrou ne peut jamais être disputé et
+  la cible du verrou (`this`) est abandonnée — elle n'a aucun sens dans la fermeture `mount()`.
+
+Générateur seul, **runtime INCHANGÉ** : ce sont trois formes JS ordinaires, aucune nouvelle primitive.
+
+### Ce qui est mesuré
+
+`baseline/TryLock.Blazor` : le gestionnaire `#go` **LANCE** dans un `try`, l'**INTERCEPTE** (`+5`), puis exécute
+un corps de `lock` (`+1`) — donc chaque clic ajoute 6. `count` est lu par `@count` et assigné DEUX fois par `Go`,
+donc c'est un signal ET le gestionnaire batch (#68). La branche `trylock` de `verifyContract` clique `#go` deux fois
+et exige `#count` : `0 → 6 → 12`. **`HARNESS_VERSION` 1.23.0 → 1.24.0**, divulgué.
+
+```
+dotnet publish baseline/TryLock.Blazor -c Release -o bench/publish/blazor-trylock
+./bench/build-filament.sh filament-trylock-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-trylock/wwwroot --app trylock --label blazor-trylock       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-trylock-gen   --app trylock --label filament-trylock-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#count` | verdict |
+|---|---|---|
+| **blazor-trylock** (autorité) | `0` → `6` → `12` | contrat OK |
+| **filament-trylock-gen** (générateur) | `0` → `6` → `12` | contrat OK |
+
+**Les deux vont à `6` puis `12`, à l'identique.** Le `try` a lancé, le `catch` a intercepté (`+5`) et le corps du
+`lock` a tourné (`+1`) — Blazor exécute le même C# jusqu'à exactement 6 par clic. `git diff -- src/filament-runtime`
+vide. Les témoins `Code/TryCatch.razor`, `Code/Throw.razor`, `Code/Lock.razor` basculent de refusés à compilés ;
+`using` et `goto` restent refusés (pas d'`IDisposable` à disposer, pas d'abaissement de `goto` étiqueté). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°29. Ne pas modifier — ajouter une entrée n°30 pour toute rectification.*
