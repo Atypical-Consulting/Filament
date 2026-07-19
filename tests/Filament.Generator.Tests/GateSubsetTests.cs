@@ -123,7 +123,6 @@ public class GateSubsetTests
     // List<T> outside {indexing, .Count, .Add, .RemoveAt}. `_items.Clear()` is refused by
     // ListMutation's own switch, NOT by Invocation's -- a different rule from ConsoleCall
     // above, which is why both are here.
-    [InlineData("Gate/ListOp.razor", 9, 9, "FIL0001", "unsupported-call")]
     // ---- NOT out-of-subset C#: NOT C# ---------------------------------------
     //
     // DISCLOSED AS A DIFFERENT CATEGORY, not counted as a 21st construct. Section 5 is a
@@ -183,7 +182,6 @@ public class GateSubsetTests
     [InlineData("Gate/CascadingParameterField.razor")]
     [InlineData("Gate/NotCSharp.razor")]
     [InlineData("Gate/JsInterop.razor")]
-    [InlineData("Gate/ListOp.razor")]
     public void EveryGateDiagnostic_IsLocated_AndCarriesOneOfTheSpecsThreeCodes(string fixture)
     {
         var outPath = InRepo();
@@ -634,6 +632,32 @@ public class NegativeControls
 
         Assert.Equal(0, exit);
         Assert.True(wrote, $"do-while should compile now (decision 102):\n{stderr}");
+    }
+
+    /// <summary>
+    /// List&lt;T&gt;.Clear() now COMPILES (decision 106): the last of section 5's List operations. It empties
+    /// the array in place (`items.length = 0`) and the version bump re-runs list(), so @foreach reconciles
+    /// to empty. It used to be refused [unsupported-call] @ Gate/ListOp.razor (9,9).
+    /// </summary>
+    [Fact]
+    public void ListClear_CompilesToLengthZero()
+    {
+        var js = Compiles(
+            """
+            <ul id="list">@foreach (string item in items)
+            {
+                <li @key="item">@item</li>
+            }</ul>
+            <button id="clear" @onclick="Clear">clear</button>
+
+            @code {
+                private System.Collections.Generic.List<string> items = new System.Collections.Generic.List<string>();
+                private void Clear() { items.Clear(); }
+            }
+            """);
+
+        Assert.Contains("items.length = 0;", js);
+        Assert.DoesNotContain("[unsupported-call]", js);
     }
 
     /// <summary>

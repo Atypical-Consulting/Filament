@@ -294,6 +294,8 @@ public static class Generate
 
     public static string LambdaHandlerToTemp() => ToTemp(RepoPaths.LambdaHandlerRazor, "LambdaHandler");
 
+    public static string ListOpsToTemp() => ToTemp(RepoPaths.ListOpsRazor, "ListOps");
+
     /// <summary>
     /// Emit a fixture from the Unsupported dir (some of which now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the

@@ -1689,7 +1689,7 @@ public sealed class CSharpFrontEnd
         return e.Expression switch
         {
             InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax ma }
-                when ma.Name.Identifier.Text is "Add" or "RemoveAt" => ListReceiver(ma.Expression),
+                when ma.Name.Identifier.Text is "Add" or "RemoveAt" or "Clear" => ListReceiver(ma.Expression),
             AssignmentExpressionSyntax { Left: ElementAccessExpressionSyntax ea } => ListReceiver(ea.Expression),
             _ => null,
         };
@@ -1895,10 +1895,14 @@ public sealed class CSharpFrontEnd
                 return [$"{recv}.push({Expr(args[0].Expression)});"];
             case "RemoveAt" when args.Count == 1:
                 return [$"{recv}.splice({Expr(args[0].Expression)}, 1);"];
+            case "Clear" when args.Count == 0:
+                // Empty the array IN PLACE (rows.js maps a List<T> to a live array; length = 0 clears it),
+                // then MutatedList's version bump re-runs the list() -- so @foreach reconciles to empty.
+                return [$"{recv}.length = 0;"];
             default:
                 Refuse("unsupported-call",
                     $"'{Trunc(inv.ToString())}' is not one of the List<T> operations in the subset. Section 5 " +
-                    "admits indexing, .Count, .Add and .RemoveAt. Refusing to emit.",
+                    "admits indexing, .Count, .Add, .RemoveAt and .Clear. Refusing to emit.",
                     inv.SpanStart);
                 return [];
         }

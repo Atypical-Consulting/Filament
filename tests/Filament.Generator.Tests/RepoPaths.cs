@@ -120,6 +120,11 @@ public static class RepoPaths
 
     /// <summary>The lambda-handler SPEC (decisions 51/105). Never edited to make a gate pass.</summary>
     public static string LambdaHandlerAnswerKey => Path.Combine(Root, "samples", "LambdaHandler", "lambdahandler.js");
+
+    public static string ListOpsRazor => Path.Combine(Root, "baseline", "ListOps.Blazor", "App.razor");
+
+    /// <summary>The List.Clear() SPEC (decisions 51/106). Never edited to make a gate pass.</summary>
+    public static string ListOpsAnswerKey => Path.Combine(Root, "samples", "ListOps", "listops.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
