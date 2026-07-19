@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.16.0';   // 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.17.0';   // 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -382,6 +382,14 @@ const APPS = {
   stringattrs: {
     readySelector: '#toggle',
     observeSelector: '#link',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #toggle and asserts a boolean `hidden` (present/absent) plus
+  // reactive string `role`/`style`/`data-count` (data-* prefix) on #s all track state, against Blazor's
+  // own rendered DOM. The measurement of the attribute-allowlist widening (BENCH n°22).
+  moreattrs: {
+    readySelector: '#toggle',
+    observeSelector: '#s',
     scenarios: [],
   },
   // Correctness-only: verifyContract clicks #toggle and asserts a MULTI-NODE @if body mounts/unmounts
@@ -1730,6 +1738,36 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         if (out.observed.after.href !== '/b') out.problems.push(`#link href after #toggle is "${out.observed.after.href}", expected "/b"`);
         if (out.observed.after.title !== 'second') out.problems.push(`#link title after #toggle is "${out.observed.after.title}", expected "second"`);
         if (out.observed.after.aria !== 'two') out.problems.push(`#link aria-label after #toggle is "${out.observed.after.aria}", expected "two"`);
+        return out;
+      });
+    }
+
+    if (app === 'moreattrs') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#toggle') || !document.querySelector('#s')) {
+          out.problems.push('missing required element: #toggle/#s'); return out;
+        }
+        const s = document.querySelector('#s');
+        const snap = () => ({
+          hidden: s.hasAttribute('hidden'), role: s.getAttribute('role'),
+          style: s.getAttribute('style'), data: s.getAttribute('data-count'),
+        });
+        out.observed.initial = snap();
+        const i = out.observed.initial;
+        if (i.hidden !== true || i.role !== 'alert' || i.style !== 'color: red' || i.data !== '1') {
+          out.problems.push(`#s initial is ${JSON.stringify(i)}, expected {hidden:true,role:"alert",style:"color: red",data:"1"}`);
+          return out;
+        }
+        document.querySelector('#toggle').click();
+        out.observed.after = snap();
+        const a = out.observed.after;
+        // THE MEASUREMENT: boolean `hidden` goes present->absent, and role/style/data-count track state,
+        // against Blazor's OWN rendered DOM. A stale value (or a `hidden="false"` instead of removal) shows here.
+        if (a.hidden !== false) out.problems.push(`#s hidden after #toggle is ${a.hidden}, expected false (attribute removed)`);
+        if (a.role !== 'status') out.problems.push(`#s role after #toggle is "${a.role}", expected "status"`);
+        if (a.style !== 'color: blue') out.problems.push(`#s style after #toggle is "${a.style}", expected "color: blue"`);
+        if (a.data !== '2') out.problems.push(`#s data-count after #toggle is "${a.data}", expected "2"`);
         return out;
       });
     }

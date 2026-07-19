@@ -3476,3 +3476,73 @@ C# — l'abaissement est **mesuré**, pas raisonné.
 ---
 
 *Fin de l'entrée n°21. Ne pas modifier — ajouter une entrée n°22 pour toute rectification.*
+
+---
+
+## Entrée n°22 — 2026-07-19 — Phase 4 : l'élargissement des LISTES BLANCHES d'attributs (booléen `hidden` + chaîne `role`/`style`/`data-*`) mesuré contre Blazor (CORRECTION)
+
+**Les réserves « autres noms » des n°14/n°16 fermées** (décision #103) : le booléen `hidden` (+`required`) rejoint
+`BooleanAttributes` (présence/absence, comme `disabled`), et les noms chaîne `role`/`style` + le **préfixe `data-*`**
+rejoignent la liste blanche des attributs chaîne réactifs. Comme la récolte et l'émission sont **agnostiques au
+nom** (n°95/n°97), les deux allowlists sont des changements d'allowlist ; `data-*` est admis par PRÉFIXE (tout nom
+`data-*` porte une valeur chaîne, sûr à composer). Générateur seul, **runtime INCHANGÉ**. Tranche combinée
+booléen+chaîne. Artefact **fabriqué et mesuré**.
+
+### Ce qui est mesuré, et pourquoi c'est le générateur
+
+`baseline/MoreAttrs.Blazor` : `<span id="s" hidden="@hid" role="@r" style="@st" data-count="@d">`. Le
+`BuildRenderTree` (n°64) confirme que Blazor traite `hidden` (bool) comme un attribut booléen présence/absence et
+`role`/`style`/`data-count` (chaînes) comme des attributs chaîne. `hidden` compile en
+`setAttr(el, 'hidden', hid.value ? '' : null)` (le ternaire présence/absence, n°95) ; les trois autres en
+`setAttr(el, nom, x.value)` (l'émission composée, n°94/n°97). Les quatre sont réactifs (lus par le template,
+assignés dans `Toggle`) → effets ; `Toggle` écrit quatre champs → `batch()`. `value` reste délibérément exclu
+(garde `@bind` refusé).
+
+### Environnement
+
+- macOS (Darwin 25.5.0, arm64). **.NET SDK 10.0.301**. **Playwright / Chromium 150.0.7871.127**, headless.
+  **`HARNESS_VERSION` 1.17.0** — voir la réserve. Blazor Release, `InvariantGlobalization=true`.
+
+### Protocole
+
+Correction seulement (mode `--contract-only`). La branche `moreattrs` de `verifyContract` lit `#s` : `hidden` via
+`hasAttribute`, `role`/`style`/`data-count` via `getAttribute`. Initial `{hidden:true, role:"alert", style:"color:
+red", data:"1"}`, clique `#toggle`, exige `{hidden:false, role:"status", style:"color: blue", data:"2"}`. Le
+`hidden:false` mesure le RETRAIT de l'attribut (pas un `hidden="false"`).
+
+### Commande pour rejouer
+
+```
+(cd bench/harness && npm ci && npx playwright install chromium)
+dotnet publish baseline/MoreAttrs.Blazor -c Release -o bench/publish/blazor-moreattrs
+./bench/build-filament.sh filament-moreattrs-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-moreattrs/wwwroot --app moreattrs --label blazor-moreattrs       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-moreattrs-gen   --app moreattrs --label filament-moreattrs-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#s` hidden/role/style/data-count : initial → `#toggle` | verdict |
+|---|---|---|
+| **blazor-moreattrs** (autorité) | `présent·alert·color: red·1` → `absent·status·color: blue·2` | contrat OK |
+| **filament-moreattrs-gen** (générateur) | `présent·alert·color: red·1` → `absent·status·color: blue·2` | contrat OK |
+
+**Les deux rendent à l'identique.** Le booléen `hidden` passe présent→absent et les trois attributs chaîne
+(dont le nom à préfixe `data-count`) suivent l'état — la généralisation des deux listes blanches est **mesurée**.
+
+### Ce que cette entrée N'établit PAS, et ses réserves
+
+- **CORRECTION seulement**, aucun C1/C3/C4.
+- **`HARNESS_VERSION` 1.16.0 → 1.17.0, DIVULGUÉ.** `bench.mjs` a changé (branche `moreattrs` + entrée `APPS`).
+- **RUNTIME INCHANGÉ.** `setAttr` prend n'importe quel nom ; l'admission n'a touché QUE les allowlists (+ le
+  prédicat de préfixe `data-*`). `git diff -- src/filament-runtime` est vide.
+- **`value` EXCLU.** `value` reste hors des listes blanches, gardant le `value=` lowered de `@bind` refusé. Les
+  témoins de refus ont migré : `hidden→readonly` (`BooleanNotAllowed`), `role→placeholder` (`DynamicRole`,
+  `MixedNonAllowed`), toujours refusés à `(1,12)`.
+- **FAIBLE NOUVEAUTÉ, DIVULGUÉE.** Aucune forme d'émission nouvelle — preuve mesurée que les deux listes blanches
+  se généralisent. Restent différés : `value` (pour @bind), et tout autre nom non mesuré. §8 inchangé : RADICAL
+  reste « ni éliminée ni établie ».
+
+---
+
+*Fin de l'entrée n°22. Ne pas modifier — ajouter une entrée n°23 pour toute rectification.*
