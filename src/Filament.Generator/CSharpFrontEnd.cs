@@ -270,6 +270,7 @@ public sealed class CSharpFrontEnd
     {
         public string Js = "";
         public bool Reactive;
+        public bool IsFloat;   // the slot's expression is float-typed -> the template must format it (decision 113)
     }
 
     // ---- the public surface the template compiler consumes ------------------
@@ -319,6 +320,11 @@ public sealed class CSharpFrontEnd
     /// (decision 57), never from what the text looks like.
     /// </summary>
     public bool SlotIsReactive(IntermediateNode node) => Get(node).Reactive;
+
+    /// <summary>The slot's expression is float-typed. A float VALUE in JS is a Math.fround'd double whose bare
+    /// coercion (`node.data = x`) would print the DOUBLE string, not C#'s float string (0.1f -> "0.1", not
+    /// "0.10000000149011612"). So the template formats a float display through its __f32 helper (decision 113).</summary>
+    public bool SlotIsFloat(IntermediateNode node) => Get(node).IsFloat;
 
     /// <summary>What to emit for a container whose children held template C#, in order.</summary>
     /// <summary>
@@ -1158,6 +1164,7 @@ public sealed class CSharpFrontEnd
     {
         SpecialType.System_Int32 => "0",
         SpecialType.System_Int64 => "0n",   // long's JS home is BigInt (decision 112); default(long) is 0L -> 0n
+        SpecialType.System_Single => "0",   // default(float) is 0f -> 0 (exactly representable; decision 113)
         SpecialType.System_Double => "0",
         SpecialType.System_Boolean => "false",
         SpecialType.System_String => "null",
@@ -1453,7 +1460,12 @@ public sealed class CSharpFrontEnd
         foreach (var node in slots)
         {
             var e = SlotSyntax(node);
-            _slots[node] = new Slot { Js = Expr(e), Reactive = IsReactive(e) };
+            _slots[node] = new Slot
+            {
+                Js = Expr(e),
+                Reactive = IsReactive(e),
+                IsFloat = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Single,
+            };
         }
     }
 
@@ -2020,6 +2032,14 @@ public sealed class CSharpFrontEnd
         var ti = _model.GetTypeInfo(e);
         var from = ti.Type?.SpecialType;
         var to = ti.ConvertedType?.SpecialType;
+
+        // FLOAT arithmetic rounds to single precision at EVERY operation (decision 113): C#'s float/float is
+        // computed then rounded to float32, and `(a+b)*c` rounds the inner sum first. Math.fround around each
+        // arithmetic op reproduces that exactly. Only OPERATIONS are wrapped -- a read or literal is already a
+        // frounded value, and a comparison's result is bool, not Single, so this never fires on those.
+        if (from == SpecialType.System_Single && e is BinaryExpressionSyntax or PrefixUnaryExpressionSyntax)
+            return $"Math.fround({js})";
+
         if (from == SpecialType.System_Int32 && to == SpecialType.System_Int64) return $"BigInt({js})";
         if (from == SpecialType.System_Int64 && to == SpecialType.System_Double) return $"Number({js})";
         return js;
@@ -2062,6 +2082,11 @@ public sealed class CSharpFrontEnd
             // Long division: a BARE `/` on BigInt operands. BigInt division truncates toward zero exactly as
             // C#'s long/long, and needs NO Math.trunc (a BigInt has no fractional part). Decision 112.
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.IsLongDivision(b, _model):
+                return $"{Expr(b.Left)} / {Expr(b.Right)}";
+
+            // Float division: a bare `/`; the enclosing Expr() wraps this Single-typed op in Math.fround
+            // (round the double quotient to single, exactly C#'s float/float). Decision 113.
+            case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.IsFloatDivision(b, _model):
                 return $"{Expr(b.Left)} / {Expr(b.Right)}";
 
             case BinaryExpressionSyntax b when Filament.Subset.ConstructSubset.JsBinaryOperator(b) is { } op:
@@ -2284,6 +2309,18 @@ public sealed class CSharpFrontEnd
                 long l => $"{l.ToString(inv)}n",
                 _ => Refuse("unsupported-type",
                     $"the numeric literal {Trunc(lit.ToString())} is long-typed but not integral. Refusing to emit.",
+                    lit.SpanStart, "FIL0002"),
+            };
+
+        // A literal in a FLOAT context -> Math.fround of its decimal (decision 113). `3.14f` is the double
+        // NEAREST the single 3.14f; storing it frounded keeps arithmetic in single precision, exactly C#.
+        if (_model.GetTypeInfo(lit).ConvertedType?.SpecialType == SpecialType.System_Single)
+            return lit.Token.Value switch
+            {
+                float f => $"Math.fround({f.ToString(inv)})",       // the float's shortest round-trip: 3.14f -> 3.14
+                int i => $"Math.fround({i.ToString(inv)})",
+                _ => Refuse("unsupported-type",
+                    $"the numeric literal {Trunc(lit.ToString())} is float-typed but not numeric. Refusing to emit.",
                     lit.SpanStart, "FIL0002"),
             };
 

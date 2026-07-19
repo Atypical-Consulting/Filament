@@ -217,6 +217,7 @@ public sealed class TemplateCompiler
     readonly List<string> _attach = [];
     readonly HashSet<string> _used = [];
     readonly List<Diagnostic> _diagnostics = [];
+    bool _needsFloatFormat;   // some @expr is float-typed -> Render emits the __f32 helper (decision 113)
 
     /// <summary>
     /// Every event site the template names, RECORDED during the walk and emitted after
@@ -1594,6 +1595,16 @@ public sealed class TemplateCompiler
 
         var js = _code.SlotJs(expr);
 
+        // A FLOAT value is a Math.fround'd double; its bare coercion would print the DOUBLE string, not C#'s
+        // float string (0.1f -> "0.1", not "0.10000000149011612"). Format it through the module's __f32 helper
+        // (decision 113), which finds the shortest decimal that round-trips through float32 -- exactly what
+        // C#'s float.ToString does. The helper is emitted once, in Render, when any float display exists.
+        if (_code.SlotIsFloat(expr))
+        {
+            _needsFloatFormat = true;
+            js = $"__f32({js})";
+        }
+
         // NOT REACTIVE -> no signal, no effect, no .value: one write, at create time. The
         // source can never change, so an effect around it would be a subscription to nothing --
         // machinery serving machinery, which is the thing this POC refuses. rows.js's @row.Id
@@ -1637,6 +1648,24 @@ public sealed class TemplateCompiler
         sb.Append("// becomes a Signal -- and no user text is spliced anywhere in this file.\n\n");
 
         sb.Append("import { ").Append(string.Join(", ", imports)).Append(" } from '").Append(runtimeSpecifier).Append("';\n\n");
+
+        if (_needsFloatFormat)
+        {
+            // C#'s float.ToString prints the SHORTEST decimal that round-trips through float32 (0.1f -> "0.1",
+            // not the double string "0.10000000149011612"). This reproduces it: fround the value, then try
+            // increasing precision until a candidate round-trips back to the same float32. Emitted (not a
+            // runtime export) so a float display stays generator-only -- the runtime is untouched. Decision 113.
+            sb.Append("// -- float display: shortest decimal that round-trips through float32 (C# float.ToString) --\n");
+            sb.Append("function __f32(x) {\n");
+            sb.Append("  x = Math.fround(x);\n");
+            sb.Append("  if (!isFinite(x) || Number.isInteger(x)) return String(x);\n");
+            sb.Append("  for (let p = 1; p <= 9; p++) {\n");
+            sb.Append("    const s = x.toPrecision(p);\n");
+            sb.Append("    if (Math.fround(Number(s)) === x) return Number(s).toString();\n");
+            sb.Append("  }\n");
+            sb.Append("  return String(x);\n");
+            sb.Append("}\n\n");
+        }
 
         if (module.Count > 0)
         {

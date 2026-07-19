@@ -60,12 +60,11 @@ public class CodeTests
     [InlineData("Constructor.razor", 5, 5, "FIL0001", "unsupported-member")]
     [InlineData("NestedClass.razor", 5, 5, "FIL0001", "unsupported-member")]
     // ---- types outside section 5's list (FIL0002) ---------------------------
-    // long LEFT this list at decision 112 (it compiles now -> TypeLong_NowCompiles): long's JS home is
-    // BigInt -- exact integer display past 2^53 where a double loses precision, and BigInt division
-    // truncates toward zero exactly as C#'s long/long. float/decimal/DateTime STAY refused (JS has no
-    // faithful representation: float display would need a single-precision formatter, decimal has no
-    // native type, DateTime no BCL).
-    [InlineData("TypeFloat.razor", 5, 13, "FIL0002", "unsupported-type")]
+    // long LEFT this list at decision 112 and float at decision 113 (both compile now -> TypeLong_NowCompiles /
+    // TypeFloat_NowCompiles). long -> BigInt (exact past 2^53). float -> Math.fround per operation + a shortest-
+    // round-trip-through-float32 display formatter (the emitted __f32), which reproduces C#'s float.ToString
+    // exactly. decimal/DateTime STAY refused (JS has no faithful representation: decimal has no native type,
+    // DateTime no BCL).
     [InlineData("TypeDecimal.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeObject.razor", 5, 13, "FIL0002", "unsupported-type")]
     [InlineData("TypeDict.razor", 5, 13, "FIL0002", "unsupported-type")]
@@ -209,6 +208,28 @@ public class CodeTests
             Assert.True(exit == 0, $"a long field should compile now (decision 112):\n{stderr}");
             var js = File.ReadAllText(outPath);
             Assert.Contains("5n", js);                       // `long big = 5;` -> a BigInt literal
+            Assert.DoesNotContain("[unsupported-type]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A `float` field now COMPILES (decision 113, closing the TypeFloat deferral): float's JS home is a
+    /// Math.fround'd number -- every arithmetic op rounds to single precision, and a float DISPLAY goes through
+    /// the emitted __f32 helper (shortest decimal that round-trips through float32), reproducing C#'s
+    /// float.ToString exactly. It used to be refused [unsupported-type] @ (5,13). decimal/DateTime STAY refused.
+    /// </summary>
+    [Fact]
+    public void TypeFloat_NowCompiles_ToAFroundedField()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeFloat.razor"), outPath);
+
+            Assert.True(exit == 0, $"a float field should compile now (decision 113):\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains("Math.fround(", js);             // the float literal/arithmetic is frounded
             Assert.DoesNotContain("[unsupported-type]", js);
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }

@@ -137,6 +137,14 @@ public static class ConstructSubset
         b.IsKind(SyntaxKind.DivideExpression) &&
         model.GetTypeInfo(b).Type?.SpecialType == SpecialType.System_Int64;
 
+    /// <summary>Float division: a DivideExpression whose RESULT type is float (Single). Faithful in JS via
+    /// `Math.fround(a / b)` -- the division runs in double then rounds to single, exactly C#'s float/float.
+    /// The Math.fround wrap is applied by the generic float-arithmetic rule (CSharpFrontEnd wraps every
+    /// Single-typed operation), so admission here only has to bless the `/`. TYPE-dependent like the others.</summary>
+    public static bool IsFloatDivision(BinaryExpressionSyntax b, SemanticModel model) =>
+        b.IsKind(SyntaxKind.DivideExpression) &&
+        model.GetTypeInfo(b).Type?.SpecialType == SpecialType.System_Single;
+
     /// <summary>`new Exception(...)` (or a subtype) — the ONE object creation in §5, for `throw`. It maps
     /// to `new Error(...)` (CSharpFrontEnd). Every other `new` stays refused: a Filament module has no BCL,
     /// so `new StringBuilder()` etc. have nothing to become.</summary>
@@ -168,9 +176,11 @@ public static class ConstructSubset
             if (IsFaithfulDivision(bin, model)) return null;               // double result: verbatim `/`
             if (IsIntegerDivision(bin, model)) return null;                // int result: Math.trunc (CSharpFrontEnd)
             if (IsLongDivision(bin, model)) return null;                   // long result: verbatim `/` on BigInt (truncates)
-            return new Refusal("FIL0001", "unsupported-expression",         // none of int/long/double: refused
-                $"{Describe(bin)} divides operands whose result is not int, long or double; only those three " +
-                "numeric divisions are in section 5 (int via Math.trunc, long and double verbatim). Refusing to emit.");
+            if (IsFloatDivision(bin, model)) return null;                  // float result: `/` under Math.fround (CSharpFrontEnd)
+            return new Refusal("FIL0001", "unsupported-expression",         // none of int/long/float/double: refused
+                $"{Describe(bin)} divides operands whose result is not int, long, float or double; only those four " +
+                "numeric divisions are in section 5 (int via Math.trunc, float under Math.fround, long and double " +
+                "verbatim). Refusing to emit.");
         }
 
         var supported = e switch
