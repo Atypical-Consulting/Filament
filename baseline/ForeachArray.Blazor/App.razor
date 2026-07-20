@@ -1,0 +1,24 @@
+@* @foreach over a reassigned T[] (BENCH n°43, decision 124): a @foreach over an ARRAY field is admitted
+   when that array is a signal -- read by the @foreach AND reassigned wholesale (decision 124). Unlike a
+   List<T> (whose reactivity is a version signal, rows.js decision 1), an array has no version; its OWN
+   signal is what list() subscribes to: `() => { items.value; return items.value; }`. `items` starts
+   [1,2,3]; #add REASSIGNS it to [3,4,1,5,2]; list() reconciles by @key="n" -- inserting 4 and 5, moving
+   1/2/3 into the new order -- exactly as Blazor's keyed diff does. So #list text goes "123" -> "34152". *@
+
+<ul id="list">
+@foreach (int n in items)
+{
+    <li @key="n">@n</li>
+}
+</ul>
+
+<button id="add" @onclick="Add">add</button>
+
+@code {
+    private int[] items = new[] { 1, 2, 3 };
+
+    private void Add()
+    {
+        items = new[] { 3, 4, 1, 5, 2 };
+    }
+}
