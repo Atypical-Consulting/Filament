@@ -185,6 +185,11 @@ public static class RepoPaths
 
     /// <summary>The Dictionary-as-Map SPEC (decisions 51/118). Never edited to make a gate pass.</summary>
     public static string DictLookupAnswerKey => Path.Combine(Root, "samples", "DictLookup", "dictlookup.js");
+
+    public static string AsyncClickRazor => Path.Combine(Root, "baseline", "AsyncClick.Blazor", "App.razor");
+
+    /// <summary>The async/await SPEC (decisions 51/119). Never edited to make a gate pass.</summary>
+    public static string AsyncClickAnswerKey => Path.Combine(Root, "samples", "AsyncClick", "asyncclick.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
