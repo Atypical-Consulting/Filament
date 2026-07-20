@@ -576,6 +576,52 @@ public class NegativeControls
         Assert.Contains("never reassigned", stderr);
     }
 
+    /// <summary>
+    /// Decision 126: LINQ ordering/paging over a List compiles. OrderBy sorts a copy by a numeric key, Skip/Take
+    /// slice, First terminates the sequence in a scalar.
+    /// </summary>
+    [Fact]
+    public void Section5_LinqOrderingAndPaging_CompilesClean()
+    {
+        var (exit, stderr, js) = CompileEmitting(
+            """
+            <p><span id="v">@v</span></p>
+            <button id="go" @onclick="Go">go</button>
+
+            @code {
+                private List<int> _nums = new List<int> { 3, 1, 2 };
+                private int v = 0;
+                private void Go() { v = _nums.OrderBy(x => x).Skip(1).Take(1).First(); }
+            }
+            """);
+        Assert.True(exit == 0, "LINQ ordering/paging over a List is in the subset (decision 126):\n" + stderr);
+        Assert.Contains(".sort((__a, __b) =>", js);   // OrderBy
+        Assert.Contains(".slice(", js);               // Skip / Take
+    }
+
+    /// <summary>
+    /// Decision 126's boundary: OrderBy's comparator SUBTRACTS keys, so a NON-numeric key selector is refused --
+    /// `"a" - "b"` is NaN, a silent mis-sort. (Contrast Section5_LinqOrderingAndPaging, whose key is int.)
+    /// </summary>
+    [Fact]
+    public void OrderByAStringKey_IsRefused()
+    {
+        var (exit, stderr, wrote) = Compile(
+            """
+            <p><span id="v">@v</span></p>
+            <button id="go" @onclick="Go">go</button>
+
+            @code {
+                private List<string> _names = new List<string> { "b", "a" };
+                private string v = "";
+                private void Go() { v = _names.OrderBy(x => x).First(); }
+            }
+            """);
+        Assert.True(exit != 0 && !wrote, "OrderBy by a string key subtracts strings (NaN) and must be refused");
+        Assert.Contains("unsupported-call", stderr);
+        Assert.Contains("OrderBy", stderr);
+    }
+
     /// <summary>Section 5's Razor: @oninput, alongside @onclick.</summary>
     [Fact]
     public void Section5_OnInput_CompilesClean()

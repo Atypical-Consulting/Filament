@@ -2661,11 +2661,39 @@ public sealed class CSharpFrontEnd
             ("First", 0) => $"{recv}[0]",
             ("First", 1) => $"{recv}.find({Lambda(args[0])})",
             ("Last", 0) => $"{recv}.at(-1)",
+            // Ordering + paging (decision 126), each producing a SEQUENCE (observed via a scalar terminal like
+            // First/ElementAt, or a @foreach). OrderBy/OrderByDescending sort a COPY (`[...]` so the source array is
+            // never mutated) by a NUMERIC key selector -- the comparator SUBTRACTS keys, so the key must be int/
+            // double; JS Array.sort is STABLE (ES2019), matching LINQ's stable OrderBy. Skip/Take are slices;
+            // Reverse copies-then-reverses; ElementAt indexes. A non-numeric key selector is refused (deferred).
+            ("OrderBy", 1) when NumericKeySelector(args[0]) =>
+                $"[...{recv}].sort((__a, __b) => ({Lambda(args[0])})(__a) - ({Lambda(args[0])})(__b))",
+            ("OrderByDescending", 1) when NumericKeySelector(args[0]) =>
+                $"[...{recv}].sort((__a, __b) => ({Lambda(args[0])})(__b) - ({Lambda(args[0])})(__a))",
+            ("Skip", 1) => $"{recv}.slice({Expr(args[0].Expression)})",
+            ("Take", 1) => $"{recv}.slice(0, {Expr(args[0].Expression)})",
+            ("Reverse", 0) => $"[...{recv}].reverse()",
+            ("ElementAt", 1) => $"{recv}[{Expr(args[0].Expression)}]",
             _ => Refuse("unsupported-call",
                 $"the LINQ operator '{symbol.Name}' (arity {args.Count}) is not in the subset. Section 5 admits " +
-                "Where, Select, Count, Any, All, ToList/ToArray, and the number aggregates Sum/Min/Max/Average/" +
-                "First/Last over a List. Refusing to emit.", inv.SpanStart),
+                "Where, Select, Count, Any, All, ToList/ToArray, the number aggregates Sum/Min/Max/Average/First/" +
+                "Last, and the ordering/paging operators OrderBy/OrderByDescending (numeric key)/Skip/Take/Reverse/" +
+                "ElementAt over a List. Refusing to emit.", inv.SpanStart),
         };
+    }
+
+    // OrderBy(x => key)'s comparator subtracts keys, so the key selector must return int or double (decision 126).
+    // A string / other key is refused: `"a" - "b"` is NaN, a silent mis-sort. Block-bodied selectors are refused too.
+    bool NumericKeySelector(ArgumentSyntax arg)
+    {
+        var body = arg.Expression switch
+        {
+            SimpleLambdaExpressionSyntax l => l.Body as ExpressionSyntax,
+            ParenthesizedLambdaExpressionSyntax l => l.Body as ExpressionSyntax,
+            _ => null,
+        };
+        return body is not null &&
+            _model.GetTypeInfo(body).Type?.SpecialType is SpecialType.System_Int32 or SpecialType.System_Double;
     }
 
     /// <summary>A single-parameter lambda argument to a LINQ operator (decision 116) -> a JS arrow. Its parameter
