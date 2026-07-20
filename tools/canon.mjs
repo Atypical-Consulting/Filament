@@ -4,10 +4,11 @@
  *
  *     canon(minify(generated)) === canon(minify(hand-written))
  *
- * `minify` is EXACTLY build-filament.sh's esbuild (--minify --target=es2022),
- * resolved the same way that script resolves it (`npx --no-install esbuild` from
- * the repo root) and pinned to the same version, because a minifier that renames
- * differently is a comparator that decides differently.
+ * `minify` is EXACTLY build-filament.sh's esbuild (--minify --target=es2022), at the
+ * version pinned in the root package.json, because a minifier that renames differently
+ * is a comparator that decides differently. It runs through esbuild's node API rather
+ * than the CLI: same engine and flags, but no subprocess whose executable is named
+ * differently on every platform. See the note above minify().
  *
  * `canon` renames each IDENTIFIER by ORDER OF FIRST APPEARANCE, so two programs
  * that differ only in naming collapse onto the same token stream. That is the
@@ -74,7 +75,7 @@
  *   node tools/canon.mjs --json <a> <b>    machine-readable verdict
  */
 
-import { execFileSync } from 'node:child_process';
+import { transformSync, version as esbuildVersionString } from 'esbuild';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -89,22 +90,29 @@ const EXPECTED_ESBUILD = '0.28.1';
 // minify — exactly build-filament.sh's esbuild flags for the minified path.
 // ---------------------------------------------------------------------------
 
-// npm ships npx as `npx.cmd` on Windows, and execFileSync resolves the literal name without
-// a shell — so a bare 'npx' is ENOENT there while working everywhere else. Same binary, two
-// filenames. (Not `shell: true`: these arguments include generated paths, and a shell would
-// start interpreting them.)
-const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-
+// Call esbuild through its node API rather than spawning its CLI.
+//
+// The CLI was never portable here. It was reached via `npx`, which on Windows is `npx.cmd`,
+// and since CVE-2024-27980 node refuses to spawn a .cmd without a shell — EINVAL there while
+// working everywhere else. `shell: true` would fix the spawn and break the arguments, which
+// include generated absolute paths that cmd.exe would reinterpret. Spawning the package's
+// own bin doesn't help either: it is a platform-native executable, named differently per
+// platform, not something node can run.
+//
+// transformSync is the same engine, same version, and the same two flags the CLI path used
+// (esbuild only transforms here — there is no --bundle), so the token stream it produces is
+// the one the answer keys were minified with. It also removes a subprocess per comparison,
+// and the last dependency on npx's resolution, which silently meant "whatever happens to be
+// in ~/.npm/_npx" rather than the version pinned in the root package.json.
 export function esbuildVersion() {
-  return execFileSync(NPX, ['--no-install', 'esbuild', '--version'], {
-    cwd: REPO_ROOT, encoding: 'utf8',
-  }).trim();
+  return esbuildVersionString;
 }
 
 export function minify(file) {
-  return execFileSync(NPX, ['--no-install', 'esbuild', resolve(file), '--minify', '--target=es2022'], {
-    cwd: REPO_ROOT, encoding: 'utf8',
-  });
+  return transformSync(readFileSync(resolve(file), 'utf8'), {
+    minify: true,
+    target: 'es2022',
+  }).code;
 }
 
 // ---------------------------------------------------------------------------
