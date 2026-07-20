@@ -1,0 +1,29 @@
+@* @foreach over a reassigned Dictionary (BENCH n°44, decision 125): a @foreach over a Dictionary FIELD is
+   admitted when that Dict is a signal -- read by the @foreach AND reassigned wholesale. A Dictionary maps to a
+   JS Map (decision 118); list() needs an ARRAY, so the source spreads the Map: `() => [...scores.value]` giving
+   [[k,v],...]. The loop variable is a KeyValuePair, materialised as a [k,v] pair: @kvp.Key -> kvp[0] (the stable
+   reconcile key, static), @kvp.Value -> the REACTIVE lookup scores.value.get(kvp[0]).
+
+   THE VALUE MUST BE REACTIVE. list() REUSES a persisting key's row (it never re-runs create), so a frozen kvp[1]
+   would go STALE when that key's value changes, where Blazor re-renders the reused element. This baseline PROVES
+   the reactive lookup: scores starts { a=1, b=2 }; #bump reassigns to { b=20, c=3, a=1 } -- key "b" PERSISTS but
+   its value changes 2 -> 20, "c" is added, "a" persists, and the order becomes b,c,a. So #list text goes
+   "a=1b=2" -> "b=20c=3a=1". Both the value refresh on "b" and the keyed reorder must match Blazor exactly. *@
+
+<ul id="list">
+@foreach (KeyValuePair<string, int> kvp in scores)
+{
+    <li @key="kvp.Key">@kvp.Key=@kvp.Value</li>
+}
+</ul>
+
+<button id="bump" @onclick="Bump">bump</button>
+
+@code {
+    private Dictionary<string, int> scores = new Dictionary<string, int> { { "a", 1 }, { "b", 2 } };
+
+    private void Bump()
+    {
+        scores = new Dictionary<string, int> { { "b", 20 }, { "c", 3 }, { "a", 1 } };
+    }
+}
