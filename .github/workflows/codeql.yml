@@ -30,6 +30,19 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/filament-runtime/package-lock.json
+
+      # Autobuild builds the solution, and examples/FilamentApp needs the built runtime
+      # copied into its wwwroot — without this, autobuild fails on a clean checkout. Same
+      # reason as ci.yml; see the comment there.
+      - name: Build the signals runtime
+        working-directory: src/filament-runtime
+        run: npm ci && npm run build
+
       - name: Cache NuGet packages
         uses: actions/cache@v6
         with:

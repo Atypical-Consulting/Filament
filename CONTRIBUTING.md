@@ -19,6 +19,16 @@ divergence they find in production. When in doubt, refuse.
 
 ## Getting set up
 
+**Build the signals runtime first.** `examples/FilamentApp` copies `dist/filament.js` into its
+`wwwroot` at build time, and `dist/` is gitignored — so on a fresh clone the solution does not
+compile until you've run:
+
+```bash
+cd src/filament-runtime && npm ci && npm run build
+```
+
+Then:
+
 ```bash
 dotnet build Filament.sln
 dotnet test  Filament.sln

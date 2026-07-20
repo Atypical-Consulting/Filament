@@ -45,6 +45,16 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: src/filament-runtime/package-lock.json
+
+      # examples/FilamentApp copies the built runtime into its wwwroot at build time, so the
+      # SOLUTION does not compile on a clean checkout until dist/filament.js exists — and
+      # src/filament-runtime/dist/ is gitignored, being build output. This is exactly the
+      # `npm ci && npm run build` that the csproj's own error message tells you to run.
+      - name: Build the signals runtime
+        working-directory: src/filament-runtime
+        run: npm ci && npm run build
 
       # The repo has no packages.lock.json, so setup-dotnet's `cache: true` (which requires
       # lock files) cannot be used — cache the global NuGet package folder directly instead.
