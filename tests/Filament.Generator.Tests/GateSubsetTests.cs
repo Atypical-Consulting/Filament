@@ -83,7 +83,8 @@ public class GateSubsetTests
     /// </summary>
     [Theory]
     // ---- spec 3 NON-GOALS ---------------------------------------------------
-    [InlineData("Gate/AsyncTask.razor", 6, 13, "FIL0001", "unsupported-modifier")]
+    // Gate/AsyncTask.razor LEFT this list at decision 119: an `async Task` method with `await Task.Delay(n)`
+    // compiles now (-> `async function` + `await new Promise(setTimeout)`; the AsyncTask_NowCompiles test below).
     // Gate/Linq.razor LEFT this list at decision 116: `_items.Where(x => x > 0).Count()` compiles now
     // (-> filter/length; the LinqNowCompiles test below). The still-refused LINQ (GroupBy, Range, …) is
     // covered by Code/Linq.razor (Enumerable.Range -> an IEnumerable local, refused at its type).
@@ -172,7 +173,6 @@ public class GateSubsetTests
     /// with a null span or an invented code fails here the day it is added.
     /// </summary>
     [Theory]
-    [InlineData("Gate/AsyncTask.razor")]
     [InlineData("Gate/GenericMethod.razor")]
     [InlineData("Gate/GenericErasure.razor")]
     [InlineData("Gate/Implements.razor")]

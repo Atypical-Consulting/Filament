@@ -730,7 +730,9 @@ public sealed class TemplateCompiler
         if (inlined.Contains(handler))
         {
             var lines = _code.InlineBody(handler);
-            body = "() => {\n" + string.Join("\n", lines.Select(l => "  " + l)) + "\n}";
+            // An async Task handler inlines to `async () => { … }` so its `await` is legal JS (decision 119).
+            var arrow = _code.IsAsyncHandler(handler) ? "async () => {\n" : "() => {\n";
+            body = arrow + string.Join("\n", lines.Select(l => "  " + l)) + "\n}";
         }
         else
         {

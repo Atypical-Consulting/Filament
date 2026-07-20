@@ -293,6 +293,27 @@ public class CodeTests
     }
 
     /// <summary>
+    /// An `async Task` method with `await Task.Delay(n)` now COMPILES (decision 119): the method emits an
+    /// `async function`, `await` maps to JS's own await, and `Task.Delay(n)` to `new Promise(setTimeout)`. It used
+    /// to be refused [unsupported-modifier] @ (6,13). `await` in a NON-async method stays refused (Code/Await.razor).
+    /// </summary>
+    [Fact]
+    public void AsyncTask_NowCompiles_ToAnAsyncFunction()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Gate", "AsyncTask.razor"), outPath);
+
+            Assert.True(exit == 0, $"an async Task method should compile now (decision 119):\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains("new Promise((resolve) => setTimeout(resolve, 1))", js);   // Task.Delay(1)
+            Assert.DoesNotContain("[unsupported-modifier]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
     /// A LINQ chain over a List now COMPILES (decision 116): `_items.Where(x => x > 0).Count()` lowers to
     /// `_items.filter(x => x > 0).length` -- the source List is already a JS array, so eager array methods are
     /// faithful to a LINQ chain ending in a scalar. It used to be refused [unsupported-call]. Enumerable.Range and

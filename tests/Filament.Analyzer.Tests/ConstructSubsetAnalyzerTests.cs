@@ -91,10 +91,11 @@ public class ConstructSubsetAnalyzerTests
         => await Body("        int x = i / 2;").RunAsync();
 
     [Fact]
-    public async Task Await_IsFlagged()
+    public async Task Await_IsNotFlagged()
+        // await entered §5 at decision 119 (in an async method) -> the construct analyzer no longer flags it.
         => await Component(
             "    async System.Threading.Tasks.Task M() {\n" +
-            "        var x = {|FIL0001:await System.Threading.Tasks.Task.FromResult(0)|};\n" +
+            "        await System.Threading.Tasks.Task.Delay(1);\n" +
             "    }").RunAsync();
 
     [Fact]

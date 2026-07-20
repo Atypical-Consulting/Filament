@@ -119,6 +119,7 @@ public class ConstructSubsetTests
     [InlineData("dbl / i")]     // double / int    -> double result: faithful
     [InlineData("i / dbl")]     // int / double    -> double result: faithful
     [InlineData("i / 2")]       // int / int       -> int result: faithful via Math.trunc (decision 101)
+    [InlineData("await System.Threading.Tasks.Task.FromResult(0)")]   // await -> JS await (decision 119; async-context is a generator guard)
     public void SupportedExpressionForms_ClassifyToNull(string exprSrc)
     {
         var (e, m) = ParseExpr(exprSrc);
@@ -126,7 +127,6 @@ public class ConstructSubsetTests
     }
 
     [Theory]
-    [InlineData("await System.Threading.Tasks.Task.FromResult(0)")]   // await
     [InlineData("(long)i")]                                            // cast that is not int-from-double
     [InlineData("new int[0]")]                                        // array creation
     public void UnsupportedExpressionForms_ClassifyToUnsupportedExpression(string exprSrc)

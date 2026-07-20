@@ -254,6 +254,7 @@ public sealed class CSharpFrontEnd
         public int At;
         public int CallUses;
         public List<MethodInfo> Callees = [];
+        public bool IsAsync;   // `async Task` method -> emitted `async function` (decision 119)
     }
 
     /// <summary>A `[Parameter]` component parameter: a scalar value supplied by the parent at the
@@ -1212,13 +1213,19 @@ public sealed class CSharpFrontEnd
 
     void Method(MethodDeclarationSyntax method)
     {
+        // `async` is admitted (decision 119): an `async Task` method emits an `async function`, and `await`
+        // maps to JS's own await. Every OTHER non-access modifier stays refused.
+        var isAsync = false;
         foreach (var mod in method.Modifiers)
+        {
+            if (mod.IsKind(SyntaxKind.AsyncKeyword)) { isAsync = true; continue; }
             if (!IsAllowedModifier(mod))
             {
                 Refuse("unsupported-modifier",
                     $"'{mod.Text}' on a method is not in the subset. Refusing to emit.", mod.SpanStart);
                 return;
             }
+        }
 
         // USER-DEFINED GENERICS ARE A SPEC 3 NON-GOAL, AND THIS GUARD IS ON THE DECLARATION
         // RATHER THAN ON THE TYPES IT HAPPENS TO MENTION. Decision 41's pattern, measured:
@@ -1249,7 +1256,20 @@ public sealed class CSharpFrontEnd
         }
 
         var returnType = _model.GetTypeInfo(method.ReturnType).Type;
-        if (returnType is { SpecialType: not SpecialType.System_Void })
+        if (isAsync)
+        {
+            // An async method must return a NON-GENERIC Task (a void-like async): `async function` returns a
+            // Promise JS discards, exactly as a fire-and-forget Blazor handler. A value-returning `async Task<T>`
+            // is deferred -- the awaiting caller would need the value, which no subset construct consumes.
+            if (returnType?.ToDisplayString() != "System.Threading.Tasks.Task")
+            {
+                Refuse("unsupported-type",
+                    $"async method '{method.Identifier.Text}' must return a non-generic Task; a value-returning " +
+                    "async Task<T> is deferred. Refusing to emit.", method.ReturnType.SpanStart);
+                return;
+            }
+        }
+        else if (returnType is { SpecialType: not SpecialType.System_Void })
             if (!CheckType(returnType, method.ReturnType.SpanStart)) return;
 
         var info = new MethodInfo
@@ -1259,6 +1279,7 @@ public sealed class CSharpFrontEnd
             Syntax = method,
             Symbol = _model.GetDeclaredSymbol(method)!,
             At = method.Identifier.SpanStart,
+            IsAsync = isAsync,
         };
 
         foreach (var p in method.ParameterList.Parameters)
@@ -1591,7 +1612,7 @@ public sealed class CSharpFrontEnd
             // style one: C# methods are mutually visible regardless of declaration order, and
             // only a function DECLARATION hoists.
             if (lines.Count > 0 && lines[^1].Length > 0) lines.Add("");
-            lines.Add($"function {m.Js}({string.Join(", ", m.Parameters)}) {{");
+            lines.Add($"{(m.IsAsync ? "async " : "")}function {m.Js}({string.Join(", ", m.Parameters)}) {{");
             foreach (var l in _bodies[m.Name]) lines.Add("  " + l);
             lines.Add("}");
         }
@@ -1647,6 +1668,23 @@ public sealed class CSharpFrontEnd
     /// one write gets the batch.
     /// </summary>
     public bool MayWriteMoreThanOnce(string method) => CountWrites(_methodsByName[method], []) > 1;
+
+    /// <summary>An `async Task` handler (decision 119): when inlined into a listen(), its arrow must be
+    /// `async () => { … }` so the `await` inside is legal JS.</summary>
+    public bool IsAsyncHandler(string method) => _methodsByName.TryGetValue(method, out var m) && m.IsAsync;
+
+    // True when the nearest enclosing method or lambda is `async` -- the only place `await` is valid (decision 119).
+    static bool InAsyncContext(SyntaxNode node)
+    {
+        foreach (var a in node.Ancestors())
+            switch (a)
+            {
+                case MethodDeclarationSyntax m: return m.Modifiers.Any(x => x.IsKind(SyntaxKind.AsyncKeyword));
+                case ParenthesizedLambdaExpressionSyntax pl: return pl.Modifiers.Any(x => x.IsKind(SyntaxKind.AsyncKeyword));
+                case SimpleLambdaExpressionSyntax sl: return sl.Modifiers.Any(x => x.IsKind(SyntaxKind.AsyncKeyword));
+            }
+        return false;
+    }
 
     int CountWrites(MethodInfo m, HashSet<string> seen)
     {
@@ -2239,6 +2277,16 @@ public sealed class CSharpFrontEnd
             case ImplicitArrayCreationExpressionSyntax iac:
                 return ArrayLiteral(iac.Initializer);
 
+            case AwaitExpressionSyntax aw:
+                // `await x` -> JS's own `await x` (decision 119). Valid ONLY inside an async method/lambda: in a
+                // non-async context it is invalid C# (CS4033), and `await` in a non-async JS function is a syntax
+                // error too -- so refuse it here (Code/Await.razor: `await` in a `void` method).
+                if (!InAsyncContext(aw))
+                    return Refuse("unsupported-expression",
+                        "`await` outside an async method is not valid C# and has no non-async JS form. Refusing to emit.",
+                        aw.SpanStart);
+                return $"await {Expr(aw.Expression)}";
+
             case InterpolatedStringExpressionSyntax s:
                 return Interpolated(s);
 
@@ -2396,6 +2444,12 @@ public sealed class CSharpFrontEnd
         // TryGetValue) is refused -- a Dictionary is admitted READ-ONLY, so a mutation cannot slip through.
         if (symbol is not null && Filament.Subset.TypeSubset.DictionaryTypes(symbol.ContainingType).Key is not null)
             return DictionaryMethod(inv, symbol);
+
+        // Task.Delay(ms) -> a Promise that resolves after `ms` ms (decision 119): the one Task member in §5, for
+        // `await Task.Delay(n)`. Every other Task API (Run, WhenAll, ContinueWith, …) stays refused below.
+        if (symbol is { Name: "Delay" } && symbol.ContainingType?.ToDisplayString() == "System.Threading.Tasks.Task"
+            && inv.ArgumentList.Arguments.Count == 1)
+            return $"new Promise((resolve) => setTimeout(resolve, {Expr(inv.ArgumentList.Arguments[0].Expression)}))";
 
         // Spec 5: "calls to methods declared in the same component". Anything else --
         // Console.WriteLine, DateTime.Now, an extension method -- has no meaning in a Filament

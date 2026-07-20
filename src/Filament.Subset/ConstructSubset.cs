@@ -212,6 +212,7 @@ public static class ConstructSubset
             // no initialiser (`new int[n]`) is NOT admitted -- it needs an n-defaults array, deferred.
             ArrayCreationExpressionSyntax ac => ac.Initializer is not null && IsArrayCreation(ac.Type.ElementType, model),
             ImplicitArrayCreationExpressionSyntax => true,
+            AwaitExpressionSyntax => true,   // `await x` -> JS's own `await x` (inside an async method). Decision 119.
             _ => false,
         };
         if (supported) return null;
