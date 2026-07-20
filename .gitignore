@@ -69,6 +69,7 @@ samples/filament-linqaggregate-gen/App.g.js
 samples/filament-sizedarray-gen/App.g.js
 samples/filament-asyncresult-gen/App.g.js
 samples/filament-foreacharray-gen/App.g.js
+samples/filament-foreachdict-gen/App.g.js
 
 # examples/FilamentApp: emitted/copied at build, never committed (same rule as samples/*.g.js).
 examples/FilamentApp/wwwroot/App.g.js

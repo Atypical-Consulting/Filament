@@ -332,6 +332,8 @@ public static class Generate
 
     public static string ForeachArrayToTemp() => ToTemp(RepoPaths.ForeachArrayRazor, "ForeachArray");
 
+    public static string ForeachDictToTemp() => ToTemp(RepoPaths.ForeachDictRazor, "ForeachDict");
+
     /// <summary>
     /// Emit a fixture from the Unsupported dir (some of which now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the
