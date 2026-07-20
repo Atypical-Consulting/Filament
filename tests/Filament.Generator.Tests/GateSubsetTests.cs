@@ -94,7 +94,10 @@ public class GateSubsetTests
     [InlineData("Gate/Implements.razor", 1, 1, "FIL0003", "unsupported-directive")]
     [InlineData("Inject.razor", 1, 1, "FIL0003", "unsupported-directive")]
     [InlineData("Page.razor", 1, 1, "FIL0003", "unsupported-directive")]
-    [InlineData("Gate/Typeparam.razor", 1, 1, "FIL0003", "unsupported-directive")]
+    // Gate/Typeparam.razor LEFT this list at decision 135: @typeparam compiles now. A type parameter is a
+    // COMPILE-TIME constraint, and this compiler resolves every composition at compile time into a scope
+    // where the value is the parent's own expression -- so generics erase, and JS has no type to carry.
+    // Moved to Supported/Gate/ and pinned by Typeparam_NowCompiles_WithTheTypeErased below.
     [InlineData("Gate/Forms.razor", 1, 1, "FIL0003", "unresolved-component")]
     // Gate/EventCallback.razor STAYS on this list at decision 130. EventCallback entered the subset
     // in exactly ONE position -- a [Parameter] a composing parent bound to one of its own methods --
@@ -191,7 +194,6 @@ public class GateSubsetTests
     [InlineData("Gate/GenericMethod.razor")]
     [InlineData("Gate/GenericErasure.razor")]
     [InlineData("Gate/Implements.razor")]
-    [InlineData("Gate/Typeparam.razor")]
     [InlineData("Gate/Forms.razor")]
     [InlineData("Gate/EventCallback.razor")]
     [InlineData("Gate/EventCallbackUnbound.razor")]
@@ -389,6 +391,28 @@ public class NegativeControls
                 private int count = 0;
             }
             """);
+
+    /// <summary>
+    /// @typeparam COMPILES NOW (decision 135), and the type is ERASED. It left the refused list because a
+    /// type parameter is a COMPILE-TIME constraint on what may be substituted, and this compiler resolves
+    /// every composition at compile time into a scope where the value is the parent's own translated
+    /// expression -- so there is no type left to carry, and JavaScript has nowhere to carry one anyway.
+    ///
+    /// The fixture travelled to Supported/Gate/ when it flipped, so the folder name never lies about a
+    /// fixture the generator accepts. Standalone (no parent) it declares no generic parameter, so nothing
+    /// here depends on a binding: this pins that the DIRECTIVE alone no longer refuses the file.
+    /// </summary>
+    [Fact]
+    public void Typeparam_NowCompiles_WithTheTypeErased()
+    {
+        var js = File.ReadAllText(Generate.ToTempFixture("Gate/Typeparam.razor"));
+
+        // `currentCount` is read by the template but never assigned, so decision 67's conjunction leaves it
+        // a plain binding rather than a signal -- unrelated to generics, and asserted as MEASURED.
+        Assert.Contains("const currentCount = 0;", js);
+        Assert.DoesNotContain("TItem", js);        // erased -- no type survives into the module
+        Assert.DoesNotContain("typeparam", js);
+    }
 
     /// <summary>Section 5's List&lt;T&gt;: indexing, .Count, .Add, .RemoveAt -- all four.</summary>
     [Fact]

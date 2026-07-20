@@ -4903,3 +4903,43 @@ portée, ce qui est le vrai reproche. §8 inchangé.
 ---
 
 *Fin de l'entrée n°53. Ne pas modifier — ajouter une entrée n°54 pour toute rectification.*
+
+---
+
+## Entrée n°54 — 2026-07-20 — Phase 4 : composants génériques (`@typeparam`) mesurés contre Blazor (CORRECTION)
+
+**`@typeparam` + un `[Parameter]` de ce type** (décision #135) rejoignent le §5. Les génériques
+**s'effacent**, et gratuitement : un paramètre de type est une contrainte de COMPILATION, et ce compilateur
+résout toute composition à la compilation vers une portée où la valeur est l'expression traduite du parent.
+JS n'a aucun type à transporter, et il n'y a pas de monomorphisation à faire non plus — l'enfant est inliné à
+chaque site, donc chaque site a déjà sa copie. **AUCUNE primitive runtime.**
+
+### Ce qui est mesuré
+
+`baseline/Generic.Blazor` : `Box.razor` déclare `@typeparam T` et `[Parameter] public T? Value` ; `App.razor`
+l'utilise en `<Box Value="@count" />`, Razor infère T = int. Le contrat exige `#out` à `1`, puis clique `#inc`
+**deux fois** et exige `2` puis `3`. Deux clics parce que c'est exactement le risque de l'effacement : un
+générique effacé qui aurait plié sa valeur au montage afficherait « 1 » indéfiniment, et un contrôle de la
+seule valeur initiale ne le verrait pas. **`HARNESS_VERSION` 1.47.0 → 1.48.0**, divulgué.
+
+```
+dotnet publish baseline/Generic.Blazor -c Release -o bench/publish/blazor-generic
+./bench/build-filament.sh filament-generic-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-generic/wwwroot --app generic --label blazor-generic       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-generic-gen   --app generic --label filament-generic-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#out` (initial → 1 clic → 2 clics) | verdict |
+|---|---|---|
+| **blazor-generic** (autorité) | `1 → 2 → 3` | contrat OK |
+| **filament-generic-gen** (générateur) | `1 → 2 → 3` | contrat OK |
+
+**Les deux suivent.** L'effacement du type laisse donc bien une liaison VIVE derrière lui. `git diff --
+src/filament-runtime` vide. Témoin `Gate/Typeparam.razor` RETOURNÉ (migré vers `Supported/Gate/`, épinglé) ;
+nouveau témoin `Gate/GenericParamUnbound.razor` pour la frontière. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°54. Ne pas modifier — ajouter une entrée n°55 pour toute rectification.*

@@ -1,0 +1,11 @@
+@typeparam T
+
+@* Decision 135's BOUNDARY. A type parameter carries no type of its own. What makes a generic
+   [Parameter] faithful is that the composing PARENT's expression is already type-correct
+   (decision 90's exemption) -- so with no parent to bind it, there is nothing to substitute and
+   nothing honest to emit. Refused rather than given a type nothing determined. *@
+<span id="out">@Value</span>
+
+@code {
+    [Parameter] public T? Value { get; set; }
+}

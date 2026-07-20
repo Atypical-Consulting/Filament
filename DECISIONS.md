@@ -4621,3 +4621,41 @@ fois puis cesserait de suivre est prise aussi sûrement qu'une qui ne livrerait 
 (autorité). `HARNESS_VERSION` 1.46.0 → 1.47.0, divulgué.
 
 §5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.
+
+## 135. Composants génériques (`@typeparam`) — les génériques s'EFFACENT, et gratuitement
+
+**Décision.** `@typeparam T` et un `[Parameter]` de ce type entrent dans le sous-ensemble, avec le type
+argument INFÉRÉ par Razor au site d'appel (`<Box Value="@count" />` → T = int).
+
+**Le lowering — rien.** Un paramètre de type est une contrainte **de compilation** sur ce qui peut être
+substitué ; or ce compilateur résout TOUTE composition à la compilation, vers une portée où le `@Value` de
+l'enfant est simplement l'expression traduite du parent (`count.value`). JavaScript n'a aucun type à
+transporter : après cette substitution, il ne reste rien que `T` ait pu signifier. Et il n'y a **pas non plus
+de monomorphisation** à faire : un générique en C# ou en Rust exige une instanciation par argument de type,
+alors qu'ici l'enfant est **inliné à chaque site d'utilisation**, donc chaque site a déjà sa propre copie par
+construction. Filament paie déjà le coût qui rend la monomorphisation inutile.
+
+**ADMIS UNIQUEMENT LÀ OÙ L'EXPRESSION DU PARENT EST DÉJÀ TYPE-CORRECTE**, c'est-à-dire sur un paramètre lié
+RÉACTIVEMENT — l'exemption de la décision 90, et pour la même raison : `count.value` est un nombre parce que
+le C# du parent l'a dit. Un `T` plié STATIQUEMENT splicerait un littéral de chaîne JS partout où `T` est
+substitué, ce qui est la mistranslation que #88 refuse déjà pour les types concrets
+(`FirstBoundNonStringParameter` attrape ce cas). Un `T` NON LIÉ n'a aucun type du tout : témoin
+`Gate/GenericParamUnbound.razor`, refusé en `unbound-generic-parameter`.
+
+**UN DÉFAUT DE PORTAGE ATTRAPÉ.** La classe enveloppe que ce front end compile n'était pas générique, si bien
+que `T` ne résolvait nulle part et l'auteur se voyait reprocher un `unresolved-type` **pour une déclaration
+que le compilateur avait omis de reporter** — le motif de la décision 69 (« blâmer l'auteur pour une omission
+du compilateur »). Corrigé : `BindTypeParameters` porte les `@typeparam` dans LES DEUX partielles.
+
+**TÉMOIN RETOURNÉ.** `Gate/Typeparam.razor` compile maintenant et a donc **migré vers `Supported/Gate/`**,
+selon la règle du dépôt : le nom du dossier ne doit jamais mentir sur un fixture que le générateur accepte.
+Épinglé par `Typeparam_NowCompiles_WithTheTypeErased`, qui vérifie que `TItem` ne survit nulle part.
+Suite : **450 tests** (372 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `git diff -- src/filament-runtime` vide ; runtime gelé à 1 943 o.
+MESURÉ (entrée n°54) : `#out` — le rendu par l'enfant d'une valeur reçue en tant que `T` — vaut `1`, `2`,
+puis `3`. Deux clics : un générique effacé qui aurait plié sa valeur au montage afficherait « 1 »
+indéfiniment, et c'est précisément le risque de l'effacement. Identique à Blazor (autorité).
+`HARNESS_VERSION` 1.47.0 → 1.48.0, divulgué.
+
+§5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.

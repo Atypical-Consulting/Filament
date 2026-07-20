@@ -134,7 +134,7 @@ public sealed class TemplateCompiler
     /// types this compiler happens to know) is what makes the gate complete: a
     /// directive nobody here has heard of is refused too.
     /// </summary>
-    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code", "inject" };
+    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code", "inject", "typeparam" };
 
     /// <summary>
     /// The base class Razor gives EVERY component whether or not @inherits was written.
@@ -302,6 +302,12 @@ public sealed class TemplateCompiler
         CollectDynamicAttributes(method, plan);
         CollectLambdaHandlers(method, plan);
 
+        // @typeparam (decision 135), carried into the compilation so `T` RESOLVES there. Without this the
+        // author's own type parameter is reported as an unresolved type -- the compiler blaming the author
+        // for a declaration it failed to carry over (decision 69's pattern).
+        if (cls.TypeParameters is { Count: > 0 } tps)
+            code.BindTypeParameters(tps.Select(t => t.ParameterName).ToList());
+
         // @inject (decision 133), harvested BEFORE the compilation so the injected name RESOLVES in it.
         // Razor drops the directive's span during lowering, so the location comes from DirectiveSpyPass.
         foreach (var inject in RazorFrontEnd.Injects(cls))
@@ -467,8 +473,6 @@ public sealed class TemplateCompiler
             ClassShape(cls, $"declares base type '{cls.BaseType}' (Razor's default is {ComponentBaseType}); a Filament module has no base class");
         if (cls.Interfaces is { Count: > 0 })
             ClassShape(cls, "declares interfaces (@implements); a Filament module implements none");
-        if (cls.TypeParameters is { Count: > 0 })
-            ClassShape(cls, "is generic (@typeparam); a Filament module is not");
 
         foreach (var child in cls.Children)
         {

@@ -1,0 +1,19 @@
+@* GENERIC COMPONENT (decision 135). <Box> declares @typeparam T and a [Parameter] of that type; the
+   parent uses it at T = int, and Razor infers the type argument from the bound expression.
+
+   The lowering: generics ERASE, and they erase for free. A type parameter is a compile-time
+   constraint on what may be substituted -- and this compiler resolves every composition at compile
+   time, into a scope where the value is simply the parent's own translated expression. JavaScript
+   has no type to carry, so there is nothing left to emit. Monomorphisation is not needed either:
+   the child is INLINED at each use site, so each use site already has its own copy.
+
+   DOM contract: #out is the child's rendering of a value it received as a T. Clicking #inc must
+   move it 1 -> 2 -- so the erased generic is still a LIVE binding, not a folded constant. That is
+   the measurement (BENCH n°54). *@
+
+<div id="wrap"><Box Value="@count" /><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 1;
+    void Inc() { count++; }
+}

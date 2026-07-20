@@ -1,0 +1,9 @@
+@* A GENERIC leaf display: its parameter's type is the type parameter, not a concrete type. Blazor
+   infers T = int at the call site from Value="@count". *@
+@typeparam T
+
+<span id="out">@Value</span>
+
+@code {
+    [Parameter] public T? Value { get; set; }
+}

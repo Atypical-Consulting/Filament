@@ -113,6 +113,16 @@ public sealed class CSharpFrontEnd
         foreach (var kv in cascades) _cascades[kv.Key] = kv.Value;
     }
 
+    /// <summary>The component's @typeparam names (decision 135). The wrapped compilation must declare
+    /// them, or `T` resolves to nothing and every use of it is reported as an unresolved type -- blaming
+    /// the author for a declaration this compiler failed to carry over.</summary>
+    IReadOnlyList<string> _typeParams = [];
+
+    public void BindTypeParameters(IReadOnlyList<string> names) => _typeParams = names;
+
+    /// <summary>`<T>` when the component is generic, else empty. Both partials must carry it identically.</summary>
+    string TypeParamList => _typeParams.Count == 0 ? "" : "<" + string.Join(", ", _typeParams) + ">";
+
     string? _jsRuntime;
 
     public void BindJsRuntime(string name) => _jsRuntime = name;
@@ -495,9 +505,9 @@ public sealed class CSharpFrontEnd
         _src.Literal(
             "using System;using System.Collections.Generic;using System.Linq;" +
             "using System.Threading.Tasks;using Microsoft.AspNetCore.Components;using Microsoft.JSInterop;" +
-            "partial class __FilamentComponent {");
+            $"partial class __FilamentComponent{TypeParamList} {{");
         foreach (var node in codeNodes) _src.Node(node, RawText(node));
-        _src.Literal("\n}\npartial class __FilamentComponent {\n");
+        _src.Literal($"\n}}\npartial class __FilamentComponent{TypeParamList} {{\n");
 
         // The @inject'd IJSRuntime, declared so the name BINDS (decision 133). Razor declares it as a
         // property on the generated component; this compiler only needs C# to resolve `JS.InvokeVoidAsync`
@@ -1194,6 +1204,32 @@ public sealed class CSharpFrontEnd
                 "parameter would fold a function name in where a value is meant. Refusing to emit.",
                 p.Identifier.SpanStart, "FIL0002");
             return;
+        }
+        // A GENERIC parameter -- its declared type is the component's own @typeparam (decision 135).
+        //
+        // Generics ERASE, and they erase for free: a type parameter constrains what may be substituted
+        // at compile time, and this compiler resolves every composition at compile time into a scope
+        // where the value is simply the PARENT's translated expression. JS has no type to carry, so
+        // there is nothing left to emit -- and no monomorphisation to do either, because the child is
+        // INLINED at each use site and each site therefore already has its own copy.
+        //
+        // ADMITTED ONLY WHERE THE PARENT'S EXPRESSION IS ALREADY TYPE-CORRECT, i.e. a REACTIVELY bound
+        // parameter -- decision 90's exemption, and for the same reason: `count.value` is a number
+        // because the parent's C# said so. A STATICALLY folded T would splice a JS string literal
+        // wherever T was substituted, which is the mistranslation #88 refuses for concrete types too
+        // (FirstBoundNonStringParameter catches that case). An UNBOUND T has no type at all.
+        else if (type is { TypeKind: TypeKind.TypeParameter })
+        {
+            if (!_paramReactive.Contains(name))
+            {
+                Refuse("unbound-generic-parameter",
+                    $"the generic parameter '{name}' is not bound to a reactive expression by a composing " +
+                    "parent. A type parameter carries no type of its own: what makes it faithful is that the " +
+                    "PARENT's expression is already type-correct, so it is admitted only where a parent " +
+                    "supplied one. Refusing to emit rather than substitute a type nothing determined.",
+                    p.Identifier.SpanStart, "FIL0002");
+                return;
+            }
         }
         else if (!CheckType(type, p.Type.SpanStart, allowList: true)) return;
 
