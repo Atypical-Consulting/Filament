@@ -249,6 +249,14 @@ public sealed class CSharpFrontEnd
         /// <summary>Non-null iff this field is a List&lt;T&gt; -- rows.js mapping decision (1).</summary>
         public ListInfo? List;
 
+        /// <summary>
+        /// The field's initialiser, TRANSLATED LATE (decision 137). It cannot be translated during the
+        /// member walk, because whether a record property is a signal is not known until the reactivity
+        /// marking has run -- and the answer changes what the literal must EMIT (`signal('a')` vs `'a'`).
+        /// Translating it eagerly produced a literal that disagreed with every later read of it.
+        /// </summary>
+        public Func<string>? InitThunk;
+
         /// <summary>An @ref target (decision 132): the element the template captured into this name. Never
         /// a signal -- it is not state, it is a handle on a node that exists for the module's lifetime.</summary>
         public bool IsElementRef;
@@ -690,12 +698,25 @@ public sealed class CSharpFrontEnd
         foreach (var mi in _methods) MarkListMutations(mi.Syntax);
         foreach (var (_, lm) in _lambdaMethods) MarkListMutations(lm.Syntax);
         MarkTemplateReads(slots);
+        // A TWO-WAY BIND IS A WRITE (decision 138), and marking it is what closes decision 104's
+        // deferral ("a pure @bind-only field needs its reactivity marked from the template"). Without
+        // it the bound target is read-but-never-assigned, decision 67's conjunction leaves it a plain
+        // binding, and the input would render once and then track nothing.
+        MarkTemplateWrites(plan.FormBinds.Select(b => b.Value));
         MarkConditionReads(classes[1], regionMethods);
 
         // 3. the call graph: who calls whom, for the inlining arbitrage AND for the emission
         //    order (callees before callers -- see MethodsInDependencyOrder).
         foreach (var mi in _methods) MarkCalls(mi.Syntax);
         foreach (var (_, lm) in _lambdaMethods) MarkCalls(lm.Syntax, lm);
+
+        // 3b. FIELD INITIALISERS, now that the marking is settled (decision 137). They are translated
+        //     BEFORE bodies and slots for no ordering reason of their own -- only so that everything
+        //     downstream reads one settled Init. Doing this in the member walk emitted `{ name: 'a' }`
+        //     while every read of it emitted `model.name.value`: the literal and the reads disagreed,
+        //     the page rendered "undefined", and the click threw. Measured, not reasoned about.
+        foreach (var f in _fields)
+            if (f.InitThunk is { } thunk) f.Init = thunk();
 
         // 4. TRANSLATE EVERYTHING, NOW -- not lazily at emission. Every diagnostic this input
         //    can produce must exist before Compile() returns, because that is when the caller
@@ -1442,7 +1463,16 @@ public sealed class CSharpFrontEnd
                 // A field with no initialiser is C#'s default value, and the default must be
                 // SPELLED in JS -- `let x;` is `undefined`, not 0, and setText(t, undefined)
                 // renders "undefined" where C# renders "0".
-                info.Init = v.Initializer is { } init ? Expr(init.Value) : DefaultOf(type!);
+                //
+                // DEFERRED, NOT TRANSLATED HERE (decision 137). See FieldInfo.InitThunk: a record literal
+                // must know whether each property is a signal, and nothing knows that until the marking
+                // passes have run. The default has no such dependency, so it is spelled immediately.
+                if (v.Initializer is { } init)
+                {
+                    var initValue = init.Value;
+                    info.InitThunk = () => Expr(initValue);
+                }
+                else info.Init = DefaultOf(type!);
             }
 
             _fields.Add(info);
@@ -1461,16 +1491,13 @@ public sealed class CSharpFrontEnd
             return false;
         }
 
-        var elements = oc.Initializer?.Expressions ?? default;
-        var parts = new List<string>();
-        var literal = true;
-        foreach (var e in elements)
-        {
-            if (e is not LiteralExpressionSyntax) literal = false;
-            parts.Add(Expr(e));
-        }
+        var elements = (oc.Initializer?.Expressions ?? default).ToList();
 
-        info.Init = "[" + string.Join(", ", parts) + "]";
+        // Whether every element is a literal is SYNTACTIC, so it is decided now; the elements themselves
+        // are translated late for decision 137's reason (a record element's properties may be signals).
+        var literal = elements.All(e => e is LiteralExpressionSyntax);
+
+        info.InitThunk = () => "[" + string.Join(", ", elements.Select(Expr)) + "]";
         info.List = new ListInfo { LiteralData = literal };
         return true;
     }
@@ -1755,6 +1782,32 @@ public sealed class CSharpFrontEnd
     /// `@currentCount` marks the FIELD currentCount, and a template that reads neither marks
     /// nothing.
     /// </summary>
+    /// <summary>
+    /// The targets the TEMPLATE assigns -- today, two-way form binds (decision 138). A bind writes to
+    /// what it names, so what it names is "assigned outside construction" in exactly decision 67's
+    /// sense, and saying so here is what lets a bound record property or field become a signal.
+    ///
+    /// Asked of the SEMANTIC MODEL, never of the text: `model.Name` is a record property and `text` is
+    /// a field, and only the bound tree can tell them apart.
+    /// </summary>
+    void MarkTemplateWrites(IEnumerable<IntermediateNode> boundSlots)
+    {
+        foreach (var node in boundSlots)
+        {
+            if (!_slotSyntax.TryGetValue(node, out var e)) continue;
+
+            switch (_model.GetSymbolInfo(e).Symbol)
+            {
+                case IPropertySymbol ps when PropAnywhere(ps) is { } p:
+                    p.AssignedOutsideConstruction = true;
+                    break;
+                case IFieldSymbol fs when Field(fs) is { } f:
+                    f.AssignedOutsideConstruction = true;
+                    break;
+            }
+        }
+    }
+
     void MarkTemplateReads(IReadOnlyList<IntermediateNode> slots)
     {
         foreach (var node in slots) MarkReads(SlotSyntax(node));

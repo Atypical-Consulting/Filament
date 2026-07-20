@@ -40,6 +40,10 @@ public static class IrDumper
             switch (node)
             {
                 case MarkupElementIntermediateNode e: sb.Append($"  <{e.TagName}>"); break;
+                // Component nodes and their attributes: the tag and the PARAMETER NAME, because a
+                // resolved component's binding is entirely in the attribute names (decision 138).
+                case ComponentIntermediateNode c: sb.Append($"  <{c.TagName}>"); break;
+                case ComponentAttributeIntermediateNode a: sb.Append($"  param '{a.AttributeName}'"); break;
                 case MarkupBlockIntermediateNode m: sb.Append($"  *OPAQUE* {Q(m.Content)}"); break;
                 case HtmlAttributeIntermediateNode a: sb.Append($"  attr '{a.AttributeName}'"); break;
                 case TagHelperIntermediateNode t: sb.Append($"  TAGHELPER <{t.TagName}>"); break;

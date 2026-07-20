@@ -4688,3 +4688,80 @@ signal, ou une méthode héritée qui n'écrirait pas vraiment, seraient pris. I
 `HARNESS_VERSION` 1.48.0 → 1.49.0, divulgué.
 
 §5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.
+
+## 137. Initialiseurs de champ traduits TARD — un mal-compilé silencieux sur les propriétés d'enregistrement
+
+**Défaut trouvé, consigné comme tel.** Un champ de type `record` initialisé dans sa déclaration produisait un
+module **incohérent avec lui-même** :
+
+```
+const model = { name: 'a' };                          // le littéral
+effect(() => setText(_tx0, model.name.value));        // la lecture   -> undefined
+model.name.value = 'b';                               // l'écriture   -> TypeError
+```
+
+**MESURÉ dans node, pas raisonné** : `('a').value` vaut `undefined` (la page affiche « undefined »), et
+`model.name.value = 'b'` lève `TypeError: Cannot create property 'value' on string 'a'` — le module est en
+mode strict. Exit 0, page cassée : exactement le mal-compilé silencieux que le §10 interdit.
+
+**Cause — un problème de PHASE, pas de traduction.** Une propriété d'enregistrement devient un signal selon la
+même conjonction qu'un champ (lue par le template ET assignée hors construction, #67), et la réponse change ce
+que le LITTÉRAL doit émettre (`signal('a')` ou `'a'`). Or `FieldDecl` traduisait l'initialiseur pendant la
+marche des membres — **phase 1** — alors que le marquage de réactivité tourne en **phase 2** et que les
+lectures sont traduites en phase 4. Le littéral répondait donc à une question posée trop tôt, et toutes les
+lectures à la même question posée au bon moment. Les deux étaient cohérentes avec elles-mêmes et fausses
+ensemble. Rows n'était pas touché parce que ses littéraux d'enregistrement sont créés dans des CORPS DE
+MÉTHODE, traduits en phase 4.
+
+**Correction.** `FieldInfo.InitThunk` : l'initialiseur est capturé en phase 1 et **traduit en phase 3b**, une
+fois le marquage arrêté. Les valeurs par défaut (`0`, `""`) n'ont pas cette dépendance et restent immédiates.
+Aucun snapshot existant ne bouge — ce qui confirme que le chemin n'était couvert par aucune app : le défaut
+vivait dans un angle mort, et c'est en construisant la baseline de #138 qu'il est apparu.
+
+## 138. Formulaires — `<EditForm>` / `<InputText>` / `@bind-Value` sur une propriété de modèle
+
+**Décision.** Les formulaires entrent dans le §5 : `<EditForm Model="@m" OnValidSubmit="Save">` → un `<form>`
+dont le submit appelle `Save`, `<InputText @bind-Value="model.Name">` → un `<input>` avec l'effet de valeur et
+l'écouteur de changement. **La validation reste hors sujet et REFUSÉE** (voir plus bas).
+
+**DEUX conditions préalables, et elles SONT le contenu de la tranche.**
+
+1. **Razor doit RÉSOUDRE les composants de formulaire.** Sans le namespace Forms importé, `<EditForm>` et
+   `<InputText>` restent du markup nu et `@bind-Value` arrive comme texte brut `model.Name`. Implémenter les
+   formulaires à partir de là signifierait **re-dériver à la main la sémantique de liaison de Blazor** — le
+   piège de la décision 53 exactement : une logique décrite deux fois dérive. Avec l'import, ce compilateur
+   **LIT** le lowering de Blazor (`Value` / `ValueChanged` / `ValueExpression`) et n'en garde que celui qui
+   porte l'expression de l'auteur ; les deux autres sont la plomberie d'un *binder d'exécution* qu'on
+   REMPLACE, donc `Collect` ne les compile pas (elles produisaient un `[unsupported-call]` sur
+   `RuntimeHelpers` et un `[unsupported-expression]` sur `() => model.Name`, deux diagnostics portant sur du
+   code que l'auteur n'a jamais écrit).
+
+2. **La propriété liée devait devenir un SIGNAL.** La réactivité est définie sur les CHAMPS, et `model.Name`
+   est une PROPRIÉTÉ d'enregistrement que rien dans `@code` n'assigne — le seul écrivain est l'input. C'est
+   donc **l'écriture du TEMPLATE** qui la rend réactive (`MarkTemplateWrites`). Cela **solde la mise en
+   attente nommée par la décision 104** (« une cible purement @bind a besoin que sa réactivité soit marquée
+   depuis le template »). Prérequis : la décision 137 ci-dessus, sans laquelle le littéral du modèle et ses
+   lectures se contredisaient.
+
+**`preventDefault()` FAIT PARTIE DE LA CORRESPONDANCE**, ce n'est pas un ornement : sans lui le navigateur
+navigue au submit et la page se recharge — précisément ce que l'`EditForm` de Blazor supprime. C'est le seul
+gestionnaire dont la flèche prend l'événement, et elle le prend parce que le DOM l'exige.
+
+**LA VALIDATION EST REFUSÉE, PAS IGNORÉE.** Sans composants validateurs, **tout submit EST valide** — c'est le
+comportement de Blazor, pas une simplification —, donc `OnValidSubmit` part à chaque submit et il n'y a rien à
+émettre pour la validité. Un `<DataAnnotationsValidator />` est donc refusé : l'ignorer laisserait un modèle
+invalide se soumettre **silencieusement**, la mauvaise réponse déguisée en bonne. `OnSubmit`/`OnInvalidSubmit`
+sont refusés pour la même raison (ils ne diffèrent d'`OnValidSubmit` qu'une fois la validation existante), et
+un `<EditForm>` sans `Model` aussi (Blazor l'exige).
+
+**TÉMOIN RETOURNÉ.** `Gate/Forms.razor` compile et **migre vers `Supported/Gate/`**. Son ancien refus était
+`unresolved-component` — un verdict sur la recherche de fichier frère, pas sur les formulaires.
+Suite : **461 tests** (383 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `git diff -- src/filament-runtime` vide ; runtime gelé à 1 943 o.
+MESURÉ (entrée n°56) : les deux moitiés, qui échouent INDÉPENDAMMENT — saisie « ok » → `#live` suit pendant
+que `#out` reste vide (un formulaire lié dans un seul sens passerait l'une et échouerait l'autre), puis submit
+→ `#out` vaut « ok » **et la page n'a pas navigué**. Identique à Blazor (autorité) sur les quatre champs.
+`HARNESS_VERSION` 1.49.0 → 1.50.0, divulgué.
+
+§5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.

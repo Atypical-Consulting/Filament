@@ -60,6 +60,16 @@ public static class RazorFrontEnd
     public const string WebImport = "@using Microsoft.AspNetCore.Components.Web";
 
     /// <summary>
+    /// The Forms namespace, so Razor RESOLVES &lt;EditForm&gt;/&lt;InputText&gt; into component nodes with
+    /// their own lowering (decision 138). Without it those tags stay plain markup elements and
+    /// `@bind-Value` arrives as a raw directive attribute carrying the text `model.Name` -- at which
+    /// point implementing forms would mean re-deriving Blazor's binding semantics by hand, which is
+    /// decision 53's trap exactly: wiring described twice drifts. Importing it means this compiler READS
+    /// Blazor's lowering instead of guessing it, the same way it does for @onclick and @bind.
+    /// </summary>
+    public const string FormsImport = "@using Microsoft.AspNetCore.Components.Forms";
+
+    /// <summary>
     /// THE ONE description of the chain. Both the parse and every invariant that
     /// reports on the parse come through here, so a mutation to the wiring cannot hit
     /// one copy and miss the other.
@@ -75,7 +85,7 @@ public static class RazorFrontEnd
             CompilerFeatures.Register(b);
             b.Features.Add(new DefaultMetadataReferenceFeature { References = refs });
             b.Features.Add(new CompilationTagHelperFeature());
-            b.AddDefaultImports(WebImport);
+            b.AddDefaultImports(WebImport, FormsImport);
             b.Features.Add(spy);
 
             // DECISION 52 debt #1, HARDENED (docs/adr/0001-eol-razor-mitigation.md). These two passes

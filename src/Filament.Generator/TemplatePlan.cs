@@ -75,7 +75,19 @@ public sealed class TemplatePlan
     /// and therefore still refused.
     /// </summary>
     public HashSet<IntermediateNode> ComponentSlots { get; } = [];
+
+    /// <summary>
+    /// Two-way form binds: the &lt;InputText&gt; node and the expression its `Value` parameter carries
+    /// (decision 138). Kept as a pair because emission needs the input and the marking needs the
+    /// expression, and because a bind is the one binding site where the TEMPLATE WRITES: what it names
+    /// must be marked assigned, or the target never becomes a signal and the bind tracks nothing.
+    /// </summary>
+    public List<FormBind> FormBinds { get; } = [];
 }
+
+/// <param name="Input">the resolved &lt;InputText&gt; component node</param>
+/// <param name="Value">the expression its `Value` parameter binds (e.g. `model.Name`)</param>
+public sealed record FormBind(IntermediateNode Input, IntermediateNode Value);
 
 /// <param name="Attr">the event attribute node, the key emission looks the body up by</param>
 /// <param name="DomEvent">the DOM event name, e.g. "click"</param>

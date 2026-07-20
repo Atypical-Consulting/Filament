@@ -4982,3 +4982,49 @@ n'existe pas). §8 inchangé.
 ---
 
 *Fin de l'entrée n°55. Ne pas modifier — ajouter une entrée n°56 pour toute rectification.*
+
+---
+
+## Entrée n°56 — 2026-07-20 — Phase 4 : formulaires mesurés contre Blazor (CORRECTION)
+
+**`<EditForm>` / `<InputText>` / `@bind-Value`** (décision #138) rejoignent le §5. Deux conditions
+préalables : Razor doit RÉSOUDRE les composants de formulaire (sinon `@bind-Value` arrive en texte brut et
+les implémenter voudrait dire re-dériver la sémantique de liaison de Blazor — piège de la décision 53), et la
+propriété liée devait devenir un signal, ce que l'**écriture du template** provoque (solde la mise en attente
+de la décision 104). Prérequis corrigé au passage : **décision 137**, un mal-compilé silencieux sur les
+initialiseurs de champ d'enregistrement (littéral et lectures se contredisaient ; page « undefined », clic en
+`TypeError`). **AUCUNE primitive runtime.**
+
+### Ce qui est mesuré
+
+`baseline/Forms.Blazor` : `<InputText @bind-Value="model.Name">` dans un `<EditForm OnValidSubmit="Save">` ;
+`#live` lit le modèle en continu, `#out` ne reçoit sa valeur qu'au submit. Le contrat vérifie **deux moitiés
+qui échouent indépendamment** — c'est la raison d'être des deux :
+**(1) la liaison** — saisir « ok » doit faire suivre `#live` **pendant que `#out` reste vide** (un formulaire
+lié dans un seul sens passerait celle-ci et échouerait l'autre) ;
+**(2) le submit** — il doit relire le modèle (`#out` = « ok ») **et ne pas naviguer** (`location.href`
+inchangé) : sans `preventDefault()` le navigateur recharge la page, ce que l'`EditForm` de Blazor supprime.
+**`HARNESS_VERSION` 1.49.0 → 1.50.0**, divulgué.
+
+```
+dotnet publish baseline/Forms.Blazor -c Release -o bench/publish/blazor-forms
+./bench/build-filament.sh filament-forms-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-forms/wwwroot --app forms --label blazor-forms       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-forms-gen   --app forms --label filament-forms-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | initial | après saisie | après submit | a navigué | verdict |
+|---|---|---|---|---|---|
+| **blazor-forms** (autorité) | `live:"" out:""` | `live:"ok" out:""` | `out:"ok"` | `false` | contrat OK |
+| **filament-forms-gen** (générateur) | `live:"" out:""` | `live:"ok" out:""` | `out:"ok"` | `false` | contrat OK |
+
+**Les quatre champs coïncident.** La liaison bidirectionnelle sur une propriété de modèle est donc fidèle,
+dans les deux sens, et le submit n'emporte pas la page. `git diff -- src/filament-runtime` vide. Témoin
+`Gate/Forms.razor` RETOURNÉ (migré vers `Supported/Gate/`) ; nouveau témoin `Gate/FormsValidation.razor` —
+la validation est refusée, pas ignorée. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°56. Ne pas modifier — ajouter une entrée n°57 pour toute rectification.*

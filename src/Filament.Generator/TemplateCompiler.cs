@@ -230,6 +230,11 @@ public sealed class TemplateCompiler
     /// </summary>
     readonly List<(string El, string Event, string Handler)> _handlers = [];
 
+    /// <summary>Elements whose recorded handler must call preventDefault() first -- today only a
+    /// &lt;form&gt;'s submit (decision 138). Without it the browser navigates and the page reloads, which
+    /// is exactly what Blazor's EditForm suppresses; it is part of the mapping, not a nicety.</summary>
+    readonly HashSet<string> _preventDefault = [];
+
     /// <summary>
     /// The @key node the enclosing list() has already consumed. @key outside a list is still
     /// refused -- it names an identity nothing reconciles.
@@ -301,6 +306,7 @@ public sealed class TemplateCompiler
         CollectComponentBindings(method, plan);
         CollectDynamicAttributes(method, plan);
         CollectLambdaHandlers(method, plan);
+        CollectFormBinds(method, plan);
 
         // @inherits (decision 136). A derived component overrides BuildRenderTree, so the base contributes
         // its MEMBERS and not its markup -- exactly what Blazor renders. Merging those members into this
@@ -431,7 +437,7 @@ public sealed class TemplateCompiler
                 .ToHashSet(StringComparer.Ordinal);
 
             foreach (var h in _handlers)
-                _events.Add($"listen({h.El}, {JsString(h.Event)}, {HandlerArrow(h.Handler, inlined)});");
+                _events.Add($"listen({h.El}, {JsString(h.Event)}, {HandlerArrow(h.Handler, inlined, _preventDefault.Contains(h.El))});");
 
             prologue = _code.EmitPrologue(inlined);
             module = _code.EmitModule();
@@ -547,7 +553,21 @@ public sealed class TemplateCompiler
     /// </summary>
     void Collect(IntermediateNode node, TemplatePlan plan)
     {
-        var kids = node.Children.Where(c => c is not HtmlAttributeIntermediateNode).ToList();
+        // A RESOLVED FORM COMPONENT'S PARAMETERS ARE NOT ORDINARY SLOTS (decision 138). Razor lowers
+        // `@bind-Value` into THREE parameters -- Value, plus a synthesised ValueChanged binder lambda and
+        // a ValueExpression accessor -- which are Blazor's own plumbing for a runtime binder. This
+        // compiler reads the ONE that carries the author's expression (CollectFormBinds takes `Value`) and
+        // emits the two-way pair itself, so compiling the other two would be compiling machinery that is
+        // being REPLACED: it produced an [unsupported-call] on RuntimeHelpers and an [unsupported-
+        // expression] on `() => model.Name`, both about code the author never wrote. EditForm's `Model` is
+        // skipped for a different reason -- nothing validates it here, so counting it as a template READ
+        // would assert a read that does not happen.
+        var isFormComponent = node is ComponentIntermediateNode { TagName: "InputText" or "EditForm" };
+
+        var kids = node.Children
+            .Where(c => c is not HtmlAttributeIntermediateNode)
+            .Where(c => !(isFormComponent && c is ComponentAttributeIntermediateNode))
+            .ToList();
 
         // A container whose children hold RAW C# is decision 54's shape: no loop node, braces
         // that do not balance, the body element a SIBLING of the header. It is reassembled and
@@ -581,6 +601,30 @@ public sealed class TemplateCompiler
     /// off the SAME node. The node is compiled but NOT emitted as a stray text node: the emit walk hits
     /// the component element and EmitComposition consumes its translated JS instead of walking into it.
     /// </summary>
+    /// <summary>
+    /// Two-way form binds (decision 138). `<InputText @bind-Value="model.Name" />` resolves to a
+    /// component node whose `Value` parameter carries the bound expression -- Blazor's OWN lowering,
+    /// which is why the Forms namespace is imported rather than the binding re-derived here.
+    ///
+    /// The expression is harvested into FreeSlots (so it is COMPILED, and so it counts as a template
+    /// READ) and recorded as a bind (so it can also be marked WRITTEN -- see MarkTemplateWrites). Both
+    /// halves are needed: decision 67's conjunction makes a target reactive only if it is read AND
+    /// assigned, and for a pure @bind target the template is the only thing that assigns it.
+    /// </summary>
+    void CollectFormBinds(IntermediateNode node, TemplatePlan plan)
+    {
+        if (node is ComponentIntermediateNode c && c.TagName == "InputText")
+            foreach (var attr in c.Children.OfType<ComponentAttributeIntermediateNode>())
+                if (attr.AttributeName == "Value")
+                    foreach (var expr in attr.Children.OfType<CSharpExpressionIntermediateNode>())
+                    {
+                        plan.FreeSlots.Add(expr);
+                        plan.FormBinds.Add(new FormBind(c, expr));
+                    }
+
+        foreach (var child in node.Children) CollectFormBinds(child, plan);
+    }
+
     void CollectComponentBindings(IntermediateNode node, TemplatePlan plan)
     {
         if (node is MarkupElementIntermediateNode el && LooksLikeComponent(el.TagName))
@@ -800,9 +844,26 @@ public sealed class TemplateCompiler
     /// CSharpFrontEnd.MayWriteMoreThanOnce, which is where both keys' apparently opposite
     /// statements about batch turn out to be the same rule.
     /// </summary>
-    string HandlerArrow(string handler, IReadOnlySet<string> inlined)
+    string HandlerArrow(string handler, IReadOnlySet<string> inlined, bool preventDefault = false)
     {
         var batched = _code.MayWriteMoreThanOnce(handler);
+
+        // A FORM'S SUBMIT (decision 138). It is the one handler whose arrow takes the event, and it takes
+        // one because the DOM requires it: without preventDefault() the browser navigates and the page
+        // reloads, which is exactly what Blazor's EditForm suppresses. Emitted as statements rather than
+        // by wrapping the no-arg shape below, so the result reads as what it is.
+        if (preventDefault)
+        {
+            var inner = inlined.Contains(handler)
+                ? string.Join("\n", _code.InlineBody(handler).Select(l => "  " + l))
+                : $"  {_code.MethodJs(handler)}();";
+            if (batched)
+            {
+                _used.Add("batch");
+                inner = "  batch(() => {\n" + string.Join("\n", inner.Split('\n').Select(l => "  " + l)) + "\n  });";
+            }
+            return "(e) => {\n  e.preventDefault();\n" + inner + "\n}";
+        }
 
         string body;
         if (inlined.Contains(handler))
@@ -1010,11 +1071,20 @@ public sealed class TemplateCompiler
                 EmitCascadingValue(c, parent);
                 return null;
 
+            // <EditForm> / <InputText> (decision 138) -- resolved framework components, like <CascadingValue>.
+            case ComponentIntermediateNode c when c.TagName == "EditForm":
+                return EmitEditForm(c, parent);
+
+            case ComponentIntermediateNode c when c.TagName == "InputText":
+                return EmitInputText(c);
+
             case ComponentIntermediateNode c:
                 Diag("component-composition",
-                    $"<{c.TagName}> resolved to a framework component. Composition resolves a child as a " +
-                    "sibling .razor file; the only framework component in the subset is <CascadingValue>. " +
-                    "Refusing to emit.",
+                    $"<{c.TagName}> resolved to a framework component, and it is not one of the three the " +
+                    "subset admits (<CascadingValue>, <EditForm>, <InputText>). Composition otherwise resolves " +
+                    "a child as a sibling .razor file. Validation components in particular are refused rather " +
+                    "than ignored: without them every submit IS valid (Blazor's own behaviour), so ignoring " +
+                    "one would let an invalid model submit silently. Refusing to emit.",
                     c.Source);
                 return null;
 
@@ -1336,6 +1406,149 @@ public sealed class TemplateCompiler
 
         _cascades = saved;
     }
+
+    /// <summary>
+    /// &lt;EditForm Model="@m" OnValidSubmit="Save"&gt; -&gt; a &lt;form&gt; whose submit calls Save
+    /// (decision 138). preventDefault() is not decoration: without it the browser navigates on submit
+    /// and the page reloads, which is precisely what Blazor's EditForm suppresses.
+    ///
+    /// WITHOUT A VALIDATOR, OnValidSubmit FIRES ON EVERY SUBMIT -- that is Blazor's behaviour, not a
+    /// simplification, because "valid" is decided by validator components and there are none. A
+    /// &lt;DataAnnotationsValidator /&gt; is therefore REFUSED rather than ignored: ignoring it would make
+    /// an invalid model submit silently, which is the wrong answer dressed as the right one.
+    /// </summary>
+    string? EmitEditForm(ComponentIntermediateNode node, string? parent)
+    {
+        var attrs = node.Children.OfType<ComponentAttributeIntermediateNode>().ToList();
+
+        // Blazor requires Model (or EditContext); it is the thing a validator would validate. Required
+        // here too, so the form a Filament author writes is the form Blazor accepts.
+        if (attrs.All(a => a.AttributeName != "Model"))
+        {
+            Diag("unsupported-form",
+                "<EditForm> needs a Model=\"@…\". Blazor requires one (or an EditContext), and it is what " +
+                "a validator validates. Refusing to emit.",
+                node.Source);
+            return null;
+        }
+
+        if (attrs.FirstOrDefault(a => a.AttributeName is "OnSubmit" or "OnInvalidSubmit") is { } unsupported)
+        {
+            Diag("unsupported-form",
+                $"<EditForm {unsupported.AttributeName}> is not in the subset. Only OnValidSubmit is, because " +
+                "without validator components every submit IS valid; OnSubmit and OnInvalidSubmit only differ " +
+                "from it once validation exists. Refusing to emit.",
+                node.Source);
+            return null;
+        }
+
+        var v = $"_el{_el++}";
+        _create.Add($"const {v} = document.createElement('form');");
+
+        foreach (var attr in attrs)
+        {
+            if (attr.AttributeName is "Model") continue;   // consumed: nothing validates it (see above)
+            if (attr.AttributeName != "OnValidSubmit")
+            {
+                Diag("unsupported-form",
+                    $"<EditForm> parameter '{attr.AttributeName}' is not in the subset. Refusing to emit.",
+                    node.Source);
+                return null;
+            }
+
+            var handler = string.Concat(attr.Children.OfType<IntermediateToken>().Select(t => t.Content)).Trim();
+            if (!NamedByTemplate(handler, $"OnValidSubmit on <{node.TagName}>", attr.Source ?? node.Source,
+                    mustBeCallable: true))
+                return null;
+
+            _used.Add("listen");
+            // Recorded like any other handler, so single-use inlining and batching decide identically.
+            _handlers.Add((v, "submit", handler));
+            _preventDefault.Add(v);
+        }
+
+        foreach (var content in node.Children.OfType<ComponentChildContentIntermediateNode>())
+            foreach (var child in content.Children)
+            {
+                var c = EmitNode(child, parent: v);
+                if (c is not null) _create.Add($"insert({v}, {c});");
+            }
+
+        return v;
+    }
+
+    /// <summary>
+    /// &lt;InputText id="x" @bind-Value="model.Name" /&gt; -&gt; an &lt;input&gt; with the SAME two-way shape
+    /// decision 104 emits for `@bind` on a field: a value effect and a change listener (decision 138).
+    /// The difference is only the target -- a record PROPERTY signal rather than a field signal -- and
+    /// that is why the bind had to be marked as a write (MarkTemplateWrites) for it to be a signal at all.
+    /// </summary>
+    string? EmitInputText(ComponentIntermediateNode node)
+    {
+        var attrs = node.Children.OfType<ComponentAttributeIntermediateNode>().ToList();
+        var value = attrs.FirstOrDefault(a => a.AttributeName == "Value")
+            ?.Children.OfType<CSharpExpressionIntermediateNode>().FirstOrDefault();
+
+        if (value is null)
+        {
+            Diag("unsupported-form",
+                "<InputText> needs an @bind-Value. An unbound input displays nothing and stores nothing. " +
+                "Refusing to emit.",
+                node.Source);
+            return null;
+        }
+
+        var js = _code.SlotJs(value);
+        if (!_code.SlotIsReactive(value))
+        {
+            Diag("unsupported-form",
+                $"@bind-Value=\"{Trunc(RawText(value))}\" does not name reactive state. A two-way bind must " +
+                "write somewhere the display can read back; a target that is not a signal would take the " +
+                "keystroke and never re-render. Refusing to emit.",
+                node.Source);
+            return null;
+        }
+
+        var v = $"_el{_el++}";
+        _create.Add($"const {v} = document.createElement('input');");
+
+        // Any other parameter is a plain DOM attribute (id, class, placeholder…). A CSharp-valued one is
+        // out of this slice: it would be a reactive attribute on a component, which nothing measured.
+        foreach (var attr in attrs)
+        {
+            if (attr.AttributeName is "Value" or "ValueChanged" or "ValueExpression") continue;
+            var literal = string.Concat(attr.Children.OfType<HtmlContentIntermediateNode>()
+                .SelectMany(h => h.Children.OfType<IntermediateToken>()).Select(t => t.Content));
+            if (literal.Length == 0)
+            {
+                Diag("unsupported-form",
+                    $"<InputText> parameter '{attr.AttributeName}' is not a literal attribute value. " +
+                    "Refusing to emit.",
+                    node.Source);
+                return null;
+            }
+            _create.Add(SetAttribute(v, attr.AttributeName, JsString(literal)));
+        }
+
+        _used.Add("effect");
+        _used.Add("listen");
+        _bindings.Add($"effect(() => {{ {v}.value = {js}; }});");
+        _events.Add($"listen({v}, 'change', (e) => {{ {AssignTo(js, "e.target.value")} }});");
+        return v;
+    }
+
+    /// <summary>One static attribute, by the SAME rule the element path uses: a DOM property when the
+    /// allowlist names one, setAttr() otherwise -- decision 21/51's mapping reused, not a second one.</summary>
+    string SetAttribute(string v, string name, string valueJs)
+    {
+        if (PropertyAttributes.TryGetValue(name, out var prop)) return $"{v}.{prop} = {valueJs};";
+        _used.Add("setAttr");
+        return $"setAttr({v}, {JsString(name)}, {valueJs});";
+    }
+
+    /// <summary>The JS that writes a translated READ back. A signal read `x.value` writes as `x.value = v`,
+    /// which is the same text -- so this is a seam with one case today and a name for the day it has two.</summary>
+    static string AssignTo(string readJs, string valueJs) => $"{readJs} = {valueJs};";
 
     string? EmitComposition(MarkupElementIntermediateNode el)
     {

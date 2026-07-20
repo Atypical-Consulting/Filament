@@ -98,7 +98,11 @@ public class GateSubsetTests
     // COMPILE-TIME constraint, and this compiler resolves every composition at compile time into a scope
     // where the value is the parent's own expression -- so generics erase, and JS has no type to carry.
     // Moved to Supported/Gate/ and pinned by Typeparam_NowCompiles_WithTheTypeErased below.
-    [InlineData("Gate/Forms.razor", 1, 1, "FIL0003", "unresolved-component")]
+    // Gate/Forms.razor LEFT this list at decision 138: <EditForm> compiles now. It used to be refused as
+    // an UNRESOLVED COMPONENT -- composition looks for a sibling .razor and there is none -- which was a
+    // verdict about file lookup rather than about forms. With the Forms namespace imported, Razor
+    // resolves it and this compiler reads Blazor's own lowering. Moved to Supported/Gate/ and pinned by
+    // Forms_NowCompiles_ToAFormElement below.
     // Gate/EventCallback.razor STAYS on this list at decision 130. EventCallback entered the subset
     // in exactly ONE position -- a [Parameter] a composing parent bound to one of its own methods --
     // and this fixture declares it as a FIELD, i.e. as a value the component holds. There is no such
@@ -194,7 +198,6 @@ public class GateSubsetTests
     [InlineData("Gate/GenericMethod.razor")]
     [InlineData("Gate/GenericErasure.razor")]
     [InlineData("Gate/Implements.razor")]
-    [InlineData("Gate/Forms.razor")]
     [InlineData("Gate/EventCallback.razor")]
     [InlineData("Gate/EventCallbackUnbound.razor")]
     [InlineData("Gate/EventCallbackArg.razor")]
@@ -412,6 +415,22 @@ public class NegativeControls
         Assert.Contains("const currentCount = 0;", js);
         Assert.DoesNotContain("TItem", js);        // erased -- no type survives into the module
         Assert.DoesNotContain("typeparam", js);
+    }
+
+    /// <summary>
+    /// &lt;EditForm&gt; COMPILES NOW (decision 138), to a plain &lt;form&gt;. This fixture has no OnValidSubmit,
+    /// so there is no submit listener to emit -- which is the useful thing to pin: the form ELEMENT and
+    /// its children are the structural mapping, independent of whether anything handles submission.
+    /// </summary>
+    [Fact]
+    public void Forms_NowCompiles_ToAFormElement()
+    {
+        var js = File.ReadAllText(Generate.ToTempFixture("Gate/Forms.razor"));
+
+        Assert.Contains("document.createElement('form')", js);
+        Assert.Contains("document.createElement('button')", js);
+        Assert.DoesNotContain("EditForm", js);
+        Assert.DoesNotContain("listen(", js);      // no OnValidSubmit in this fixture
     }
 
     /// <summary>Section 5's List&lt;T&gt;: indexing, .Count, .Add, .RemoveAt -- all four.</summary>

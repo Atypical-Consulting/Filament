@@ -80,6 +80,7 @@ samples/filament-jsinterop-gen/App.g.js
 samples/filament-cascade-gen/App.g.js
 samples/filament-generic-gen/App.g.js
 samples/filament-inherits-gen/App.g.js
+samples/filament-forms-gen/App.g.js
 
 # examples/FilamentApp: emitted/copied at build, never committed (same rule as samples/*.g.js).
 examples/FilamentApp/wwwroot/App.g.js

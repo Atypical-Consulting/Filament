@@ -1,0 +1,27 @@
+@* FORMS (decision 138). <EditForm> + <InputText> + @bind-Value onto a MODEL's property.
+
+   Two things had to be true before this could compile, and both are the real content of the slice:
+
+   1. Razor must RESOLVE the form components, so this compiler reads Blazor's OWN two-way lowering
+      (Value / ValueChanged / ValueExpression) instead of re-deriving binding semantics by hand.
+   2. @bind-Value targets a record PROPERTY, not a field. Reactivity here is defined over fields, so
+      a bound property had to become a signal -- and the TEMPLATE's write is what makes it one.
+
+   The lowering: <EditForm> is a <form> whose submit calls OnValidSubmit (preventing the browser's
+   navigation, as Blazor does); <InputText> is an <input> with a value effect and a change listener.
+
+   DOM contract: #live mirrors the model as it is edited; #out stays empty until submit, then holds
+   what was saved. Typing "ok" into #name must move #live to "ok" while #out stays "", and clicking
+   #save must then move #out to "ok". Both halves matter -- a form that bound one way, or that
+   submitted without reading the model, would pass one and fail the other (BENCH n°56). *@
+
+<EditForm Model="@model" OnValidSubmit="Save"><InputText id="name" @bind-Value="model.Name" /><button id="save" type="submit">save</button></EditForm><p id="live">@model.Name</p><p id="out">@saved</p>
+
+@code {
+    private Person model = new Person();
+    private string saved = "";
+
+    void Save() { saved = model.Name; }
+
+    public record Person { public string Name { get; set; } = ""; }
+}

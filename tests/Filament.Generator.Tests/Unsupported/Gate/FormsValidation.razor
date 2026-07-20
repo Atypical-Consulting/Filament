@@ -1,0 +1,11 @@
+@* Decision 138's BOUNDARY. Validation is a subsystem, not a component mapping: EditContext, field
+   state, message stores and the DataAnnotations rules themselves. Without validators every submit IS
+   valid (Blazor's own behaviour), so OnValidSubmit fires on every submit and there is nothing to emit
+   for validity. Ignoring a validator would let an invalid model submit SILENTLY -- the wrong answer
+   dressed as the right one -- so it is refused. *@
+<EditForm Model="@model"><DataAnnotationsValidator /><button id="s" type="submit">s</button></EditForm>
+
+@code {
+    private Person model = new Person();
+    public record Person { public string Name { get; set; } = ""; }
+}
