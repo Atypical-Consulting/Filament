@@ -1,0 +1,24 @@
+# Normalise line endings to LF in the working tree on every platform.
+#
+# This is load-bearing, not hygiene. The generator embeds the whitespace of the .razor source
+# verbatim into the JS it emits, and the test suite compares that output byte-for-byte against
+# committed answer keys and approved snapshots. With git's default autocrlf on Windows, a
+# checked-out .razor gains CRLF, the generator faithfully emits createTextNode('\r\n\r\n'),
+# and every snapshot test fails against an answer key that says '\n\n' — a green suite on
+# Linux and macOS and a wholly red one on Windows, for a difference that exists only in the
+# checkout. Pinning eol=lf makes the bytes the same everywhere.
+#
+# The stored content is already LF, so this changes the working tree, not the history — no
+# renormalisation pass is needed.
+* text=auto eol=lf
+
+# Binary: never touch these.
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.wasm binary
+*.dll binary
+*.nupkg binary

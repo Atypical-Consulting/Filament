@@ -89,14 +89,20 @@ const EXPECTED_ESBUILD = '0.28.1';
 // minify — exactly build-filament.sh's esbuild flags for the minified path.
 // ---------------------------------------------------------------------------
 
+// npm ships npx as `npx.cmd` on Windows, and execFileSync resolves the literal name without
+// a shell — so a bare 'npx' is ENOENT there while working everywhere else. Same binary, two
+// filenames. (Not `shell: true`: these arguments include generated paths, and a shell would
+// start interpreting them.)
+const NPX = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+
 export function esbuildVersion() {
-  return execFileSync('npx', ['--no-install', 'esbuild', '--version'], {
+  return execFileSync(NPX, ['--no-install', 'esbuild', '--version'], {
     cwd: REPO_ROOT, encoding: 'utf8',
   }).trim();
 }
 
 export function minify(file) {
-  return execFileSync('npx', ['--no-install', 'esbuild', resolve(file), '--minify', '--target=es2022'], {
+  return execFileSync(NPX, ['--no-install', 'esbuild', resolve(file), '--minify', '--target=es2022'], {
     cwd: REPO_ROOT, encoding: 'utf8',
   });
 }
