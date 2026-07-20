@@ -111,7 +111,7 @@ Two apps — `Counter` and a 1,000-row `Rows` — compiled from **pure `.razor`*
 
 | # | Criterion | Result | Detail |
 |---|-----------|:------:|--------|
-| **C1** | Bundle weight (< 10 KB gzip) | ✅ **PASS** | `Counter` **2,987 B**, `Rows` **4,373 B** gzip. The signals runtime holds a **1,943 B / 2,048 B** budget with the runtime byte-frozen across all 47 subset slices. |
+| **C1** | Bundle weight (< 10 KB gzip) | ✅ **PASS** | `Counter` **2,987 B**, `Rows` **4,373 B** gzip. The signals runtime holds a **1,943 B / 2,048 B** budget with the runtime byte-frozen across all 54 subset slices. |
 | **C2** | Lighter than Blazor (≥ 50×) | ✅ **PASS** | `Rows` is **~432× lighter** (gzip vs gzip, non-AOT baseline); Counter ~631×. C1 is the stricter gate, so C2 passes the moment C1 does. |
 | **C3** | DOM writes | ✅ **PASS** | `Counter`: **1** `characterData` write per increment (identical to Blazor — a correctness bar, not a win). `Rows` `#update`: **100 writes, zero reconcile**; `#swap`: **exactly 2 node moves** (keyed, same node identity). |
 | **C4** | Speed | ✅ **PASS** | `Rows` beats the *faster* Blazor config (AOT) on **all four** scenarios — create-warm **3.10 vs 7.90 ms**, and update/swap/clear likewise. |
@@ -132,7 +132,7 @@ Two apps — `Counter` and a 1,000-row `Rows` — compiled from **pure `.razor`*
 
 ## What compiles
 
-Across **128 recorded decisions** and **47 measured slices**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **411 tests** back it (333 generator · 60 subset · 18 analyzer, plus 214 runtime).
+Across **136 recorded decisions** and **54 measured slices**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **455 tests** back it (377 generator · 60 subset · 18 analyzer, plus 214 runtime).
 
 | Area | Covered |
 |------|---------|
@@ -142,7 +142,8 @@ Across **128 recorded decisions** and **47 measured slices**, the compilable C# 
 | **Collections** | `List<T>`, `T[]`, `Dictionary<K,V>`→`Map` — read, reassign, **and element write** (copy-on-write signals) |
 | **LINQ** | `Where`/`Select`/`Count`/`Any`/`All` · `Sum`/`Min`/`Max`/`Average`/`First`/`Last` · `OrderBy`/`Skip`/`Take`/`Reverse` · `GroupBy` |
 | **Reactivity** | `@bind` two-way (string/int/bool/checkbox), inline lambda handlers, reactive attributes, `async`/`await`→`Promise` |
-| **Composition** | static-leaf and bound-parameter (reactive) component composition |
+| **Composition** | static-leaf, bound-parameter (reactive), multi-parameter and nested; `EventCallback` (child→parent); `RenderFragment`/`ChildContent` |
+| **Framework** | `@ref` · `@inject IJSRuntime` + JS interop · `CascadingParameter` · generics (`@typeparam`) · `@inherits` — all compiled away, [zero runtime bytes](./docs/adr/0003-bucket-b-nongoals-closed.md) |
 
 Anything outside the subset raises a **located diagnostic and writes no file** — Filament never emits silently-wrong JavaScript.
 
@@ -154,7 +155,23 @@ Filament is a **thesis under test**. The verdict, stated the way the repo states
 
 > **RADICAL is not eliminated, and not established.** The thesis (a standalone Razor→JS compiler on a tiny signals runtime can replace Blazor) is **not falsified** — but two demo apps over a deliberately narrow subset do not prove out a whole-framework architecture.
 
-**Not implemented** (spec §3 non-goals — the named price of the C1/C4 numbers): routing (`@page`), DI (`@inject`), inheritance (`@inherits`), multi-component parameter fan-out, `RenderFragment`/`ChildContent`, `EventCallback`, `@ref`, `CascadingParameter`, forms, generics, JsInterop.
+**Not implemented** (spec §3 non-goals): **routing (`@page`)** and **forms**. Everything else on that
+list has since been closed and measured — see [ADR 0003](./docs/adr/0003-bucket-b-nongoals-closed.md).
+
+The interesting part is *why* they closed. Blazor needs a runtime service for most of these because it
+discovers things at **runtime**; Filament resolves composition at **build time**, so they turned out to
+be lookups the compiler performs and then **erases**. `@ref` is a naming decision (the element is
+already a `const`); JS interop is a direct call (there is no boundary to bridge); a cascade is lexical
+scope; generics erase; `@inherits` merges text before state lifting. **Nine features, zero runtime
+bytes** — the runtime stayed byte-frozen at 1,943 B throughout.
+
+The two that remain are the two that resisted for a real reason, and both are specified in ADR 0003
+rather than approximated: **forms** is blocked on two-way binding to a record *property*, which needs a
+reactivity model for member access (a genuine extension, of the same kind as `#127`); **routing** is
+the one item that genuinely needs new *code* at run time, and it must be generated into the app module
+and **measured as weight**, not hidden in the runtime. `@inject` and `@inherits` are closed
+**narrowly** — `@inject` only for `IJSRuntime`, `@inherits` only for a sibling `.razor` base — because
+a general DI container resolves at runtime and a `.cs` base is C# this compiler never reads.
 
 **Reserves** (all disclosed in [`BENCH.md`](./BENCH.md) / [`DECISIONS.md`](./DECISIONS.md)):
 - ✅ *Banked (BENCH n°48).* The hand-written `Rows` bundle (post-#80) was re-measured on the wire at **4,373 B gzip — byte-identical to the generated bundle**.
