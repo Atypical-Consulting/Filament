@@ -1,0 +1,21 @@
+@* LINQ aggregates (BENCH n°40, decision 121): the number aggregates over a List map to JS array reductions --
+   Sum -> reduce((a,b)=>a+b,0), Min/Max -> Math.min/max(...arr), Average -> sum/length, First/Last -> index.
+   #go computes the Sum of the elements > 3 and the Max of [3,7,2,9,5]: Sum(7+9+5)=21, Max=9. So #sum goes
+   "0" -> "21" and #max "0" -> "9", exactly as Blazor runs the same C# LINQ. No runtime primitive is added. total
+   and peak are read by @total/@peak AND assigned by Go -> signals; _nums is never mutated -> a plain array. *@
+
+<p>Sum: <span id="sum">@total</span>, Max: <span id="max">@peak</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private int total = 0;
+    private int peak = 0;
+    private System.Collections.Generic.List<int> _nums = new System.Collections.Generic.List<int> { 3, 7, 2, 9, 5 };
+
+    private void Go()
+    {
+        total = _nums.Where(x => x > 3).Sum();
+        peak = _nums.Max();
+    }
+}
