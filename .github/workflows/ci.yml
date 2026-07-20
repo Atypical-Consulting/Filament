@@ -84,8 +84,16 @@ jobs:
 
       # The tests locate the repo root by walking up for DECISIONS.md (RepoPaths.Find), so
       # they are cwd-independent but need the full checkout, not just the test binaries.
+      # -m:1 runs the three test projects one at a time instead of concurrently. On the Windows
+      # runner the generator suite takes ~5 minutes (vs ~30s on macOS) because every one of its
+      # gate tests shells out to node, and three testhosts competing for that box made the
+      # analyzer host miss vstest's 90s connection handshake — "Test Run Aborted", with every
+      # test that did run passing. Sequential costs a couple of minutes and removes the race;
+      # the raised timeout is belt-and-braces for a slow-but-not-wedged host.
       - name: Test
-        run: dotnet test Filament.sln --no-build -c Release --logger "trx;LogFileName=test-results.trx"
+        env:
+          VSTEST_CONNECTION_TIMEOUT: 180
+        run: dotnet test Filament.sln --no-build -c Release -m:1 --logger "trx;LogFileName=test-results.trx"
 
       - name: Upload test results
         uses: actions/upload-artifact@v7
