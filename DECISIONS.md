@@ -4203,3 +4203,21 @@ runtime. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°40) : `bas
 `#sum`/`#max` `0/0 → 21/9`, à l'identique. Pas de témoin `Unsupported/` distinct — c'est un élargissement de
 COUVERTURE des opérateurs LINQ (#116), pas la fermeture d'un fixture. `HARNESS_VERSION` 1.34.0 → 1.35.0, divulgué.
 §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 122. Le tableau DIMENSIONNÉ `new T[n]` entre dans le §5 — `new Array(n).fill(default)` ; élargit #117
+
+**Décision.** Un tableau dimensionné `new T[n]` (mono-rang, élément scalaire) rejoint le §5, mappé sur
+`new Array(n).fill(default(T))`. Il était refusé (#117 n'admettait que le LITTÉRAL `new T[]{…}`). `new int[3]` →
+`new Array(3).fill(0)` = [0,0,0] — exactement le tableau à n valeurs par défaut de C# (int→0, string→null,
+bool→false, via `DefaultOf`). `ClassifyExpression` admet désormais toute création de tableau mono-rang d'un scalaire
+(littéral OU dimensionné) ; le multi-dim (`new int[3,3]`, rang ≠ 1) reste refusé. `Expr` émet le littéral pour la
+forme initialiseur, sinon `new Array(<taille>).fill(<défaut>)`. La taille peut être une constante OU une variable
+(`new int[count]` → `new Array(count).fill(0)`). Suite : **378 tests** (300 générateur / 60 subset / 18 analyzer),
+runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `Array`, `.fill`, l'indexation, `.length` sont des builtins JS — aucune primitive
+runtime. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°41) : `baseline/SizedArray.Blazor` (`xs` part de
+`new int[3]` = [0,0,0], `#fill` le réassigne au littéral [7,8,9,10]) et `filament-sizedarray-gen` rendent
+`#len`/`#first` `3/0 → 4/7`, à l'identique. Le témoin subset `new int[0]` bascule refusé → supporté — c'est un
+élargissement de COUVERTURE de #117, pas la fermeture d'un fixture `Unsupported/`. `HARNESS_VERSION` 1.35.0 →
+1.36.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.

@@ -4333,3 +4333,42 @@ distinct (élargissement de couverture de #116). §8 inchangé.
 ---
 
 *Fin de l'entrée n°40. Ne pas modifier — ajouter une entrée n°41 pour toute rectification.*
+
+---
+
+## Entrée n°41 — 2026-07-20 — Phase 4 : le tableau DIMENSIONNÉ `new int[n]` mesuré contre Blazor (CORRECTION)
+
+**Un tableau dimensionné `new T[n]`** (décision #122) rejoint le §5, mappé sur `new Array(n).fill(default(T))` — le
+tableau à n valeurs par défaut de C# (int→0, string→null, bool→false). Élargit #117 (qui n'admettait que le
+littéral `new T[]{…}`). `new int[3]` → `new Array(3).fill(0)` = [0,0,0]. **AUCUNE primitive runtime** :
+Array/.fill sont des builtins JS. Mono-rang uniquement (`new int[3,3]` refusé).
+
+### Ce qui est mesuré
+
+`baseline/SizedArray.Blazor` : `xs` part de `new int[3]` = [0,0,0] (Length 3, xs[0] = 0) ; `#fill` le RÉASSIGNE au
+littéral `new int[]{7,8,9,10}` = [7,8,9,10] (Length 4, xs[0] = 7). `xs` est lu par `@xs.Length`/`@xs[0]` ET réassigné
+→ signal (la réassignation en gros déclenche les effets ; une écriture d'élément serait refusée). La branche
+`sizedarray` de `verifyContract` clique `#fill` et exige `#len` = "4" ET `#first` = "7". **`HARNESS_VERSION`
+1.35.0 → 1.36.0**, divulgué.
+
+```
+dotnet publish baseline/SizedArray.Blazor -c Release -o bench/publish/blazor-sizedarray
+./bench/build-filament.sh filament-sizedarray-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-sizedarray/wwwroot --app sizedarray --label blazor-sizedarray       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-sizedarray-gen   --app sizedarray --label filament-sizedarray-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#len` / `#first` | verdict |
+|---|---|---|
+| **blazor-sizedarray** (autorité) | `3/0 → 4/7` | contrat OK |
+| **filament-sizedarray-gen** (générateur) | `3/0 → 4/7` | contrat OK |
+
+**Les deux vont de `3/0` à `4/7`, à l'identique.** `new int[3]` = `new Array(3).fill(0)` = [0,0,0], puis la
+réassignation au littéral [7,8,9,10] — Blazor rend le même tableau C#. `git diff -- src/filament-runtime` vide. Le
+témoin subset `new int[0]` bascule de refusé à supporté (élargissement de couverture de #117). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°41. Ne pas modifier — ajouter une entrée n°42 pour toute rectification.*
