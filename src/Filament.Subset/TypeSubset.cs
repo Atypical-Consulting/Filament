@@ -119,6 +119,18 @@ public static class TypeSubset
     /// </summary>
     public static bool IsElementReference(ITypeSymbol? type) => IsComponentsType(type, "ElementReference");
 
+    /// <summary>
+    /// <c>IJSRuntime</c> (decision 133) — the ONE injectable service. Like the other three framework
+    /// types it is never a §5 value; it is admitted only as the target of an <c>@inject</c>, where it
+    /// does not denote an object at all but the HOST GLOBAL SCOPE. Blazor needs a runtime object because
+    /// calling JavaScript from .NET means marshalling across a boundary; a module that IS JavaScript has
+    /// no boundary, so the bridge is erased and the call becomes the call.
+    /// </summary>
+    public static bool IsJsRuntime(ITypeSymbol? type) =>
+        type is INamedTypeSymbol { TypeArguments.Length: 0 } n &&
+        n.Name == "IJSRuntime" &&
+        n.ContainingNamespace?.ToDisplayString() == "Microsoft.JSInterop";
+
     /// <summary>Name + namespace rather than a display string, so a NULLABLE annotation cannot change the
     /// answer: `RenderFragment?` is the same type as `RenderFragment`, and the ONE declaration form Blazor
     /// authors actually write for ChildContent is the nullable one.</summary>

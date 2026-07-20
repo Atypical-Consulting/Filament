@@ -1,0 +1,15 @@
+@inject IJSRuntime JS
+
+@* Decision 133's BOUNDARY. The JS identifier must be a literal string. Resolving a COMPUTED one
+   would mean walking the global scope at runtime -- which is exactly the interop bridge this
+   compiler erases instead of shipping. Refused rather than approximated. *@
+<button id="b" @onclick="Go">go</button>
+
+@code {
+    private string fn = "localStorage.clear";
+
+    async Task Go()
+    {
+        await JS.InvokeVoidAsync(fn);
+    }
+}

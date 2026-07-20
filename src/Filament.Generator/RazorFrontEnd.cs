@@ -131,6 +131,43 @@ public static class RazorFrontEnd
     // The reference-assembly probe lives in ReferenceAssemblies: the C# front end needs
     // the same set to resolve the types in @code, and decision 53's lesson is that the
     // wiring gets described ONCE or the two copies drift.
+    /// <summary>An `@inject T Name` site, read back off the lowered IR (decision 133).</summary>
+    public readonly record struct InjectSite(string TypeName, string MemberName);
+
+    /// <summary>
+    /// The @inject sites on the component class.
+    ///
+    /// REFLECTION, AND CONTAINED HERE ON PURPOSE. `ComponentInjectIntermediateNode` is INTERNAL to
+    /// Microsoft.AspNetCore.Razor.Language, so it cannot be named in a type test the way every other node
+    /// in this compiler is. That is exactly the EOL-Razor exposure ADR 0001 describes, so it lives in this
+    /// file with the rest of the seam rather than leaking a reflective lookup into TemplateCompiler.
+    ///
+    /// It FAILS LOUD, like the pass removal above: if the node is present but its TypeName/MemberName
+    /// properties are not where this expects them, that is the pinned Razor version having moved under us,
+    /// and a silently empty result would mean an @inject the author wrote being dropped without a word.
+    /// </summary>
+    public static IReadOnlyList<InjectSite> Injects(IntermediateNode cls)
+    {
+        var sites = new List<InjectSite>();
+        foreach (var child in cls.Children)
+        {
+            if (child.GetType().Name != "ComponentInjectIntermediateNode") continue;
+
+            var t = child.GetType();
+            var typeName = t.GetProperty("TypeName")?.GetValue(child) as string;
+            var memberName = t.GetProperty("MemberName")?.GetValue(child) as string;
+
+            if (typeName is null || memberName is null)
+                throw new GeneratorException(
+                    "FIL-WIRING: a ComponentInjectIntermediateNode has no TypeName/MemberName. The pinned " +
+                    "Razor version (6.0.36) has changed shape under this seam (ADR 0001). Refusing to emit " +
+                    "rather than drop an @inject the author wrote.");
+
+            sites.Add(new InjectSite(typeName, memberName));
+        }
+        return sites;
+    }
+
 }
 
 /// <summary>What one parse produced, all of it read off the engine that did the parsing.</summary>
@@ -201,6 +238,7 @@ public sealed class DirectiveSpyPass : IntermediateNodePassBase, IRazorDirective
         foreach (var d in documentNode.FindDescendantNodes<DirectiveIntermediateNode>())
             _directives.Add(new DirectiveSite(d.DirectiveName, d.Source));
     }
+
 }
 
 public sealed class GeneratorException(string message) : Exception(message);

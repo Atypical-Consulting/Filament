@@ -1,0 +1,28 @@
+@inject IJSRuntime JS
+
+@* JS INTEROP -- and the one honest form of @inject (decision 133).
+
+   Blazor injects IJSRuntime because calling JavaScript from .NET needs a bridge: a marshalling
+   channel that resolves a dotted identifier against the browser's global scope and serialises the
+   arguments across. Filament IS JavaScript. There is no boundary to cross, so the bridge is not
+   implemented -- it is ERASED, and the call becomes the call:
+       await JS.InvokeVoidAsync("localStorage.setItem", "fil", "hello")  ->  localStorage.setItem('fil', 'hello')
+
+   Only BUILT-IN browser APIs are used here, deliberately: a hand-written helper in index.html would
+   have to be added to both shells, and the measurement would then be of the shells rather than of
+   the interop.
+
+   DOM contract: #out starts empty. Clicking #go writes a value to localStorage and reads it back,
+   so #out becomes "hello" -- a round trip THROUGH the browser, which is the measurement (BENCH n°52). *@
+
+<div id="wrap"><p id="out">@val</p><button id="go" @onclick="Go">go</button></div>
+
+@code {
+    private string val = "";
+
+    async Task Go()
+    {
+        await JS.InvokeVoidAsync("localStorage.setItem", "fil", "hello");
+        val = await JS.InvokeAsync<string>("localStorage.getItem", "fil");
+    }
+}

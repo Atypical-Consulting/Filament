@@ -236,6 +236,11 @@ public static class RepoPaths
     /// <summary>The GroupBy SPEC (decisions 51/128). Never edited to make a gate pass.</summary>
     public static string GroupByAnswerKey => Path.Combine(Root, "samples", "GroupBy", "groupby.js");
 
+    public static string JsInteropRazor => Path.Combine(Root, "baseline", "JsInterop.Blazor", "App.razor");
+
+    /// <summary>The JS-interop SPEC (decisions 51/133). Never edited to make a gate pass.</summary>
+    public static string JsInteropAnswerKey => Path.Combine(Root, "samples", "JsInterop", "jsinterop.js");
+
     public static string ElemRefRazor => Path.Combine(Root, "baseline", "ElemRef.Blazor", "App.razor");
 
     /// <summary>The @ref SPEC (decisions 51/132). Never edited to make a gate pass.</summary>

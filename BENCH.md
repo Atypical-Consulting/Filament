@@ -4816,3 +4816,49 @@ motif de refus affiné (champ `ElementReference` absent, même emplacement). §8
 ---
 
 *Fin de l'entrée n°51. Ne pas modifier — ajouter une entrée n°52 pour toute rectification.*
+
+---
+
+## Entrée n°52 — 2026-07-20 — Phase 4 : JS interop + `@inject` mesurés contre Blazor (CORRECTION)
+
+**`@inject IJSRuntime` + `InvokeVoidAsync`/`InvokeAsync<T>`** (décision #133) rejoignent le §5 — deux non-buts
+§3 d'un coup, parce qu'ils sont la même question. Blazor résout l'identifiant pointé contre la portée globale
+du navigateur à l'EXÉCUTION et sérialise les arguments à travers la frontière .NET/JS ; ce module est déjà de
+l'autre côté, donc l'identifiant est résolu à la COMPILATION et le pont est **effacé**. `@inject` reste
+volontairement ÉTROIT (IJSRuntime seul) : un conteneur généraliste résout à l'exécution, et il n'y a rien ici
+à interroger. **AUCUNE primitive runtime.**
+
+### Ce qui est mesuré
+
+`baseline/JsInterop.Blazor` : le clic sur `#go` exécute
+`await JS.InvokeVoidAsync("localStorage.setItem", "fil", "hello")` puis
+`val = await JS.InvokeAsync<string>("localStorage.getItem", "fil")`, et `#out` affiche `val`.
+**Uniquement des API navigateur intégrées**, délibérément : un helper écrit à la main dans `index.html`
+devrait être ajouté aux DEUX shells, et la mesure porterait alors sur les shells plutôt que sur l'interop.
+Le contrat efface d'abord la clé (une valeur laissée par un run précédent ne peut donc pas faire passer une
+interop cassée pour correcte), puis vérifie **deux choses** : `#out` vaut `"hello"`, ET `localStorage['fil']`
+vaut `"hello"` — une implémentation qui truquerait l'affichage sans toucher au stockage serait prise.
+**`HARNESS_VERSION` 1.45.0 → 1.46.0**, divulgué.
+
+```
+dotnet publish baseline/JsInterop.Blazor -c Release -o bench/publish/blazor-jsinterop
+./bench/build-filament.sh filament-jsinterop-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-jsinterop/wwwroot --app jsinterop --label blazor-jsinterop       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-jsinterop-gen   --app jsinterop --label filament-jsinterop-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#out` (initial → après `#go`) | `localStorage['fil']` | verdict |
+|---|---|---|---|
+| **blazor-jsinterop** (autorité) | `"" → "hello"` | `"hello"` | contrat OK |
+| **filament-jsinterop-gen** (générateur) | `"" → "hello"` | `"hello"` | contrat OK |
+
+**Le même aller-retour à travers le navigateur, des deux côtés.** L'effacement du pont est donc fidèle sur
+la surface mesurée. `git diff -- src/filament-runtime` vide. Témoins maintenus : `Inject.razor` (service
+quelconque), `Gate/JsInterop.razor` (IJSRuntime en champ), `Gate/JsIdentifierComputed.razor` (identifiant
+calculé). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°52. Ne pas modifier — ajouter une entrée n°53 pour toute rectification.*

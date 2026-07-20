@@ -134,7 +134,7 @@ public sealed class TemplateCompiler
     /// types this compiler happens to know) is what makes the gate complete: a
     /// directive nobody here has heard of is refused too.
     /// </summary>
-    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code" };
+    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code", "inject" };
 
     /// <summary>
     /// The base class Razor gives EVERY component whether or not @inherits was written.
@@ -302,6 +302,36 @@ public sealed class TemplateCompiler
         CollectDynamicAttributes(method, plan);
         CollectLambdaHandlers(method, plan);
 
+        // @inject (decision 133), harvested BEFORE the compilation so the injected name RESOLVES in it.
+        // Razor drops the directive's span during lowering, so the location comes from DirectiveSpyPass.
+        foreach (var inject in RazorFrontEnd.Injects(cls))
+        {
+            var span = parse.Directives.FirstOrDefault(d => d.Name == "inject").Source;
+            var typeName = inject.TypeName.Trim();
+            var member = inject.MemberName.Trim();
+
+            // ONE injectable service, and the narrowness is the whole honesty of this slice. IJSRuntime
+            // has a compile-time meaning -- the host global scope -- so injecting it erases to nothing.
+            // A general container resolves arbitrary implementations at RUNTIME, which a static module
+            // has no home for, and a user's own service type lives in a .cs file this compiler never
+            // sees. Both are separate questions; neither is quietly approximated here.
+            if (!typeName.EndsWith("IJSRuntime", StringComparison.Ordinal) || member.Length == 0)
+            {
+                Diag("unsupported-directive",
+                    $"@inject {typeName} is not in the subset. The ONLY injectable service is IJSRuntime, " +
+                    "which is admitted because it has a compile-time meaning -- it denotes the browser's " +
+                    "global scope, so the call it carries becomes a direct call and the service itself is " +
+                    "erased. A general DI container resolves an implementation at RUNTIME, and a Filament " +
+                    "module has no container to ask; a service type of your own lives in a .cs file this " +
+                    "compiler never reads. Refusing to emit rather than inject something that resolves to " +
+                    "nothing.",
+                    span);
+                continue;
+            }
+
+            code.BindJsRuntime(member);
+        }
+
         code.Compile(codeNodes, plan);
         _diagnostics.AddRange(code.Diagnostics);
 
@@ -446,6 +476,11 @@ public sealed class TemplateCompiler
             {
                 case MethodDeclarationIntermediateNode m when m.MethodName == "BuildRenderTree":
                 case CSharpCodeIntermediateNode: // the @code seam -- spliced verbatim
+                    break;
+
+                // @inject (decision 133). Admitted for IJSRuntime and nothing else; the site itself is read
+                // back by RazorFrontEnd.Injects in PrepareComponent, which is where it is validated.
+                case { } n when n.GetType().Name == "ComponentInjectIntermediateNode":
                     break;
                 default:
                     Unaccounted(child, "inside the component class");

@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.45.0';   // 1.45.0: 'elemref' contract (@ref names the const the element is emitted into; FocusAsync() -> .focus(), observed via document.activeElement.id). 1.44.0: 'fragment' contract (RenderFragment/ChildContent: the parent's markup is spliced INSIDE the child's element after the child's own heading, and keeps the binding it was written with -- #body advances 0->1->2). 1.43.0: 'eventcb' contract (EventCallback child->parent: the callback is resolved to the parent's method at build time and ERASED, so the child's #bump runs the parent's Inc and #out advances 0->1->2). 1.42.0: 'groupby' contract (LINQ GroupBy -> reduce into Map<K,group>, each group a JS array-with-.key; g.Key -> g.key, first-appearance order). 1.41.0: 'elementwrite' contract (mutable arr[i]=v / d[k]=v as copy-on-write -> arr.with(i,v) / new Map(d).set(k,v), a new ref so the signal fires). 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.46.0';   // 1.46.0: 'jsinterop' contract (@inject IJSRuntime + InvokeVoidAsync/InvokeAsync<T> erased to direct calls: localStorage round trip, #out -> "hello"). 1.45.0: 'elemref' contract (@ref names the const the element is emitted into; FocusAsync() -> .focus(), observed via document.activeElement.id). 1.44.0: 'fragment' contract (RenderFragment/ChildContent: the parent's markup is spliced INSIDE the child's element after the child's own heading, and keeps the binding it was written with -- #body advances 0->1->2). 1.43.0: 'eventcb' contract (EventCallback child->parent: the callback is resolved to the parent's method at build time and ERASED, so the child's #bump runs the parent's Inc and #out advances 0->1->2). 1.42.0: 'groupby' contract (LINQ GroupBy -> reduce into Map<K,group>, each group a JS array-with-.key; g.Key -> g.key, first-appearance order). 1.41.0: 'elementwrite' contract (mutable arr[i]=v / d[k]=v as copy-on-write -> arr.with(i,v) / new Map(d).set(k,v), a new ref so the signal fires). 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -588,6 +588,15 @@ const APPS = {
   elemref: {
     readySelector: '#go',
     observeSelector: '#box',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clears localStorage, clicks #go, and asserts #out becomes "hello" --
+  // a value that can only appear by writing to and reading back from the browser's own localStorage. The
+  // measurement of the JS-interop widening (BENCH n°52): the interop bridge is ERASED, so
+  // InvokeVoidAsync("localStorage.setItem", …) is emitted as localStorage.setItem(…) directly.
+  jsinterop: {
+    readySelector: '#go',
+    observeSelector: '#out',
     scenarios: [],
   },
   // Correctness-only: verifyContract clicks #fill and asserts #len "3" -> "4" and #first "0" -> "7", against
@@ -2251,6 +2260,31 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         out.observed.afterSecond = v();
         if (v() !== '2') out.problems.push(`#out after two #bump is "${v()}", expected "2"`);
         return out;
+      });
+    }
+
+    if (app === 'jsinterop') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#go') || !document.querySelector('#out')) {
+          out.problems.push('missing required element: #go/#out'); return out;
+        }
+        // Cleared first, so a value left by an earlier run cannot make a broken interop look correct.
+        localStorage.removeItem('fil');
+        const v = () => document.querySelector('#out').textContent.trim();
+        out.observed.initial = v();
+        if (v() !== '') { out.problems.push(`#out initially is "${v()}", expected ""`); return out; }
+        // THE MEASUREMENT: the click writes to localStorage and reads it back. Both the DOM and the
+        // browser store are checked, so an implementation that faked the display without touching
+        // localStorage would still be caught.
+        document.querySelector('#go').click();
+        return new Promise((resolve) => setTimeout(() => {
+          out.observed.afterGo = v();
+          out.observed.stored = localStorage.getItem('fil');
+          if (v() !== 'hello') out.problems.push(`#out after #go is "${v()}", expected "hello"`);
+          if (out.observed.stored !== 'hello') out.problems.push(`localStorage['fil'] is "${out.observed.stored}", expected "hello"`);
+          resolve(out);
+        }, 50));
       });
     }
 

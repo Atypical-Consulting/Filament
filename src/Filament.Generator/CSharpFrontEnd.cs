@@ -97,6 +97,14 @@ public sealed class CSharpFrontEnd
     /// callback is not a value, so `@OnBump` must not read as one.</summary>
     readonly Dictionary<string, string> _paramHandlers = new(StringComparer.Ordinal);
 
+    /// <summary>The name an `@inject IJSRuntime` bound, or null (decision 133). It is not a value: it
+    /// names the HOST GLOBAL SCOPE, so it only ever appears as the receiver of an Invoke*Async call,
+    /// which JsInvocation turns into a direct call. Declared into the compiled source so that C# binds
+    /// it -- the same "ask the compiler, do not guess" rule the method-group slot marker follows.</summary>
+    string? _jsRuntime;
+
+    public void BindJsRuntime(string name) => _jsRuntime = name;
+
     /// <summary>Every method body, TRANSLATED DURING Compile() and cached. See _sealed.</summary>
     readonly Dictionary<string, List<string>> _bodies = new(StringComparer.Ordinal);
 
@@ -467,10 +475,17 @@ public sealed class CSharpFrontEnd
         _src = new WrappedSource();
         _src.Literal(
             "using System;using System.Collections.Generic;using System.Linq;" +
-            "using System.Threading.Tasks;using Microsoft.AspNetCore.Components;" +
+            "using System.Threading.Tasks;using Microsoft.AspNetCore.Components;using Microsoft.JSInterop;" +
             "partial class __FilamentComponent {");
         foreach (var node in codeNodes) _src.Node(node, RawText(node));
         _src.Literal("\n}\npartial class __FilamentComponent {\n");
+
+        // The @inject'd IJSRuntime, declared so the name BINDS (decision 133). Razor declares it as a
+        // property on the generated component; this compiler only needs C# to resolve `JS.InvokeVoidAsync`
+        // to a real symbol, so a field is enough. It is skipped by the member walk (FieldDecl) because it
+        // is not the author's declaration and emits nothing: the service is erased.
+        if (_jsRuntime is not null)
+            _src.Literal($"Microsoft.JSInterop.IJSRuntime {_jsRuntime} = null!;\n");
 
         void Slot(IntermediateNode n)
         {
@@ -2727,6 +2742,59 @@ public sealed class CSharpFrontEnd
     /// stripped, because preserving it preserves the ordering the C# states, and `await` on a non-promise
     /// is exactly the same program.
     /// </summary>
+    /// <summary>
+    /// `JS.InvokeVoidAsync("localStorage.setItem", k, v)` -> `localStorage.setItem(k, v)` (decision 133).
+    ///
+    /// THE BRIDGE IS ERASED, NOT IMPLEMENTED. Blazor resolves the dotted identifier against the browser's
+    /// global scope at RUNTIME and marshals the arguments across the .NET/JS boundary. This module IS on
+    /// the other side already: the identifier is resolved at COMPILE time -- into the very same dotted
+    /// path, which is legal JS as written -- and the arguments are the translated expressions themselves.
+    ///
+    /// THE IDENTIFIER MUST BE A STRING LITERAL, and that is the load-bearing gate. A computed identifier
+    /// would have to be resolved by walking globalThis at runtime, i.e. by shipping the bridge this slice
+    /// claims to have removed. Each dotted segment is checked to be a plain JS identifier, so nothing that
+    /// is not a call path can be spliced into call position.
+    /// </summary>
+    string JsInvocation(InvocationExpressionSyntax inv, IMethodSymbol m)
+    {
+        if (_jsRuntime is null)
+            return Refuse("unsupported-call",
+                "a JS interop call needs an `@inject IJSRuntime` to name the host scope. Refusing to emit.",
+                inv.SpanStart);
+
+        if (m.Name is not ("InvokeVoidAsync" or "InvokeAsync"))
+            return Refuse("unsupported-call",
+                $"'{m.Name}' is not in the subset. JS interop admits InvokeVoidAsync and InvokeAsync<T>; " +
+                "the rest of IJSRuntime (module imports, .NET object references, streams) exists to manage a " +
+                "boundary this module does not have. Refusing to emit.",
+                inv.SpanStart);
+
+        var args = inv.ArgumentList.Arguments;
+        if (args.Count == 0 || args[0].Expression is not LiteralExpressionSyntax lit ||
+            lit.Token.Value is not string identifier)
+            return Refuse("unsupported-call",
+                "the JS identifier must be a literal string. A computed identifier could only be resolved by " +
+                "walking the global scope at RUNTIME -- which is precisely the interop bridge this compiler " +
+                "erases instead of shipping. Refusing to emit.",
+                inv.SpanStart);
+
+        var segments = identifier.Split('.');
+        if (segments.Length == 0 || !segments.All(IsJsIdentifier))
+            return Refuse("unsupported-call",
+                $"'{Trunc(identifier)}' is not a dotted JS identifier path (e.g. \"localStorage.setItem\"). " +
+                "Only a path this compiler can verify is emitted in call position. Refusing to emit.",
+                inv.SpanStart);
+
+        var rest = args.Skip(1).Select(a => Expr(a.Expression));
+        return $"{identifier}({string.Join(", ", rest)})";
+    }
+
+    /// <summary>A plain JS identifier — letters/digits/_/$ not starting with a digit. Deliberately strict:
+    /// it decides what may be emitted in CALL position (decision 133).</summary>
+    static bool IsJsIdentifier(string s) =>
+        s.Length > 0 && (char.IsLetter(s[0]) || s[0] is '_' or '$') &&
+        s.All(c => char.IsLetterOrDigit(c) || c is '_' or '$');
+
     string ElementRefMethod(InvocationExpressionSyntax inv, IMethodSymbol m)
     {
         if (m.Name != "FocusAsync" || inv.ArgumentList.Arguments.Count > 0 ||
@@ -2767,6 +2835,12 @@ public sealed class CSharpFrontEnd
                 inv.SpanStart);
             return "/*refused*/";
         }
+
+        // JS INTEROP (decision 133). InvokeVoidAsync / InvokeAsync<T> on the @inject'd IJSRuntime, whether
+        // reached through the interface or through JSRuntimeExtensions. This is where the bridge is erased.
+        if (symbol is not null && symbol.ContainingType?.ToDisplayString() is
+                "Microsoft.JSInterop.JSRuntimeExtensions" or "Microsoft.JSInterop.IJSRuntime")
+            return JsInvocation(inv, symbol);
 
         // FocusAsync() on an @ref'd element (decision 132). ElementReference's ONLY faithful surface: Blazor
         // needs the reference because it hands an id across the .NET/JS boundary, while the emitted module
