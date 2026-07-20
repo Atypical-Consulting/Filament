@@ -78,10 +78,22 @@ public static class RazorFrontEnd
             b.AddDefaultImports(WebImport);
             b.Features.Add(spy);
 
+            // DECISION 52 debt #1, HARDENED (docs/adr/0001-eol-razor-mitigation.md). These two passes
+            // are matched by GetType().Name -- a string, silent to break if a Razor bump ever renames
+            // them. 6.0.36 is pinned and dead, so both ARE registered; if one is ever NOT found, that
+            // is the EOL-Razor migration trigger firing, and it must be LOUD -- leaving the pass in
+            // would collapse static subtrees into opaque markup and silently change every emitted
+            // module. Fail fast at the seam rather than mis-compile in silence.
             foreach (var name in new[] { "ComponentMarkupBlockPass", "ComponentMarkupEncodingPass" })
             {
-                var f = b.Features.FirstOrDefault(x => x.GetType().Name == name);
-                if (f is not null) b.Features.Remove(f);
+                var f = b.Features.FirstOrDefault(x => x.GetType().Name == name)
+                    ?? throw new InvalidOperationException(
+                        $"Razor pass '{name}' was not found to remove. The pinned Razor.Language 6.0.36 " +
+                        "always registers it, so its absence means the toolchain changed underfoot -- the " +
+                        "EOL-Razor migration trigger (docs/adr/0001-eol-razor-mitigation.md). Refusing to " +
+                        "parse: leaving it in collapses static markup into opaque strings and silently " +
+                        "changes every emitted module.");
+                b.Features.Remove(f);
             }
         });
     }
