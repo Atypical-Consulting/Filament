@@ -225,6 +225,11 @@ public static class RepoPaths
 
     /// <summary>The LINQ-ordering SPEC (decisions 51/126). Never edited to make a gate pass.</summary>
     public static string LinqOrderAnswerKey => Path.Combine(Root, "samples", "LinqOrder", "linqorder.js");
+
+    public static string ElementWriteRazor => Path.Combine(Root, "baseline", "ElementWrite.Blazor", "App.razor");
+
+    /// <summary>The element-write SPEC (decisions 51/127). Never edited to make a gate pass.</summary>
+    public static string ElementWriteAnswerKey => Path.Combine(Root, "samples", "ElementWrite", "elementwrite.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
