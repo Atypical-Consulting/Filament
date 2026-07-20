@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.40.0';   // 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.41.0';   // 1.41.0: 'elementwrite' contract (mutable arr[i]=v / d[k]=v as copy-on-write -> arr.with(i,v) / new Map(d).set(k,v), a new ref so the signal fires). 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -541,6 +541,15 @@ const APPS = {
   linqorder: {
     readySelector: '#go',
     observeSelector: '#lo',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract clicks #go and asserts a mutable element write on a reactive array + Dict
+  // refreshes the display -- #a "20" -> "25" (xs[1] += 5) and #m "2" -> "102" (scores["b"] += 100) -- against
+  // Blazor's own DOM. The measurement of the element-write widening (BENCH n°46): copy-on-write via arr.with(i,v)
+  // and new Map(d).set(k,v), each a new reference so the signal fires (decision 127).
+  elementwrite: {
+    readySelector: '#go',
+    observeSelector: '#a',
     scenarios: [],
   },
   // Correctness-only: verifyContract clicks #fill and asserts #len "3" -> "4" and #first "0" -> "7", against
@@ -2160,6 +2169,26 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         out.observed.afterGo = { sum: sum(), max: max() };
         if (sum() !== '21') out.problems.push(`#sum after #go is "${sum()}", expected "21"`);
         if (max() !== '9') out.problems.push(`#max after #go is "${max()}", expected "9"`);
+        return out;
+      });
+    }
+
+    if (app === 'elementwrite') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        if (!document.querySelector('#go') || !document.querySelector('#a') || !document.querySelector('#m')) {
+          out.problems.push('missing required element: #go/#a/#m'); return out;
+        }
+        const a = () => document.querySelector('#a').textContent.trim();
+        const m = () => document.querySelector('#m').textContent.trim();
+        out.observed.initial = { a: a(), m: m() };
+        if (a() !== '20' || m() !== '2') { out.problems.push(`initial is {a:"${a()}",m:"${m()}"}, expected {a:"20",m:"2"}`); return out; }
+        // THE MEASUREMENT: xs[1] = xs[1] + 5 (20 -> 25); scores["b"] = scores["b"] + 100 (2 -> 102). Copy-on-write
+        // fires the array + Dict signals, so both displays refresh -- as Blazor re-renders the same C#.
+        document.querySelector('#go').click();
+        out.observed.afterGo = { a: a(), m: m() };
+        if (a() !== '25') out.problems.push(`#a after #go is "${a()}", expected "25"`);
+        if (m() !== '102') out.problems.push(`#m after #go is "${m()}", expected "102"`);
         return out;
       });
     }

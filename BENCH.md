@@ -4533,3 +4533,43 @@ fixture `Unsupported/` distinct). §8 inchangé.
 ---
 
 *Fin de l'entrée n°45. Ne pas modifier — ajouter une entrée n°46 pour toute rectification.*
+
+---
+
+## Entrée n°46 — 2026-07-20 — Phase 4 : les écritures d'élément mutables mesurées contre Blazor (CORRECTION)
+
+**L'écriture d'un élément de tableau (`arr[i] = v`) ou d'entrée de Dictionary (`d[key] = v`)** (décision #127) est
+admise sur une collection RÉACTIVE, en COPY-ON-WRITE — elle LÈVE le refus de #117/#118 (avec témoins), pas une simple
+couverture. Le signal ne se déclenche que sur une NOUVELLE référence (setter gardé par `Object.is`), donc une écriture
+en place laisserait l'affichage périmé (§10). D'où : `arr[i] = v` → `arr.value = arr.value.with(i, v)` et
+`d[key] = v` → `d.value = new Map(d.value).set(key, v)` — chaque nouvelle référence déclenche le signal. **AUCUNE
+primitive runtime** — `Array.with`/`Map`/`.set` sont des builtins JS.
+
+### Ce qui est mesuré
+
+`baseline/ElementWrite.Blazor` : `xs` = [10,20,30] (@xs[1] = 20), `scores` = { a=1, b=2 } (@scores["b"] = 2) ; `#go`
+fait `xs[1] = xs[1] + 5` (→ 25) et `scores["b"] = scores["b"] + 100` (→ 102). Les deux champs sont lus par le
+template ET écrits → signaux. La branche `elementwrite` de `verifyContract` clique `#go` puis exige `#a` et `#m`.
+**`HARNESS_VERSION` 1.40.0 → 1.41.0**, divulgué.
+
+```
+dotnet publish baseline/ElementWrite.Blazor -c Release -o bench/publish/blazor-elementwrite
+./bench/build-filament.sh filament-elementwrite-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-elementwrite/wwwroot --app elementwrite --label blazor-elementwrite       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-elementwrite-gen   --app elementwrite --label filament-elementwrite-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#a` / `#m` | verdict |
+|---|---|---|
+| **blazor-elementwrite** (autorité) | `20/2 → 25/102` | contrat OK |
+| **filament-elementwrite-gen** (générateur) | `20/2 → 25/102` | contrat OK |
+
+**Les deux vont à `25`/`102`, à l'identique** — la copy-on-write (`.with` / `new Map().set`) crée une nouvelle
+référence qui déclenche le signal, si bien que `@xs[1]` et `@scores["b"]` se rafraîchissent comme Blazor re-rend le
+même C#. `git diff -- src/filament-runtime` vide. Lève un refus réel #117/#118 (deux témoins basculés). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°46. Ne pas modifier — ajouter une entrée n°47 pour toute rectification.*

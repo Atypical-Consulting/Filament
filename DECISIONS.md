@@ -4320,3 +4320,28 @@ SILENCIEUX. Donc `OrderBy`/`OrderByDescending` sont GARDÉS par `NumericKeySelec
 rendent `#lo`/`#hi` `0/0 → 3/7`, à l'identique. Élargissement de COUVERTURE de #116/#121 (pas de fixture
 `Unsupported/` distinct). `HARNESS_VERSION` 1.39.0 → 1.40.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste
 **« ni éliminée ni établie »**.
+
+## 127. Les écritures d'ÉLÉMENT (`arr[i] = v` / `d[key] = v`) sur une collection réactive entrent dans le §5 — COPY-ON-WRITE ; lève le refus de #117/#118
+
+**Décision.** L'écriture d'un élément de tableau (`arr[i] = v`) ou d'une entrée de Dictionary (`d[key] = v`) est
+admise sur une collection RÉACTIVE, en COPY-ON-WRITE. Le signal du runtime ne se déclenche que sur une NOUVELLE
+référence (son setter garde par `Object.is`), donc une écriture EN PLACE (`arr.value[i] = v`) changerait le tableau
+que l'affichage détient DÉJÀ sans réveiller aucun effet — un rendu périmé silencieux, précisément ce que #117/#118
+refusaient. La solution REMPLACE la référence : `arr[i] = v` → `arr.value = arr.value.with(i, v)` (une copie du
+tableau, élément i remplacé) et `d[key] = v` → `d.value = new Map(d.value).set(key, v)` (une Map fraîche, entrée
+remplacée). Chaque nouvelle référence déclenche le signal, et tout `@arr[i]` / `@d[key]` se rafraîchit.
+
+**Admis SEULEMENT sur un signal.** L'écriture n'est admise que si le champ est un SIGNAL — lu par le template ET
+écrit ici, la conjonction #67 (l'écriture d'élément COMPTE désormais comme une assignation du champ RÉCEPTEUR :
+`MarkAssignments` et `CountWrites` déréférencent une cible `ElementAccess` vers son récepteur). Un tableau/Dict que
+rien n'affiche n'a aucun observateur, donc son écriture reste REFUSÉE. Deux témoins basculent de refusé→supporté
+(`ArrayElementAssignment`, `DictionaryEntryWrite`), un témoin-frontière (non-réactif) reste refusé. `CountWrites`
+comptant l'écriture d'élément, deux écritures se coalescent en `batch()` (décision 68). `ConstructSubset` admettait
+DÉJÀ l'assignation (opérateur `=`) : seul le générateur était plus strict, il l'est désormais autant. Suite :
+**405 tests** (327 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `Array.prototype.with`/`Map`/`.set` sont des builtins JS ; aucune primitive
+ajoutée. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°46) : `baseline/ElementWrite.Blazor`
+(`xs[1] = xs[1] + 5` : 20→25 ; `scores["b"] = scores["b"] + 100` : 2→102) et `filament-elementwrite-gen` rendent
+`#a`/`#m` `20/2 → 25/102`, à l'identique. Lève un refus RÉEL (#117/#118, avec témoins) — pas une simple couverture.
+`HARNESS_VERSION` 1.40.0 → 1.41.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
