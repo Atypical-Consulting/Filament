@@ -4293,3 +4293,43 @@ vide. Le témoin `IfNestedMixed.razor` bascule de refusé à compilé ; un `@for
 ---
 
 *Fin de l'entrée n°39. Ne pas modifier — ajouter une entrée n°40 pour toute rectification.*
+
+---
+
+## Entrée n°40 — 2026-07-20 — Phase 4 : les AGRÉGATS LINQ sur une List mesurés contre Blazor (CORRECTION)
+
+**Les agrégats LINQ numériques sur une `List`** (décision #121) rejoignent le §5, mappés sur des réductions de
+tableau JS : `Sum` → `reduce((a,b)=>a+b,0)` ; `Min`/`Max` → `Math.min`/`Math.max(...arr)` ; `Average` →
+`sum/length` ; `First`/`Last` → index. Les agrégats numériques sont admis quand le RÉSULTAT est int ou double (un
+agrégat long/decimal exigerait une réduction typée, différé). Élargit #116 (Where/Select/Count/Any/All/ToList).
+**AUCUNE primitive runtime** : reduce/Math sont des builtins JS. Bord divulgué : source vide (C# lève ; JS donne
+0/Infinity/NaN).
+
+### Ce qui est mesuré
+
+`baseline/LinqAggregate.Blazor` : `#go` calcule `_nums.Where(x => x > 3).Sum()` (= 7+9+5 = 21) et `_nums.Max()`
+(= 9) sur `[3,7,2,9,5]`. `total`/`peak` sont des signals ; `_nums` n'est jamais muté → tableau nu (hoisté). La
+branche `linqaggregate` de `verifyContract` clique `#go` et exige `#sum` = "21" ET `#max` = "9". **`HARNESS_VERSION`
+1.34.0 → 1.35.0**, divulgué.
+
+```
+dotnet publish baseline/LinqAggregate.Blazor -c Release -o bench/publish/blazor-linqaggregate
+./bench/build-filament.sh filament-linqaggregate-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-linqaggregate/wwwroot --app linqaggregate --label blazor-linqaggregate       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-linqaggregate-gen   --app linqaggregate --label filament-linqaggregate-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#sum` / `#max` | verdict |
+|---|---|---|
+| **blazor-linqaggregate** (autorité) | `0/0 → 21/9` | contrat OK |
+| **filament-linqaggregate-gen** (générateur) | `0/0 → 21/9` | contrat OK |
+
+**Les deux calculent Sum=21 et Max=9, à l'identique.** `Where(x=>x>3).Sum()` devient `filter().reduce()`, `Max()`
+devient `Math.max(...)` — Blazor exécute le même LINQ. `git diff -- src/filament-runtime` vide. Pas de témoin
+distinct (élargissement de couverture de #116). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°40. Ne pas modifier — ajouter une entrée n°41 pour toute rectification.*

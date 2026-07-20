@@ -4183,3 +4183,23 @@ rendent `#w` `xa → x → xa → ""`, à l'identique. Le témoin `IfNestedMixed
 FAMILLE @if est maintenant COMPLÈTE : corps multi-nœuds (#98), @else multi-nœuds (#99), imbriqué (#100), racine
 (#89), mixte (#120). `HARNESS_VERSION` 1.33.0 → 1.34.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste
 **« ni éliminée ni établie »**.
+
+## 121. Les agrégats LINQ (Sum/Min/Max/Average/First/Last) sur une List entrent dans le §5 — des réductions de tableau JS
+
+**Décision.** Les agrégats LINQ numériques sur une `List` rejoignent le §5, élargissant #116
+(Where/Select/Count/Any/All/ToList). `Sum` → `reduce((a,b)=>a+b,0)` ; `Min`/`Max` → `Math.min`/`Math.max(...arr)` ;
+`Average` → `(sum / length)` ; `First`/`Last` → `[0]`/`.at(-1)` (`First(pred)` → `.find`). Les agrégats NUMÉRIQUES
+(Sum/Min/Max/Average) sont admis quand le RÉSULTAT est int ou double (`numAgg` teste `_model.GetTypeInfo(inv).Type`)
+— un agrégat sur une liste long (BigInt) ou decimal (boxé) exigerait une réduction typée (`0n`, `__decAdd`),
+différée. Suite : **374 tests** (296 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**LE BORD DIVULGUÉ : la source vide.** `[].Sum()` = 0 des deux côtés, mais `[].Max()`/`[].First()` LÈVENT en C#
+(InvalidOperationException) là où JS donne `Math.max()` = -Infinity / `[][0]` = undefined. Divulgué, non mesuré —
+la baseline agrège une liste non vide.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `reduce`, `Math.min`/`max`, l'indexation sont des builtins JS — aucune primitive
+runtime. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°40) : `baseline/LinqAggregate.Blazor`
+(`_nums.Where(x=>x>3).Sum()` = 21, `_nums.Max()` = 9 sur `[3,7,2,9,5]`) et `filament-linqaggregate-gen` rendent
+`#sum`/`#max` `0/0 → 21/9`, à l'identique. Pas de témoin `Unsupported/` distinct — c'est un élargissement de
+COUVERTURE des opérateurs LINQ (#116), pas la fermeture d'un fixture. `HARNESS_VERSION` 1.34.0 → 1.35.0, divulgué.
+§5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
