@@ -4615,3 +4615,68 @@ sémantique GroupBy de Blazor. `git diff -- src/filament-runtime` vide. Élargis
 ---
 
 *Fin de l'entrée n°47. Ne pas modifier — ajouter une entrée n°48 pour toute rectification.*
+
+---
+
+## Entrée n°48 — 2026-07-20 — Bucket A : deux réserves rebanquées (poids `filament-rows`, dette de nœuds #20)
+
+Entrée de **rebanquage** (pas d'élargissement du sous-ensemble). Elle solde deux réserves ouvertes
+nommées dans l'ENGINEERING.md / entrée n°7 : (A1) le bundle `filament-rows` écrit à la main devait une
+re-mesure après la correction de `rows.js` (décision #80), et (A2) la « dette de nœuds » de la décision #20
+n'avait jamais été re-mesurée **dans une app avec branchement conditionnel**.
+
+### Environnement
+
+macOS (Darwin 25.5.0), Node v26.5.0, Playwright/Chromium (harness `bench/harness`), esbuild 0.28.1.
+Baselines déjà publiées ; `blazor-ifmulti` publié pour cette entrée (`dotnet publish -c Release`).
+**Machine non mise au repos** (Rider résident) — sans effet ici : A1 est un poids déterministe (IQR=0 sur
+3 runs) et A2 un comptage de nœuds entier, tous deux insensibles à la dérive thermique.
+
+### A1 — `filament-rows` (écrit main) re-mesuré sur le fil
+
+```
+./bench/build-filament.sh filament-rows
+node bench/harness/bench.mjs --dir bench/publish/filament-rows --app rows --label filament-rows \
+  --runs 1 --weight-runs 3 --max-encoding gzip --headless \
+  --out bench/results/bucket-a/filament-rows-weight.json
+```
+
+| Label | poids fil (gzip, médiane n=3) | vs 10 000 o | vs `filament-rows-gen` |
+|---|---|---|---|
+| **filament-rows** (main, post-#80) | **4 373 o** (IQR=0, min=max=4 373) | PASS (2,29× sous budget) | **identique** (4 373 o) |
+
+**Résultat.** Après la correction #80 (qui a alourdi `rows.js`), le bundle écrit à la main pèse **4 373 o
+gzip sur le fil — exactement le poids de `filament-rows-gen`** mesuré à l'entrée n°7. La réserve « le bundle
+`filament-rows` doit une re-mesure » est **soldée** : le chiffre est frais, et les deux côtés (main / généré)
+sont désormais **byte-identiques sur le fil**. Méthode `bench.mjs` inchangée (CDP `encodedDataLength` sommé,
+navigation → interactif ET réseau au repos).
+
+### A2 — dette de nœuds #20, mesurée DANS un conditionnel
+
+Comptage `#w.childNodes` rendu, Filament vs Blazor, même source `IfMultiBody`
+(`<div id="w"><button/>@if(show){<span id="a"/><span id="b"/>}</div>`), mesuré au navigateur (CDP).
+
+```
+dotnet publish baseline/IfMultiBody.Blazor -c Release -o bench/publish/blazor-ifmulti
+./bench/build-filament.sh filament-ifmulti-gen   # déjà publié
+# servis en statique ; #w.childNodes compté après rendu (Blazor : après boot WASM)
+```
+
+| App | Filament (nœuds de `#w` / `#app`) | Blazor | Δ (Filament − Blazor) |
+|---|---|---|---|
+| Counter (aucun conditionnel) | 5 | 7 (2× `<!--!-->`) | **−2** |
+| **IfMultiBody** (un `@if`) | **4** (bouton + 2 span + **1** ancre `<!---->`) | **5** (bouton + 2 span + **2** `<!--!-->`) | **−1** |
+| Rows (`@foreach` 1 000 lignes) | **0 ancre** (le `<tbody>` EST l'ancre) | — | **0 dette** |
+
+Mesure statique confirmée sur l'émis : **1 `createComment('')` par `@if`, 0 pour un `@foreach` dans un
+élément conteneur** (Rows émet `list()` sans aucune ancre). En live, Filament rend `#w` à **4 nœuds contre 5
+pour Blazor**.
+
+**Résultat.** La dette #20 **ne change jamais de signe** : l'unique ancre d'un `@if` (1 nœud) reste moins
+chère que les 2 marqueurs `<!--!-->` dont Blazor entoure la région conditionnelle. Filament construit **≤** le
+nombre de nœuds de Blazor partout mesuré (−2 sur Counter, −1 sur IfMultiBody, 0 dette sur Rows). La réserve
+« la dette #20 pourrait basculer dans une app riche en conditionnels » est **infirmée par la mesure** : elle
+reste un **avantage** au montage, pas une dette. §8 inchangé. `git diff -- src/filament-runtime` vide (aucune
+mesure ne touche au runtime).
+
+*Fin de l'entrée n°48. Ne pas modifier — ajouter une entrée n°49 pour toute rectification.*

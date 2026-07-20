@@ -152,10 +152,10 @@ Filament is a **thesis under test**. The verdict, stated the way the repo states
 
 **Not implemented** (spec §3 non-goals — the named price of the C1/C4 numbers): routing (`@page`), DI (`@inject`), inheritance (`@inherits`), multi-component parameter fan-out, `RenderFragment`/`ChildContent`, `EventCallback`, `@ref`, `CascadingParameter`, forms, generics, JsInterop.
 
-**Open reserves** (all disclosed in [`BENCH.md`](./BENCH.md) / [`DECISIONS.md`](./DECISIONS.md)):
-- The hand-written `Rows` bundle changed (decision #80) and owes a fresh on-the-wire re-measurement; the *generator's* measured output is unchanged.
-- A comment-anchor node debt: Filament builds **5 nodes to Blazor's 7** on Counter — a real advantage, but not yet re-measured inside a conditional-heavy app.
-- **EOL-Razor risk (#52):** the generator pins `Microsoft.AspNetCore.Razor.Language` 6.0.36 — frozen, out of support. This bears asymmetrically against RADICAL and is part of its price.
+**Reserves** (all disclosed in [`BENCH.md`](./BENCH.md) / [`DECISIONS.md`](./DECISIONS.md)):
+- ✅ *Banked (BENCH n°48).* The hand-written `Rows` bundle (post-#80) was re-measured on the wire at **4,373 B gzip — byte-identical to the generated bundle**.
+- ✅ *Banked (BENCH n°48).* The comment-anchor node debt was re-measured **inside a conditional app**: Filament renders **4 nodes to Blazor's 5** (its one `@if` anchor is cheaper than Blazor's two `<!--!-->` markers). The debt never flips sign — it stays a create-time *advantage*.
+- ⚠️ **EOL-Razor risk (#52), still open — now mitigated.** The generator pins `Microsoft.AspNetCore.Razor.Language` 6.0.36 (frozen, out of support). Contained to one 194-line seam, hardened to fail loud, and mapped for migration in [ADR 0001](./docs/adr/0001-eol-razor-mitigation.md). It bears asymmetrically against RADICAL and is part of its price.
 
 ## Quickstart
 
