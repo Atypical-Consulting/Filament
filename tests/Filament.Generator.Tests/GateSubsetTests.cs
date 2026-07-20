@@ -96,7 +96,19 @@ public class GateSubsetTests
     [InlineData("Page.razor", 1, 1, "FIL0003", "unsupported-directive")]
     [InlineData("Gate/Typeparam.razor", 1, 1, "FIL0003", "unsupported-directive")]
     [InlineData("Gate/Forms.razor", 1, 1, "FIL0003", "unresolved-component")]
+    // Gate/EventCallback.razor STAYS on this list at decision 130. EventCallback entered the subset
+    // in exactly ONE position -- a [Parameter] a composing parent bound to one of its own methods --
+    // and this fixture declares it as a FIELD, i.e. as a value the component holds. There is no such
+    // value: the callback is an alias the compiler resolves and erases. Refused at its type, as before.
     [InlineData("Gate/EventCallback.razor", 5, 13, "FIL0002", "unsupported-type")]
+    // The two boundaries decision 130 deliberately kept refused, each by the rule that actually
+    // applies to it. UNBOUND: the parameter form with no parent to alias -- admitted syntax, refused
+    // because the thing it names does not exist, which is a different verdict from "wrong type" and
+    // must say so. WITH AN ARGUMENT: EventCallback<T> never reaches that rule at all; it is refused
+    // at its type, because marshalling an argument out of a DOM event is a question this slice did
+    // not measure.
+    [InlineData("Gate/EventCallbackUnbound.razor", 8, 38, "FIL0002", "unbound-event-callback")]
+    [InlineData("Gate/EventCallbackArg.razor", 7, 24, "FIL0002", "unsupported-type")]
     [InlineData("Gate/RenderFragment.razor", 5, 13, "FIL0002", "unsupported-type")]
     // THE TWO CASCADING-PARAMETER ROWS ARE REFUSED BY DIFFERENT RULES, AND THAT IS THE WHOLE
     // POINT OF HAVING BOTH. The property form is caught for being a PROPERTY -- a verdict with
@@ -179,6 +191,8 @@ public class GateSubsetTests
     [InlineData("Gate/Typeparam.razor")]
     [InlineData("Gate/Forms.razor")]
     [InlineData("Gate/EventCallback.razor")]
+    [InlineData("Gate/EventCallbackUnbound.razor")]
+    [InlineData("Gate/EventCallbackArg.razor")]
     [InlineData("Gate/RenderFragment.razor")]
     [InlineData("Gate/CascadingParameter.razor")]
     [InlineData("Gate/CascadingParameterField.razor")]

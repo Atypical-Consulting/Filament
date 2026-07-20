@@ -89,6 +89,14 @@ public sealed class CSharpFrontEnd
     /// from the parent's SlotIsReactive; consulted by IsReactive when it meets a bound [Parameter].</summary>
     readonly HashSet<string> _paramReactive = new(StringComparer.Ordinal);
 
+    /// <summary>EventCallback [Parameter]s, mapped to the PARENT's C# METHOD NAME (`"OnBump" -> "Inc"`,
+    /// decision 130). Deliberately the C# name and not the JS one: the callback is an ALIAS, and naming
+    /// the parent's method is what lets the emit walk record `Inc` in _handlers, so every downstream
+    /// decision -- the guard, single-use inlining, batching -- sees exactly what it would have seen had
+    /// the parent written that handler on that button itself. Kept OUT of _paramEnv on purpose: a
+    /// callback is not a value, so `@OnBump` must not read as one.</summary>
+    readonly Dictionary<string, string> _paramHandlers = new(StringComparer.Ordinal);
+
     /// <summary>Every method body, TRANSLATED DURING Compile() and cached. See _sealed.</summary>
     readonly Dictionary<string, List<string>> _bodies = new(StringComparer.Ordinal);
 
@@ -154,11 +162,21 @@ public sealed class CSharpFrontEnd
     /// READS a parent signal: the child's @Name is then a LIVE effect (its IsReactive returns true)
     /// rather than a folded constant. The child inlines into the parent's scope, so the effect
     /// references the parent's signal directly. Static string folds pass an empty `reactive`.</summary>
-    public void BindParameters(IReadOnlyDictionary<string, string> bindings, IReadOnlyCollection<string>? reactive = null)
+    public void BindParameters(IReadOnlyDictionary<string, string> bindings, IReadOnlyCollection<string>? reactive = null,
+        IReadOnlyDictionary<string, string>? handlers = null)
     {
         foreach (var kv in bindings) _paramEnv[kv.Key] = kv.Value;
         if (reactive is not null) foreach (var n in reactive) _paramReactive.Add(n);
+        if (handlers is not null) foreach (var kv in handlers) _paramHandlers[kv.Key] = kv.Value;
     }
+
+    /// <summary>The parent method an EventCallback [Parameter] aliases, or null (decision 130). The emit
+    /// walk resolves `@onclick="OnBump"` through this BEFORE recording the handler, so what it records is
+    /// the parent's `Inc` -- the thing that will actually be called.</summary>
+    public string? HandlerParamTarget(string name) => _paramHandlers.TryGetValue(name, out var t) ? t : null;
+
+    /// <summary>The [Parameter] names bound to a parent METHOD rather than a value (decision 130).</summary>
+    public IReadOnlyCollection<string> HandlerParameterNames => _paramHandlers.Keys;
 
     /// <summary>A LEAF DISPLAY child: only [Parameter] props, no state (fields/signals), no behaviour
     /// (methods), no records. The static-leaf composition slice compiles only these; a stateful or
@@ -274,6 +292,12 @@ public sealed class CSharpFrontEnd
         public bool IsFloat;     // the slot's expression is float-typed -> the template must format it (decision 113)
         public bool IsDecimal;   // the slot's expression is decimal-typed -> format it through __decStr (decision 114)
         public bool IsDateTime;  // the slot's expression is DateTime-typed -> format it through __dtStr (decision 115)
+
+        /// <summary>The slot names a METHOD GROUP (`OnBump="@Inc"`) rather than a value. At a component
+        /// attribute that is an EventCallback binding: the parent handing the child one of its own
+        /// methods (decision 130). Nowhere else can a slot be a method group -- the marker overload that
+        /// lets C# bind one is emitted only for component-attribute slots.</summary>
+        public bool IsMethodGroup;
     }
 
     /// <summary>The decimal helpers this module actually used (`decAdd`, `decStr`, …). A `decimal` value is a
@@ -343,6 +367,12 @@ public sealed class CSharpFrontEnd
     /// <summary>The slot's expression is DateTime-typed. A DateTime is a BigInt of ticks; displaying it renders
     /// that as C#'s default DateTime string ("MM/dd/yyyy HH:mm:ss") through the emitted __dtStr helper (decision 115).</summary>
     public bool SlotIsDateTime(IntermediateNode node) => Get(node).IsDateTime;
+
+    /// <summary>The slot NAMES A METHOD rather than computing a value — `OnBump="@Inc"` at a composition
+    /// site, i.e. an EventCallback binding (decision 130). The parent is handing the child one of its own
+    /// methods; there is no value to display and no signal to track, so the bound-parameter reactivity
+    /// rule does not apply to it.</summary>
+    public bool SlotIsMethodGroup(IntermediateNode node) => Get(node).IsMethodGroup;
 
     /// <summary>What to emit for a container whose children held template C#, in order.</summary>
     /// <summary>
@@ -426,7 +456,22 @@ public sealed class CSharpFrontEnd
         }
 
         var decls = new StringBuilder();
-        for (var i = 0; i < CountSlots(plan); i++) decls.Append($"void __filament_s{i}(params object[] a) {{}}\n");
+        for (var i = 0; i < CountSlots(plan); i++)
+        {
+            decls.Append($"void __filament_s{i}(params object[] a) {{}}\n");
+
+            // A COMPONENT-ATTRIBUTE slot may name a METHOD GROUP (`OnBump="@Inc"`) -- the EventCallback
+            // half of composition (decision 130). A method group has NO conversion to object, so against
+            // the object-only marker C# binds nothing and GetSymbolInfo reports no symbol at all: the
+            // name would be refused as undeclared though @code declares it. This overload lets C# ITSELF
+            // bind the group, so Identifier() receives a real IMethodSymbol rather than a guess. It is
+            // emitted ONLY for component-attribute slots, so a method group stays unbindable -- and so
+            // still refused -- at every other binding site, where splicing a function name into the DOM
+            // would render "inc" where the author wrote a value.
+            var free = plan.FreeSlots;
+            if (i < free.Count && plan.ComponentSlots.Contains(free[i]))
+                decls.Append($"void __filament_s{i}(System.Action a) {{}}\n");
+        }
         _src.Literal(decls.ToString());
 
         var markerCount = plan.Regions.Sum(r => r.Items.OfType<MarkupItem>().Count());
@@ -1011,7 +1056,43 @@ public sealed class CSharpFrontEnd
         }
 
         var type = _model.GetTypeInfo(p.Type).Type;
-        if (!CheckType(type, p.Type.SpanStart, allowList: true)) return;
+        var name = p.Identifier.Text;
+
+        // AN EVENTCALLBACK PARAMETER -- the child->parent half of composition (decision 130). It is not a
+        // value the child holds: at the composition site it ALIASES one of the parent's methods, and the
+        // child inlines into the parent's mount(), so raising it IS calling that method. The compiler
+        // erases it entirely; nothing about it survives into the emitted module.
+        //
+        // Admitted ONLY when a parent actually bound it. Standalone -- or composed by a parent that left
+        // it out -- there is no method to alias, and a callback that silently never fires is exactly the
+        // dead button section 10 forbids, so it is refused rather than wired to nothing.
+        if (Filament.Subset.TypeSubset.IsEventCallback(type))
+        {
+            if (!_paramHandlers.ContainsKey(name))
+            {
+                Refuse("unbound-event-callback",
+                    $"the EventCallback parameter '{name}' is not bound. An EventCallback is admitted only " +
+                    "where a composing parent supplies one of its own methods for it (`<Child " +
+                    $"{name}=\"@Method\" />`), because that method is all this compiler emits for it -- the " +
+                    "child inlines into the parent, so the callback IS the parent's method. Unbound there " +
+                    "is nothing to call, and a handler wired to nothing renders correctly and then does " +
+                    "nothing for the life of the page. Refusing to emit.",
+                    p.Identifier.SpanStart, "FIL0002");
+                return;
+            }
+        }
+        // The mirror image: the parent bound a METHOD to a parameter that declares a VALUE. Folding a
+        // function where a number or a string is meant would render "inc" where the author wrote data.
+        else if (_paramHandlers.ContainsKey(name))
+        {
+            Refuse("unsupported-member",
+                $"parameter '{name}' is declared '{type?.ToDisplayString()}' but the composing parent bound " +
+                "a METHOD to it. A method is bound to an EventCallback parameter; binding one to a value " +
+                "parameter would fold a function name in where a value is meant. Refusing to emit.",
+                p.Identifier.SpanStart, "FIL0002");
+            return;
+        }
+        else if (!CheckType(type, p.Type.SpanStart, allowList: true)) return;
 
         _params.Add(new ParamInfo
         {
@@ -1567,6 +1648,12 @@ public sealed class CSharpFrontEnd
                 IsFloat = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Single,
                 IsDecimal = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Decimal,
                 IsDateTime = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_DateTime,
+                // Asked of the SEMANTIC MODEL, not of the text: `Inc` is a method group iff Roslyn bound
+                // it to a method this component declares. The Action marker overload above is what lets
+                // it bind at all (decision 130).
+                IsMethodGroup = e is IdentifierNameSyntax
+                    && _model.GetSymbolInfo(e).Symbol is IMethodSymbol ms
+                    && _methodsByName.ContainsKey(ms.Name),
             };
         }
     }

@@ -1,0 +1,9 @@
+@* Decision 130's BOUNDARY. An EventCallback [Parameter] is admitted only where a composing
+   parent supplied one of its own methods for it -- that method is the entire emission. Here
+   there is no parent, so there is nothing to call, and a listener wired to nothing renders
+   correctly and then does nothing for the life of the page. Refused, not wired to a no-op. *@
+<button id="b" @onclick="OnX">x</button>
+
+@code {
+    [Parameter] public EventCallback OnX { get; set; }
+}

@@ -84,4 +84,19 @@ public static class TypeSubset
     /// Multi-dimensional/jagged arrays are out (rank != 1).</summary>
     public static ITypeSymbol? ArrayElement(ITypeSymbol type) =>
         type is IArrayTypeSymbol { Rank: 1 } a ? a.ElementType : null;
+
+    /// <summary>
+    /// A non-generic <c>EventCallback</c> (decision 130). Deliberately NOT admitted by Classify: it is
+    /// not a VALUE the subset can hold, store or display, and as a field it stays refused exactly as
+    /// before. It is admitted in ONE position only -- a <c>[Parameter]</c> the parent bound to one of its
+    /// own methods -- where it is not a value at all but an ALIAS the compiler erases: the child inlines
+    /// into the parent's mount(), so raising the callback IS calling the parent's method, with no
+    /// delegate object and no subscription list at runtime.
+    ///
+    /// <c>EventCallback&lt;T&gt;</c> is NOT matched, and stays refused: an argument would have to be
+    /// marshalled from a DOM event, which is a different question and is not measured yet.
+    /// </summary>
+    public static bool IsEventCallback(ITypeSymbol? type) =>
+        type is INamedTypeSymbol { TypeArguments.Length: 0 } n &&
+        n.ToDisplayString() == "Microsoft.AspNetCore.Components.EventCallback";
 }

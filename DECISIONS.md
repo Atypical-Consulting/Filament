@@ -4406,3 +4406,47 @@ Le vrai manque suivant, `EventCallback` (mécanisme GENUINEMENT nouveau), aura s
 **GÉNÉRATEUR SEUL, ZÉRO HELPER.** `git diff -- src/filament-runtime` vide. 337 tests (.NET) au vert (+4).
 §8 inchangé : RADICAL reste **« ni éliminée ni établie »** — deux capacités de composition épinglées ne font pas une
 architecture de framework ; les vrais manques (EventCallback, RenderFragment) et les non-buts §3 restent devant.
+
+## 130. `EventCallback` enfant→parent — l'autre moitié de la composition, EFFACÉE à la compilation
+
+**Décision.** Un `[Parameter] public EventCallback OnX { get; set; }` entre dans le sous-ensemble, dans **UNE seule
+position** : celle d'un paramètre qu'un parent composant a lié à l'une de ses propres méthodes
+(`<Bumper OnBump="@Inc" />`). C'est le manque de plus haute valeur identifié par l'audit Bucket B (ADR 0002) :
+#88/#90 poussaient la donnée VERS LE BAS, celui-ci fait remonter l'ÉVÉNEMENT.
+
+**Le lowering — un ALIAS, pas un objet.** Parce que l'enfant s'inline dans le `mount()` du parent, un EventCallback
+n'est pas une valeur qui existe à l'exécution : c'est un **alias que le compilateur résout puis efface**. Au site de
+composition, `OnBump` est résolu vers le NOM C# de la méthode du parent (`Inc`) ; dans l'enfant,
+`@onclick="OnBump"` enregistre donc `Inc`. Conséquence recherchée : toutes les règles en aval — le garde
+`NamedByTemplate`, l'inlining d'usage unique (#68), le `batch()` — décident sur les tables du PARENT, exactement
+comme si le parent avait écrit ce gestionnaire sur ce bouton lui-même. Le module émis ne contient ni délégué, ni
+`InvokeAsync`, ni liste d'abonnés, ni le nom `OnBump` : seulement `listen(_el2, 'click', () => { count.value++; })`.
+
+**Le point de blocage réel, et pourquoi ce n'était pas le type.** Un groupe de méthodes n'a AUCUNE conversion vers
+`object`, donc contre le marqueur `__filament_s{i}(params object[])` C# ne liait rien et `GetSymbolInfo` ne rendait
+aucun symbole — `Inc` était refusé comme non déclaré alors que `@code` le déclare. La correction ne devine pas :
+une surcharge `__filament_s{i}(System.Action)` est émise **uniquement pour les slots d'attribut de COMPOSANT**
+(`TemplatePlan.ComponentSlots`), de sorte que C# LUI-MÊME lie le groupe et qu'`Identifier()` reçoive un vrai
+`IMethodSymbol`. Partout ailleurs un groupe de méthodes reste non liable, donc toujours refusé — sans quoi
+`<p>@Inc</p>` afficherait « inc » là où l'auteur a écrit une valeur.
+
+**FRONTIÈRES MAINTENUES REFUSÉES**, chacune par la règle qui la concerne vraiment :
+`Gate/EventCallback.razor` (forme CHAMP) reste refusée en `FIL0002 [unsupported-type]` — il n'existe aucune valeur
+de ce type à détenir ; `Gate/EventCallbackUnbound.razor` (paramètre sans parent qui le lie) est refusée en
+`FIL0002 [unbound-event-callback]`, verdict DIFFÉRENT de « mauvais type » et qui doit le dire : un gestionnaire
+câblé sur rien s'affiche correctement puis ne fait rien de toute la vie de la page (§10) ;
+`Gate/EventCallbackArg.razor` (`EventCallback<T>`) reste refusée à son type — marshaler un argument depuis un
+événement DOM est une autre question, non mesurée. Le miroir est gardé aussi : une méthode liée à un paramètre de
+VALEUR est refusée, plutôt que de plier un nom de fonction là où une donnée est attendue.
+Suite : **424 tests** (346 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `git diff -- src/filament-runtime` vide : le runtime reste gelé à 1 943 B.
+C'est l'affirmation même de cette tranche — Blazor a besoin qu'`EventCallback` soit un objet d'exécution parce
+qu'il découvre la liaison à l'exécution ; Filament la connaît à la compilation, donc la fonctionnalité coûte
+**zéro octet**. MESURÉ (entrée n°49) : `#bump` appartient à l'ENFANT, `#out` est l'état du PARENT, et deux clics
+donnent `0 → 1 → 2`, DOM observé identique à Blazor (autorité). Deux clics et non un : un callback qui se
+détacherait après le premier serait pris aussi sûrement qu'un qui ne partirait jamais.
+`HARNESS_VERSION` 1.42.0 → 1.43.0, divulgué.
+
+§5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »** — la composition est désormais complète
+dans les deux sens, mais `RenderFragment` et les non-buts §3 restent devant.

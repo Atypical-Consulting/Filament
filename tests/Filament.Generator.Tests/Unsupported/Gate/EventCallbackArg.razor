@@ -1,0 +1,8 @@
+@* Decision 130's OTHER boundary. EventCallback<T> carries an ARGUMENT, which would have to be
+   marshalled out of a DOM event; that is a different question from the no-arg alias this slice
+   measured, and it is not measured yet. Refused at its type, like any type outside section 5. *@
+<button id="b" @onclick="OnX">x</button>
+
+@code {
+    [Parameter] public EventCallback<string> OnX { get; set; }
+}

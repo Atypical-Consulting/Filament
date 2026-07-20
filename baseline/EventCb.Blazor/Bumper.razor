@@ -1,0 +1,8 @@
+@* Leaf-display child that RAISES an event: a [Parameter] and nothing else -- no fields,
+   methods, or records, so IsLeafDisplay still holds. @onclick="OnBump" names the parameter,
+   not a local method; the parent supplied what it means. *@
+<button id="bump" @onclick="OnBump">bump</button>
+
+@code {
+    [Parameter] public EventCallback OnBump { get; set; }
+}

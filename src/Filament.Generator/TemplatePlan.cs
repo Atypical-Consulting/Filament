@@ -65,6 +65,16 @@ public sealed class TemplatePlan
     /// emission can read the translated body back.
     /// </summary>
     public List<LambdaHandler> LambdaHandlers { get; } = [];
+
+    /// <summary>
+    /// The subset of <see cref="FreeSlots"/> harvested from a COMPONENT's attribute (`&lt;Bumper
+    /// OnBump="@Inc" /&gt;`). Marked because such a slot -- and only such a slot -- may name a METHOD
+    /// GROUP rather than compute a value: that is an EventCallback binding, the parent handing the
+    /// child one of its own methods (decision 130). The C# front end emits an extra marker overload
+    /// for exactly these, so C# can bind the group; everywhere else a method group stays unbindable
+    /// and therefore still refused.
+    /// </summary>
+    public HashSet<IntermediateNode> ComponentSlots { get; } = [];
 }
 
 /// <param name="Attr">the event attribute node, the key emission looks the body up by</param>

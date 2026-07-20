@@ -1,0 +1,23 @@
+@* Parent: the OTHER half of composition. #88/#90 pushed data DOWN into a child as a bound
+   parameter; this pushes an EVENT back UP. The child declares [Parameter] EventCallback and
+   raises it; the parent hands it one of its own methods, and the child's click mutates the
+   PARENT's state (decision 130).
+
+   The lowering: because a child inlines into the parent's mount(), an EventCallback parameter
+   is not a delegate object at runtime -- it is the parent's translated method, named at the
+   composition site and called from inside the inlined child. No child instance, no runtime
+   primitive, no subscription list.
+
+   DOM contract: #out is the parent's count. #bump lives INSIDE the child. Clicking it must
+   move #out 0 -> 1 -> 2 -- an update that crosses the composition boundary upward; that
+   crossing IS the measurement (BENCH n°49).
+
+   No whitespace between the siblings inside #wrap, matching BoundCompose.Blazor's contract:
+   Razor turns SOURCE whitespace between sibling nodes into text nodes, and there is none here. *@
+
+<div id="wrap"><span id="out">@count</span><Bumper OnBump="@Inc" /></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

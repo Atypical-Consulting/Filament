@@ -4680,3 +4680,48 @@ reste un **avantage** au montage, pas une dette. §8 inchangé. `git diff -- src
 mesure ne touche au runtime).
 
 *Fin de l'entrée n°48. Ne pas modifier — ajouter une entrée n°49 pour toute rectification.*
+
+---
+
+## Entrée n°49 — 2026-07-20 — Phase 4 : `EventCallback` enfant→parent mesuré contre Blazor (CORRECTION)
+
+**`EventCallback` en position `[Parameter]`** (décision #130) rejoint le §5 — l'autre moitié de la composition.
+#88/#90 poussaient la donnée VERS LE BAS dans un enfant ; celui-ci fait remonter l'ÉVÉNEMENT. C'était le manque de
+plus haute valeur nommé par l'audit Bucket B (ADR 0002). Parce que l'enfant s'inline dans le `mount()` du parent, le
+callback n'est pas un objet d'exécution : c'est un **alias résolu à la compilation vers la méthode du parent, puis
+EFFACÉ**. Le module émis ne contient ni délégué, ni `InvokeAsync`, ni liste d'abonnés, ni le nom `OnBump` — seulement
+le `listen()` que le parent aurait écrit lui-même. **AUCUNE primitive runtime** : le runtime reste gelé à 1 943 o.
+
+### Ce qui est mesuré
+
+`baseline/EventCb.Blazor` : `App.razor` affiche son `count` dans `#out` et compose `<Bumper OnBump="@Inc" />` ;
+`Bumper.razor` est un enfant feuille-affichage dont le seul membre est `[Parameter] public EventCallback OnBump`,
+et dont le bouton `#bump` fait `@onclick="OnBump"`. **`#bump` appartient donc à l'ENFANT, `#out` est l'état du
+PARENT** : le contrat mesure la traversée de la frontière de composition VERS LE HAUT. La branche `eventcb` de
+`verifyContract` exige `#out` à `0`, puis clique `#bump` **deux fois** et exige `1` puis `2` — deux clics et non un,
+parce qu'un callback qui se détacherait après le premier serait pris aussi sûrement qu'un qui ne partirait jamais.
+**`HARNESS_VERSION` 1.42.0 → 1.43.0**, divulgué.
+
+```
+dotnet publish baseline/EventCb.Blazor -c Release -o bench/publish/blazor-eventcb
+./bench/build-filament.sh filament-eventcb-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-eventcb/wwwroot --app eventcb --label blazor-eventcb       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-eventcb-gen   --app eventcb --label filament-eventcb-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#out` observé (initial → 1 clic → 2 clics) | verdict |
+|---|---|---|
+| **blazor-eventcb** (autorité) | `0 → 1 → 2` | contrat OK |
+| **filament-eventcb-gen** (générateur) | `0 → 1 → 2` | contrat OK |
+
+**Les deux vont à `2`, à l'identique.** L'effacement du callback est donc FIDÈLE : le bouton de l'enfant change bien
+l'état du parent, et il le change à chaque clic. `git diff -- src/filament-runtime` vide — c'est l'affirmation même
+de cette tranche : Blazor a besoin qu'`EventCallback` soit un objet d'exécution parce qu'il découvre la liaison à
+l'exécution, Filament la connaît à la compilation, donc la fonctionnalité coûte **zéro octet**. Trois témoins
+`Unsupported/` maintenus (champ, non lié, `EventCallback<T>`). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°49. Ne pas modifier — ajouter une entrée n°50 pour toute rectification.*

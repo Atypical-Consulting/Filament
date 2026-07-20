@@ -73,6 +73,7 @@ samples/filament-foreachdict-gen/App.g.js
 samples/filament-linqorder-gen/App.g.js
 samples/filament-elementwrite-gen/App.g.js
 samples/filament-groupby-gen/App.g.js
+samples/filament-eventcb-gen/App.g.js
 
 # examples/FilamentApp: emitted/copied at build, never committed (same rule as samples/*.g.js).
 examples/FilamentApp/wwwroot/App.g.js

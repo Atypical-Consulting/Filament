@@ -340,6 +340,8 @@ public static class Generate
 
     public static string GroupByToTemp() => ToTemp(RepoPaths.GroupByRazor, "GroupBy");
 
+    public static string EventCbToTemp() => ToTemp(RepoPaths.EventCbRazor, "EventCb");
+
     /// <summary>
     /// Emit a fixture from the Supported dir (fixtures that now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the

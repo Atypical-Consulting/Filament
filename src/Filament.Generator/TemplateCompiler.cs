@@ -513,7 +513,12 @@ public sealed class TemplateCompiler
         if (node is MarkupElementIntermediateNode el && LooksLikeComponent(el.TagName))
             foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
                 foreach (var expr in attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>())
+                {
                     plan.FreeSlots.Add(expr);
+                    // Marked as a COMPONENT slot: this is the one binding site where the C# may name a
+                    // method group instead of a value -- an EventCallback (decision 130).
+                    plan.ComponentSlots.Add(expr);
+                }
         foreach (var child in node.Children) CollectComponentBindings(child, plan);
     }
 
@@ -1089,11 +1094,29 @@ public sealed class TemplateCompiler
         // parent's scope, so a reactive binding references the parent's signal directly -- a live @Name.
         var bindings = new Dictionary<string, string>(StringComparer.Ordinal);
         var reactive = new HashSet<string>(StringComparer.Ordinal);
+        var handlers = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
         {
             var bound = attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>().FirstOrDefault();
             if (bound is not null)
             {
+                // AN EVENT CALLBACK (decision 130): the bound expression NAMES A METHOD rather than
+                // computing a value, so the parent is handing the child one of its own methods. There is
+                // no signal here and nothing to display, so the reactivity rule below does not apply --
+                // what is bound is a NAME, and it is validated by the same guard every other handler
+                // passes, HERE, while _code is still the parent that declares it. Downstream the child
+                // records the parent's method, so inlining and batching decide exactly as they would
+                // have had the parent written the handler on that button itself.
+                if (_code.SlotIsMethodGroup(bound))
+                {
+                    var named = RawText(bound).Trim();
+                    if (!NamedByTemplate(named, $"the callback '{attr.AttributeName}' on <{el.TagName}>",
+                            bound.Source ?? el.Source, mustBeCallable: true))
+                        return null;
+                    handlers[attr.AttributeName] = named;
+                    continue;
+                }
+
                 // The slice is REACTIVE binds: `@count` where count is parent state that changes. A bound
                 // value that is NOT reactive (a constant expression, or a never-mutated field) is the
                 // BIND-ONCE case -- deferred, refused rather than shipped as a value that silently never
@@ -1120,7 +1143,7 @@ public sealed class TemplateCompiler
 
         var childParse = RazorFrontEnd.Parse(childPath);
         var childCode = new CSharpFrontEnd();
-        childCode.BindParameters(bindings, reactive);
+        childCode.BindParameters(bindings, reactive, handlers);
 
         var savedFile = _file;
         var savedCode = _code;
@@ -1133,7 +1156,8 @@ public sealed class TemplateCompiler
         string? result = null;
         if (_diagnostics.Count == diagBefore)   // the child @code compiled clean
         {
-            var unknown = bindings.Keys.FirstOrDefault(k => !childCode.ParameterNames.Contains(k));
+            var unknown = bindings.Keys.Concat(handlers.Keys)
+                .FirstOrDefault(k => !childCode.ParameterNames.Contains(k));
             var roots = childMethod.Children.OfType<MarkupElementIntermediateNode>().ToList();
 
             if (!childCode.IsLeafDisplay)
@@ -1502,7 +1526,16 @@ public sealed class TemplateCompiler
                 // THE GUARD. Without it this line spliced `handler` verbatim into
                 // listen(), which is how `@onclick="() => currentCount++"` compiled to a
                 // module that renders perfectly and whose button is dead forever.
-                if (!NamedByTemplate(handler, $"the handler for '{name}' on <{el.TagName}>", authored,
+                // AN EVENTCALLBACK PARAMETER (decision 130). Inside a composed child, `@onclick="OnBump"`
+                // names a [Parameter] the PARENT bound to one of its own methods. Resolve the alias to
+                // that method's C# NAME right here, before anything is recorded: the callback is not a
+                // level of indirection to be preserved, it IS the parent's method, and once the name is
+                // the parent's every downstream decision (single-use inlining, batching, MethodJs) reads
+                // the parent's own tables and needs no knowledge of composition at all. Already validated
+                // at the composition site, by this same guard, against the parent that declares it.
+                if (_code.HandlerParamTarget(handler) is { } aliased)
+                    handler = aliased;
+                else if (!NamedByTemplate(handler, $"the handler for '{name}' on <{el.TagName}>", authored,
                         mustBeCallable: true)) return;
 
                 _used.Add("listen");
