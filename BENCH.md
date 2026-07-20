@@ -4493,3 +4493,43 @@ vide. Élargissement de couverture (pas de fixture `Unsupported/` distinct). §8
 ---
 
 *Fin de l'entrée n°44. Ne pas modifier — ajouter une entrée n°45 pour toute rectification.*
+
+---
+
+## Entrée n°45 — 2026-07-20 — Phase 4 : les opérateurs LINQ d'ordonnancement/pagination mesurés contre Blazor (CORRECTION)
+
+**Les opérateurs LINQ produisant une SÉQUENCE** — `OrderBy`/`OrderByDescending`/`Skip`/`Take`/`Reverse`/`ElementAt`
+(décision #126) — rejoignent le §5, élargissant les agrégats #121. Chacun mappe sur une méthode de tableau JS :
+`OrderBy(x=>clé)` → `[...arr].sort((__a,__b) => clé(__a) - clé(__b))` (tri STABLE d'une COPIE, comme LINQ),
+`OrderByDescending` échange les opérandes, `Skip`/`Take` → `.slice(n)`/`.slice(0,n)`, terminés par un scalaire
+`First`/`Last`. La clé doit être NUMÉRIQUE (le comparateur soustrait ; une clé string donnerait NaN, refusée).
+**AUCUNE primitive runtime** — sort/slice/spread sont des builtins JS.
+
+### Ce qui est mesuré
+
+`baseline/LinqOrder.Blazor` : sur `_nums` = [3,7,2,9,5], `#go` calcule `lo = OrderBy(x=>x).Skip(1).First()` — trié
+[2,3,5,7,9], on saute le premier → [3,5,7,9], premier = 3 — et `hi = OrderByDescending(x=>x).Take(2).Last()` — trié
+desc [9,7,5,3,2], on prend deux → [9,7], dernier = 7. La branche `linqorder` de `verifyContract` clique `#go` puis
+exige `#lo` et `#hi`. **`HARNESS_VERSION` 1.39.0 → 1.40.0**, divulgué.
+
+```
+dotnet publish baseline/LinqOrder.Blazor -c Release -o bench/publish/blazor-linqorder
+./bench/build-filament.sh filament-linqorder-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-linqorder/wwwroot --app linqorder --label blazor-linqorder       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-linqorder-gen   --app linqorder --label filament-linqorder-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#lo` / `#hi` | verdict |
+|---|---|---|
+| **blazor-linqorder** (autorité) | `0/0 → 3/7` | contrat OK |
+| **filament-linqorder-gen** (générateur) | `0/0 → 3/7` | contrat OK |
+
+**Les deux vont à `3`/`7`, à l'identique** — le tri stable d'une copie + slice + terminal scalaire reproduit la
+sémantique LINQ de Blazor. `git diff -- src/filament-runtime` vide. Élargissement de couverture de #116/#121 (pas de
+fixture `Unsupported/` distinct). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°45. Ne pas modifier — ajouter une entrée n°46 pour toute rectification.*

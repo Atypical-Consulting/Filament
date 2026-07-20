@@ -4297,3 +4297,26 @@ valeur change 2→20, « c » ajoutée, ordre b,c,a) et `filament-foreachdict-ge
 raterait. L'ordre d'énumération d'un `Dictionary` .NET (insertion) coïncide avec celui d'une Map JS : vérifié contre
 l'autorité Blazor. Élargissement de COUVERTURE (pas de fixture `Unsupported/` distinct). `HARNESS_VERSION`
 1.38.0 → 1.39.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 126. Les opérateurs LINQ d'ORDONNANCEMENT/PAGINATION (OrderBy/OrderByDescending/Skip/Take/Reverse/ElementAt) entrent dans le §5 — des méthodes de tableau JS ; élargit #116/#121
+
+**Décision.** Les opérateurs LINQ qui produisent une SÉQUENCE — `OrderBy`/`OrderByDescending`/`Skip`/`Take`/`Reverse`/
+`ElementAt` — rejoignent le §5, élargissant les agrégats #121 et les méthodes-tableau #116. Chacun mappe sur une
+méthode de tableau JS dans le switch de `LinqInvocation` : `OrderBy(x => clé)` → `[...arr].sort((__a, __b) =>
+clé(__a) - clé(__b))` (ASCENDANT), `OrderByDescending` échange les opérandes (DESCENDANT), `Skip(n)` → `.slice(n)`,
+`Take(n)` → `.slice(0, n)`, `Reverse()` → `[...arr].reverse()`, `ElementAt(i)` → `arr[i]`. Le tri porte sur une
+COPIE (`[...]`, la liste source n'est jamais mutée) et `Array.sort` de JS est STABLE (ES2019) exactement comme
+`OrderBy` de LINQ. Une séquence s'observe par un terminal scalaire (`First`/`Last`/`ElementAt`, #121) ou un
+`@foreach` (#124/#125). Le sélecteur de clé passe INCHANGÉ, la même lambda que les prédicats #116 (`(x => x)(__a)`).
+
+**La clé doit être NUMÉRIQUE.** Le comparateur SOUSTRAIT les clés, et `"a" - "b"` vaut NaN — un mauvais tri
+SILENCIEUX. Donc `OrderBy`/`OrderByDescending` sont GARDÉS par `NumericKeySelector` (le corps de la lambda a le type
+`int` ou `double`) ; une clé string/autre est REFUSÉE (différée), tout comme un sélecteur à corps-bloc. Suite :
+**322 tests** (316→322 : +4 LinqOrder, +2 témoins subset), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `sort`/`slice`/spread/`reverse` sont des builtins JS ; aucune primitive ajoutée.
+`git diff -- src/filament-runtime` vide. MESURÉ (entrée n°45) : `baseline/LinqOrder.Blazor` (sur `[3,7,2,9,5]` :
+`OrderBy(x=>x).Skip(1).First()` = 3 ; `OrderByDescending(x=>x).Take(2).Last()` = 7) et `filament-linqorder-gen`
+rendent `#lo`/`#hi` `0/0 → 3/7`, à l'identique. Élargissement de COUVERTURE de #116/#121 (pas de fixture
+`Unsupported/` distinct). `HARNESS_VERSION` 1.39.0 → 1.40.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste
+**« ni éliminée ni établie »**.
