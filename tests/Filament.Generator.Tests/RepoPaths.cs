@@ -220,6 +220,11 @@ public static class RepoPaths
 
     /// <summary>The @foreach-over-Dictionary SPEC (decisions 51/125). Never edited to make a gate pass.</summary>
     public static string ForeachDictAnswerKey => Path.Combine(Root, "samples", "ForeachDict", "foreachdict.js");
+
+    public static string LinqOrderRazor => Path.Combine(Root, "baseline", "LinqOrder.Blazor", "App.razor");
+
+    /// <summary>The LINQ-ordering SPEC (decisions 51/126). Never edited to make a gate pass.</summary>
+    public static string LinqOrderAnswerKey => Path.Combine(Root, "samples", "LinqOrder", "linqorder.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
