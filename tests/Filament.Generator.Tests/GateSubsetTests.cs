@@ -469,6 +469,59 @@ public class NegativeControls
         Assert.Contains("list(", js);
     }
 
+    /// <summary>
+    /// Decision 124: a @foreach over a REASSIGNED array is admitted. The array is a signal (read by the
+    /// @foreach AND assigned outside construction), so it is list()'s own source -- `() => items.value`.
+    /// </summary>
+    [Fact]
+    public void Section5_ForeachOverAReassignedArray_CompilesClean()
+    {
+        var (exit, stderr, js) = CompileEmitting(
+            """
+            <ul id="list">
+            @foreach (int n in items)
+            {
+                <li @key="n">@n</li>
+            }
+            </ul>
+            <button id="go" @onclick="Go">go</button>
+
+            @code {
+                private int[] items = new[] { 1, 2, 3 };
+                private void Go() { items = new[] { 4, 5, 6 }; }
+            }
+            """);
+        Assert.True(exit == 0, "@foreach over a reassigned array is in the subset (decision 124):\n" + stderr);
+        Assert.Contains("list(", js);
+        Assert.Contains("() => items.value", js);
+    }
+
+    /// <summary>
+    /// Decision 124's boundary: a NEVER-reassigned array is not a signal, so it has no source for list()
+    /// to re-run on -- a static tree, whose mapping is not implemented. It stays refused, like a
+    /// never-mutated List&lt;T&gt;. (Contrast Section5_ForeachOverAReassignedArray, which reassigns.)
+    /// </summary>
+    [Fact]
+    public void ForeachOverANeverReassignedArray_IsRefused()
+    {
+        var (exit, stderr, wrote) = Compile(
+            """
+            <ul id="list">
+            @foreach (int n in items)
+            {
+                <li @key="n">@n</li>
+            }
+            </ul>
+
+            @code {
+                private int[] items = new[] { 1, 2, 3 };
+            }
+            """);
+        Assert.True(exit != 0 && !wrote, "a never-reassigned array @foreach is a static tree and must be refused");
+        Assert.Contains("unsupported-foreach", stderr);
+        Assert.Contains("never reassigned", stderr);
+    }
+
     /// <summary>Section 5's Razor: @oninput, alongside @onclick.</summary>
     [Fact]
     public void Section5_OnInput_CompilesClean()

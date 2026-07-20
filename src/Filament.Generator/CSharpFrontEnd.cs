@@ -680,27 +680,51 @@ public sealed class CSharpFrontEnd
     /// </summary>
     ForEachOp? ForEach(ForEachStatementSyntax fe, IReadOnlyDictionary<string, IntermediateNode> markers)
     {
-        // The collection must be a List<T> FIELD: list()'s source has to subscribe to
-        // something, and the version signal is the only thing there is to subscribe to.
-        if (_model.GetSymbolInfo(fe.Expression).Symbol is not IFieldSymbol fs ||
-            Field(fs) is not { List: { } li } f)
+        // The collection must be a FIELD with something list() can SUBSCRIBE to. Two shapes qualify:
+        //   - a MUTATED List<T> -> its version signal is the source (rows.js decision 1); listJs is the plain array.
+        //   - a REASSIGNED T[]   -> the array field is itself a signal (decision 124); it is both the subscribable
+        //     thing and the array (listJs = field.value). A never-mutated List / never-reassigned array is a
+        //     STATIC tree, whose mapping is not implemented -> refused.
+        // versionJs is read as `{versionJs}.value` by EmitList; listJs is what it returns.
+        string versionJs, listJs;
+        if (_model.GetSymbolInfo(fe.Expression).Symbol is not IFieldSymbol fs || Field(fs) is not { } f)
         {
             Refuse("unsupported-foreach",
-                $"@foreach iterates '{Trunc(fe.Expression.ToString())}', which is not a List<T> field declared " +
-                "in this component. list() reconciles against a source it can SUBSCRIBE to, and the only " +
-                "subscribable thing a List<T> has is the version signal this compiler gives it (rows.js " +
-                "mapping decision 1). Refusing to emit.",
+                $"@foreach iterates '{Trunc(fe.Expression.ToString())}', which is not a List<T> or T[] field " +
+                "declared in this component. list() reconciles against a source it can SUBSCRIBE to. Refusing to emit.",
                 fe.Expression.SpanStart);
             return null;
         }
-
-        if (!li.Mutated)
+        if (f.List is { } li)
+        {
+            if (!li.Mutated)
+            {
+                Refuse("unsupported-foreach",
+                    $"@foreach iterates '{f.Name}', which nothing in this component ever mutates, so it has no " +
+                    "version signal and list() would have no source to re-run on. A never-mutated list rendered " +
+                    "once is a static tree; that mapping is not implemented. Refusing to emit.",
+                    fe.Expression.SpanStart);
+                return null;
+            }
+            (versionJs, listJs) = (li.Version, f.Js);
+        }
+        else if (f.Symbol.Type is IArrayTypeSymbol { Rank: 1 })
+        {
+            if (!f.IsSignal)
+            {
+                Refuse("unsupported-foreach",
+                    $"@foreach iterates '{f.Name}', a T[] that is never reassigned, so it is not a signal and " +
+                    "list() has no source to re-run on. A never-reassigned array rendered once is a static tree; " +
+                    "that mapping is not implemented. Refusing to emit.",
+                    fe.Expression.SpanStart);
+                return null;
+            }
+            (versionJs, listJs) = (f.Js, $"{f.Js}.value");
+        }
+        else
         {
             Refuse("unsupported-foreach",
-                $"@foreach iterates '{f.Name}', which nothing in this component ever mutates, so it has no " +
-                "version signal and list() would have no source to re-run on. A never-mutated list rendered " +
-                "once is a static tree; that mapping is not implemented and is not exercised by either " +
-                "answer key. Refusing to emit.",
+                $"@foreach iterates '{f.Name}', which is neither a List<T> nor a T[] field. Refusing to emit.",
                 fe.Expression.SpanStart);
             return null;
         }
@@ -744,7 +768,7 @@ public sealed class CSharpFrontEnd
             return null;
         }
 
-        return new ForEachOp(JsName(fe.Identifier.Text), f.Js, li.Version, markup[0].Node, key);
+        return new ForEachOp(JsName(fe.Identifier.Text), listJs, versionJs, markup[0].Node, key);
     }
 
     /// <summary>
@@ -1481,8 +1505,16 @@ public sealed class CSharpFrontEnd
     void MarkConditionReads(ClassDeclarationSyntax regionClass, IReadOnlyList<string> regionMethods)
     {
         foreach (var method in regionMethods)
-        foreach (var ifs in FindMethod(regionClass, method).Body!.DescendantNodes().OfType<IfStatementSyntax>())
-            MarkReads(ifs.Condition);
+        {
+            var body = FindMethod(regionClass, method).Body!;
+            foreach (var ifs in body.DescendantNodes().OfType<IfStatementSyntax>())
+                MarkReads(ifs.Condition);
+            // A @foreach collection is read by the template the same way an @if condition is: a T[]
+            // read ONLY by `@foreach (var x in items)` must be lifted to a signal (decision 124), else
+            // reassigning it would not re-run list(). A List<T> is unaffected -- it is never a signal.
+            foreach (var fe in body.DescendantNodes().OfType<ForEachStatementSyntax>())
+                MarkReads(fe.Expression);
+        }
     }
 
     FieldInfo? Field(IFieldSymbol s) =>
