@@ -1,0 +1,24 @@
+@* Value-returning async Task<T> (BENCH n°42, decision 123): a `async Task<int>` method AWAITED for its result.
+   #go runs Go (async Task), which does `count = await Compute()`; Compute (async Task<int>) awaits a 1ms delay
+   then returns `count + 42`. So each click adds 42 AFTER the awaited delay: #count goes 0 -> 42 -> 84, exactly
+   as Blazor awaits the handler and re-renders on completion. An async Task<T> emits an `async function` that
+   RETURNS its value; `await Compute()` unwraps the Promise. count is a signal (read by @count + assigned by Go). *@
+
+<p>Count: <span id="count">@count</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private int count = 0;
+
+    private async System.Threading.Tasks.Task Go()
+    {
+        count = await Compute();
+    }
+
+    private async System.Threading.Tasks.Task<int> Compute()
+    {
+        await System.Threading.Tasks.Task.Delay(1);
+        return count + 42;
+    }
+}
