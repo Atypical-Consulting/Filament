@@ -1,0 +1,20 @@
+@* async/await (BENCH n°38, decision 119): an `async Task` event handler that AWAITS before mutating state.
+   #go runs LoadAsync, which awaits a 1ms delay then increments count. An `async Task` method emits an
+   `async function`; `await` maps to JS's own await; `Task.Delay(1)` to `new Promise(r => setTimeout(r, 1))`.
+   The click IS the measurement -- #count goes 0 -> 1 -> 2, each after the awaited delay, exactly as Blazor
+   awaits the handler and re-renders on completion. count is read by @count AND assigned by LoadAsync -> a
+   signal; the effect re-renders when the awaited continuation writes it. *@
+
+<p>Count: <span id="count">@count</span></p>
+
+<button id="go" @onclick="LoadAsync">go</button>
+
+@code {
+    private int count = 0;
+
+    private async System.Threading.Tasks.Task LoadAsync()
+    {
+        await System.Threading.Tasks.Task.Delay(1);
+        count++;
+    }
+}
