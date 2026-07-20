@@ -208,10 +208,11 @@ Things worth knowing before you run it:
   (spec §10). The codes are **the spec's**: **`FIL0001`** out-of-subset C#, **`FIL0002`** out-of-subset
   type, **`FIL0003`** out-of-subset Razor — each with a `[reason]` tag; tool failures carry
   `FIL-WIRING`, which cannot be mistaken for a spec code (#61). Try it:
-  `dotnet run --project src/Filament.Generator -- tests/Filament.Generator.Tests/Unsupported/IfElseMultiBody.razor samples/Counter/x.js`
-  → **`IfElseMultiBody.razor(6,1): FIL0001: [unsupported-if-body]`, exit 1, and NO file is written**. (Plain
-  `@if`, `@else`, and `@else if` now COMPILE, DECISIONS.md #81/#82; a multi-node branch body, nesting, and
-  `@if`/`@else` at the template root remain deferred, each its own located diagnostic.)
+  `dotnet run --project src/Filament.Generator -- tests/Filament.Generator.Tests/Unsupported/Foreach.razor samples/Counter/x.js`
+  → **`Foreach.razor(2,20): FIL0001: [unsupported-foreach]`, exit 1, and NO file is written**. (The `@if`
+  family — `@if`/`@else`/`@else if`, multi-node bodies, nesting, and root-level control flow — all COMPILE
+  now; what stays refused here is a `@foreach` over a collection that is not a `List<T>`, `T[]` or
+  `Dictionary<K,V>` field, because `list()` has no signal to subscribe to.)
   (The output path must be **inside the repo**: the generator computes the runtime's import specifier
   as a real relative path and refuses with `FIL-WIRING` if it cannot find it — which is the tool being
   misused, not your Razor being unsupported, and it says so.)

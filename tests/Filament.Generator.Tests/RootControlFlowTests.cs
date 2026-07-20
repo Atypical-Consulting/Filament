@@ -36,10 +36,10 @@ public class RootControlFlowTests
     [Fact]
     public void RootBareCodeBlock_NowCompiles_ToAOneTimeLocal()
     {
-        var outPath = Path.Combine(RepoPaths.Unsupported, $".gen-{Guid.NewGuid():N}.js");
+        var outPath = Path.Combine(RepoPaths.Supported, $".gen-{Guid.NewGuid():N}.js");
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "RootCodeBlock.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "RootCodeBlock.razor"), outPath);
             Assert.True(exit == 0, $"a root @{{ }} local declaration should compile now (decision 109):\n{stderr}");
             var js = File.ReadAllText(outPath);
             Assert.Contains("const x = 5;", js);                        // the one-time local

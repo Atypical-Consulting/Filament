@@ -98,7 +98,7 @@ public class DiagnosticTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfAtRoot.razor"), outPath);
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Supported, "IfAtRoot.razor"), outPath);
 
             Assert.True(exit == 0, $"root @if should compile now (decision 89):\n{stderr}");
             Assert.Contains("list(target,", File.ReadAllText(outPath));
@@ -119,7 +119,7 @@ public class DiagnosticTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfMultiBody.razor"), outPath);
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Supported, "IfMultiBody.razor"), outPath);
 
             Assert.True(exit == 0, $"a single-branch @if with a multi-node body should compile now:\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -143,7 +143,7 @@ public class DiagnosticTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfElseMultiBody.razor"), outPath);
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Supported, "IfElseMultiBody.razor"), outPath);
 
             Assert.True(exit == 0, $"an @if/@else with a multi-node branch body should compile now:\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -167,7 +167,7 @@ public class DiagnosticTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfNested.razor"), outPath);
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Supported, "IfNested.razor"), outPath);
 
             Assert.True(exit == 0, $"a nested @if in a branch should compile now:\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -192,7 +192,7 @@ public class DiagnosticTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfNestedMixed.razor"), outPath);
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Supported, "IfNestedMixed.razor"), outPath);
 
             Assert.True(exit == 0, $"a branch mixing markup with a nested @if should compile now (decision 120):\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -419,7 +419,7 @@ public class DiagnosticTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "HandlerLambda.razor"), outPath);
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Supported, "HandlerLambda.razor"), outPath);
 
             Assert.True(exit == 0, $"a no-arg lambda handler should compile now (decision 105):\n{stderr}");
             var js = File.ReadAllText(outPath);

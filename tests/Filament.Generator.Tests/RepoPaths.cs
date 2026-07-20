@@ -244,6 +244,14 @@ public static class RepoPaths
     /// </summary>
     public static string Unsupported => Path.Combine(Root, "tests", "Filament.Generator.Tests", "Unsupported");
 
+    /// <summary>
+    /// The other side of <see cref="Unsupported"/>: .razor fixtures that USED to be refused and now
+    /// COMPILE (each pinned by a *_NowCompiles / *_CompilesClean test). They were carried out of the
+    /// Unsupported dir the moment the capability shipped, so the folder name never lies about a fixture
+    /// the generator accepts. Same Code/ + Gate/ substructure as Unsupported, so provenance is preserved.
+    /// </summary>
+    public static string Supported => Path.Combine(Root, "tests", "Filament.Generator.Tests", "Supported");
+
     static string Find()
     {
         for (var d = new DirectoryInfo(AppContext.BaseDirectory); d is not null; d = d.Parent)

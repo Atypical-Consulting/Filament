@@ -341,16 +341,16 @@ public static class Generate
     public static string GroupByToTemp() => ToTemp(RepoPaths.GroupByRazor, "GroupBy");
 
     /// <summary>
-    /// Emit a fixture from the Unsupported dir (some of which now COMPILE -- e.g. root control
+    /// Emit a fixture from the Supported dir (fixtures that now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the
     /// relative runtime specifier resolves (a temp output would fail FIL-WIRING on a clean emit).
     /// </summary>
     public static string ToTempFixture(string fixture)
     {
-        var inRepo = Path.Combine(RepoPaths.Unsupported, $".gen-{Guid.NewGuid():N}.js");
+        var inRepo = Path.Combine(RepoPaths.Supported, $".gen-{Guid.NewGuid():N}.js");
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, fixture), inRepo);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, fixture), inRepo);
             Assert.True(exit == 0, $"the generator refused to emit {fixture}:\n{stderr}");
 
             var outside = Path.Combine(Path.GetTempPath(), $"filament-gen-{Guid.NewGuid():N}.js");

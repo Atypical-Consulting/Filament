@@ -132,7 +132,7 @@ public class CodeTests
         try
         {
             var (exit, _, stderr) = Run.Generator(
-                Path.Combine(RepoPaths.Unsupported, "Code", "IntDivision.razor"), outPath);
+                Path.Combine(RepoPaths.Supported, "Code", "IntDivision.razor"), outPath);
 
             Assert.True(exit == 0, $"integer division should compile now (decision 101):\n{stderr}");
             Assert.Contains("Math.trunc(currentCount.value / 2)", File.ReadAllText(outPath));
@@ -152,7 +152,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", fixture), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Code", fixture), outPath);
 
             Assert.True(exit == 0, $"{fixture} should compile now (decision 102):\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -178,7 +178,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", fixture), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Code", fixture), outPath);
 
             Assert.True(exit == 0, $"{fixture} should compile now (decision 110):\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -200,7 +200,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeLong.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Code", "TypeLong.razor"), outPath);
 
             Assert.True(exit == 0, $"a long field should compile now (decision 112):\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -222,7 +222,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeFloat.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Code", "TypeFloat.razor"), outPath);
 
             Assert.True(exit == 0, $"a float field should compile now (decision 113):\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -243,7 +243,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeDecimal.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Code", "TypeDecimal.razor"), outPath);
 
             Assert.True(exit == 0, $"a decimal field should compile now (decision 114):\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -265,7 +265,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeDict.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Code", "TypeDict.razor"), outPath);
 
             Assert.True(exit == 0, $"a Dictionary field should compile now (decision 118):\n{stderr}");
             Assert.DoesNotContain("[unsupported-type]", File.ReadAllText(outPath));
@@ -284,7 +284,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeArray.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Code", "TypeArray.razor"), outPath);
 
             Assert.True(exit == 0, $"an int[] field should compile now (decision 117):\n{stderr}");
             Assert.DoesNotContain("[unsupported-type]", File.ReadAllText(outPath));
@@ -303,7 +303,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Gate", "AsyncTask.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Gate", "AsyncTask.razor"), outPath);
 
             Assert.True(exit == 0, $"an async Task method should compile now (decision 119):\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -325,7 +325,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Gate", "Linq.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Gate", "Linq.razor"), outPath);
 
             Assert.True(exit == 0, $"a LINQ Where().Count() chain should compile now (decision 116):\n{stderr}");
             var js = File.ReadAllText(outPath);
@@ -347,7 +347,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "TypeDateTime.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Code", "TypeDateTime.razor"), outPath);
 
             Assert.True(exit == 0, $"a DateTime field should compile now (decision 115):\n{stderr}");
             Assert.DoesNotContain("[unsupported-type]", File.ReadAllText(outPath));
@@ -367,7 +367,7 @@ public class CodeTests
         var outPath = InRepo();
         try
         {
-            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Unsupported, "Code", "RecordDecl.razor"), outPath);
+            var (exit, _, stderr) = Run.Generator(Path.Combine(RepoPaths.Supported, "Code", "RecordDecl.razor"), outPath);
 
             Assert.True(exit == 0, $"a positional record should compile now (decision 111):\n{stderr}");
             Assert.DoesNotContain("[unsupported-member]", File.ReadAllText(outPath));
