@@ -230,6 +230,11 @@ public static class RepoPaths
 
     /// <summary>The element-write SPEC (decisions 51/127). Never edited to make a gate pass.</summary>
     public static string ElementWriteAnswerKey => Path.Combine(Root, "samples", "ElementWrite", "elementwrite.js");
+
+    public static string GroupByRazor => Path.Combine(Root, "baseline", "GroupBy.Blazor", "App.razor");
+
+    /// <summary>The GroupBy SPEC (decisions 51/128). Never edited to make a gate pass.</summary>
+    public static string GroupByAnswerKey => Path.Combine(Root, "samples", "GroupBy", "groupby.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
