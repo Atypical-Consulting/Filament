@@ -195,6 +195,11 @@ public static class RepoPaths
 
     /// <summary>The mixed-@if-branch SPEC (decisions 51/120). Never edited to make a gate pass.</summary>
     public static string IfNestedMixedAnswerKey => Path.Combine(Root, "samples", "IfNestedMixed", "ifnestedmixed.js");
+
+    public static string LinqAggregateRazor => Path.Combine(Root, "baseline", "LinqAggregate.Blazor", "App.razor");
+
+    /// <summary>The LINQ-aggregate SPEC (decisions 51/121). Never edited to make a gate pass.</summary>
+    public static string LinqAggregateAnswerKey => Path.Combine(Root, "samples", "LinqAggregate", "linqaggregate.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
