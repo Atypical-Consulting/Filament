@@ -10,8 +10,14 @@
 
 ## The result
 
-Nine of the eleven items on README's "Not implemented" list are now **implemented and measured**
-against Blazor through the DOM-contract oracle. Two are not.
+**All eleven** items on README's "Not implemented" list are now **implemented and measured** against
+Blazor through the DOM-contract oracle.
+
+> **This ADR was revised once, and the revision is part of the record.** It first concluded at nine of
+> eleven, holding forms and routing back with their blockers specified. Both were then closed — forms
+> once the reactivity question below was answered, routing by generating a router into the app. The
+> original diagnosis is kept verbatim because it was *correct*: what it predicted each would cost is
+> exactly what each cost.
 
 | # | Item | Status | Decision / BENCH |
 |---|------|:------:|---|
@@ -24,11 +30,13 @@ against Blazor through the DOM-contract oracle. Two are not.
 | 7 | `CascadingParameter` | ✅ closed | #134 · n°53 |
 | 8 | generics (`@typeparam`) | ✅ closed | #135 · n°54 |
 | 9 | inheritance (`@inherits`) | ✅ closed, **narrowly** | #136 · n°55 |
-| 10 | **forms** | ❌ **open** | see below |
-| 11 | **routing (`@page`)** | ❌ **open** | see below |
+| 10 | **forms** | ✅ closed | #137/#138 · n°56 |
+| 11 | **routing (`@page`)** | ✅ closed, **and it cost bytes** | #139 · n°57 |
 
-**Every one of the seven new slices was generator-only.** `git diff -- src/filament-runtime` was empty
-at each, and the runtime is still **byte-frozen at 1,943 / 2,048 B**. C1 and C4 are untouched.
+**Ten of the eleven cost ZERO runtime bytes.** `git diff -- src/filament-runtime` was empty at every
+slice, and the runtime is still **byte-frozen at 1,943 / 2,048 B**. Routing is the single exception, and
+it is an exception in the right place: its code is generated **into the app**, measured at **425 B
+gzip**, so an app that does not route still pays nothing. C1 and C4 are untouched.
 
 ## What ADR 0002 got wrong
 
@@ -60,9 +68,11 @@ Stated per item, that is not a slogan but a mechanism:
 Seven features, zero runtime bytes. The compile-time model absorbed them rather than being extended by
 them, which is a stronger result than "they were implementable."
 
-## What ADR 0002 got right
+## What ADR 0002 got right — and what it cost to close anyway
 
-Two items resisted, and they resisted for the reason ADR 0002 named — they are **not lookups**.
+Two items resisted, and they resisted for the reason ADR 0002 named — they are **not lookups**. Both
+have since been closed, and *how* they closed confirms that diagnosis rather than overturning it. The
+original analysis is preserved; the outcome follows each.
 
 ### Forms — blocked on a reactivity question, not on wiring
 
@@ -84,6 +94,15 @@ That is a genuine extension to the thesis machinery, of the same kind and size a
 its own baseline, answer key and measurement. **Validation** (DataAnnotations, `EditContext`,
 `ValidationMessage`) is a further subsystem beyond it and is not in scope even then.
 
+> **OUTCOME (#137/#138, BENCH n°56) — closed, and the diagnosis was exact.** Both predicted costs were
+> paid. The Forms namespace was imported so Razor lowers `@bind-Value` itself (mechanical, as expected).
+> The reactivity question was answered by making **the template's write** the thing that marks a bound
+> target reactive — which also closed decision **104**'s named deferral. It also surfaced a **silent
+> mis-compile** (#137): a record field's initialiser was translated in phase 1, *before* the reactivity
+> marking of phase 2, so the emitted literal `{ name: 'a' }` disagreed with every read of it
+> (`model.name.value`). The page rendered "undefined" and the click threw `TypeError` — verified in node,
+> not reasoned about. Validation stayed out of scope and is **refused, not ignored**.
+
 ### Routing — the one item that genuinely needs new code
 
 `@page` needs URL matching, mount/unmount on navigation, `popstate` handling, and link interception.
@@ -99,15 +118,22 @@ does not have to rediscover it:
 - **measure and disclose the app-side byte cost** in BENCH — routing is the one item that must show up
   as weight, and a routing slice that reports no weight change is a slice that measured the wrong thing.
 
+> **OUTCOME (#139, BENCH n°57) — closed exactly on those terms.** The router is generated into the app
+> and *imports* each page, so a page module is byte-identical routed or standalone. The shared runtime did
+> not move (still 1,943 B). The cost was measured and disclosed rather than absorbed: **425 B gzip** for
+> the router, **1,641 B gzip** for the whole routed app — 6.1× under C1's budget. The generator gained a
+> `--router` mode, because a router genuinely needs the *set* of pages: the structural assumption ADR 0002
+> correctly identified.
+
 ## Decision
 
-1. **Record the nine as closed and measured** (#130–#136, BENCH n°49–n°55), each generator-only, each
-   with its boundary witnesses kept refused.
-2. **Correct README §"Honest limits"**: it listed multi-parameter fan-out as missing when #129 had
-   already banked it, and it now overstates the gap by nine items. Forms and routing stay listed.
-3. **Do not half-ship forms or routing.** Forms is blocked on a reactivity question worth its own
-   slice; routing is the one item that genuinely needs new code and must be measured as weight. Both
-   are specified above rather than approximated.
-4. **§8 is unchanged.** RADICAL remains *"ni éliminée ni établie."* Nine features closing at zero
-   runtime cost is evidence for the compile-time model, not proof of a framework — and the two that
-   did not close are precisely the two that would have tested it hardest.
+1. **Record all eleven as closed and measured** (#130–#139, BENCH n°49–n°57), each with its boundary
+   witnesses kept refused, and each flipped witness moved into `Supported/` so no folder name lies.
+2. **Correct README §"Honest limits"**, which listed shipped features as missing.
+3. **Keep the distinction the flat list obscures.** Ten features cost zero runtime bytes because the
+   compile-time model absorbed them; routing cost 425 B because it could not be absorbed. Reporting both
+   as "implemented" without that difference would hide the most interesting result here.
+4. **§8 is unchanged.** RADICAL remains *"ni éliminée ni établie."* Eleven features closing is evidence
+   that the compile-time model absorbs a framework's *surface*. It is **not** evidence that a real
+   application fits this subset — a different and larger claim. Routing is precisely where the model
+   reached its limit: code had to be emitted. What remains untested is **scale, not surface**.
