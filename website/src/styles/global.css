@@ -1,0 +1,80 @@
+@import "tailwindcss";
+
+/*
+  Filament design system (Tailwind v4, zero-config via @theme).
+  Identity: a lightbulb filament — a thin, bright-hot thread against the dark.
+  Deep charcoal canvas, a warm "filament" amber that glows, an electric-cyan
+  counterpoint for the "compiled/cool" side of the story. Monospace carries the
+  numbers, because this is a project judged on numbers.
+*/
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Code", monospace;
+
+  --color-ink-950: #0a0a0f;
+  --color-ink-900: #0f1017;
+  --color-ink-850: #14151f;
+  --color-ink-800: #1b1d2a;
+  --color-ink-700: #262838;
+  --color-ink-600: #3a3d52;
+
+  --color-filament-400: #ffcf6b;
+  --color-filament-500: #ffb020;
+  --color-filament-600: #f5920a;
+
+  --color-spark-300: #7ff0e6;
+  --color-spark-400: #34d8c8;
+  --color-spark-500: #14b8a6;
+
+  --color-mist-100: #eef0f6;
+  --color-mist-300: #b8bccf;
+  --color-mist-500: #7b8099;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    background-color: var(--color-ink-950);
+    color: var(--color-mist-100);
+  }
+  body {
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background-color: color-mix(in srgb, var(--color-filament-500) 35%, transparent);
+    color: #fff;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-spark-400);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+/* The glowing filament hairline used under headings and around key stats. */
+.filament-rule {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-filament-500) 20%,
+    var(--color-filament-400) 50%,
+    var(--color-filament-500) 80%,
+    transparent
+  );
+  box-shadow: 0 0 12px 0 color-mix(in srgb, var(--color-filament-500) 60%, transparent);
+}
+
+.glow-text {
+  text-shadow: 0 0 24px color-mix(in srgb, var(--color-filament-500) 55%, transparent);
+}

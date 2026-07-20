@@ -1,0 +1,52 @@
+---
+const links = [
+  { href: "#problem", label: "Problem" },
+  { href: "#solution", label: "How it works" },
+  { href: "#evidence", label: "Evidence" },
+  { href: "#subset", label: "What compiles" },
+  { href: "#honesty", label: "Limits" },
+];
+---
+
+<header
+  class="sticky top-0 z-40 border-b border-ink-800/80 bg-ink-950/70 backdrop-blur-md"
+>
+  <nav
+    class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
+    aria-label="Primary"
+  >
+    <a href="#top" class="flex items-center gap-2.5 font-semibold tracking-tight">
+      <span
+        class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-ink-800 ring-1 ring-inset ring-ink-700"
+        aria-hidden="true"
+      >
+        <svg viewBox="0 0 64 64" class="h-5 w-5">
+          <path
+            d="M12 40 C 20 40, 22 22, 32 22 C 42 22, 44 40, 52 40"
+            fill="none"
+            stroke="#ffb020"
+            stroke-width="4"
+            stroke-linecap="round"
+          ></path>
+        </svg>
+      </span>
+      <span>Filament</span>
+    </a>
+    <ul class="hidden items-center gap-7 text-sm text-mist-300 md:flex">
+      {
+        links.map((l) => (
+          <li>
+            <a class="transition-colors hover:text-filament-400" href={l.href}>
+              {l.label}
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+    <a
+      href="https://github.com"
+      class="rounded-lg border border-ink-600 px-3.5 py-1.5 text-sm font-medium text-mist-100 transition-colors hover:border-filament-500/60 hover:text-filament-400"
+      >Source</a
+    >
+  </nav>
+</header>
