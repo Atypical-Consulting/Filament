@@ -203,6 +203,7 @@ ALL_LABELS=(
   filament-linq-gen
   filament-arrayindex-gen
   filament-dictlookup-gen
+  filament-asyncclick-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -245,6 +246,7 @@ project_for() {
     filament-linq-gen)                               echo "samples/filament-linq-gen" ;;
     filament-arrayindex-gen)                         echo "samples/filament-arrayindex-gen" ;;
     filament-dictlookup-gen)                         echo "samples/filament-dictlookup-gen" ;;
+    filament-asyncclick-gen)                         echo "samples/filament-asyncclick-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -254,7 +256,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -306,6 +308,7 @@ razor_for() {
     filament-linq-gen)                               echo "$REPO_ROOT/baseline/Linq.Blazor/App.razor" ;;
     filament-arrayindex-gen)                         echo "$REPO_ROOT/baseline/ArrayIndex.Blazor/App.razor" ;;
     filament-dictlookup-gen)                         echo "$REPO_ROOT/baseline/DictLookup.Blazor/App.razor" ;;
+    filament-asyncclick-gen)                         echo "$REPO_ROOT/baseline/AsyncClick.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -350,6 +353,7 @@ generated_js_for() {
     filament-linq-gen)                               echo "App.g.js" ;;
     filament-arrayindex-gen)                         echo "App.g.js" ;;
     filament-dictlookup-gen)                         echo "App.g.js" ;;
+    filament-asyncclick-gen)                         echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -390,6 +394,7 @@ title_for() {
     filament-linq-gen)                               echo "Linq" ;;
     filament-arrayindex-gen)                         echo "ArrayIndex" ;;
     filament-dictlookup-gen)                         echo "DictLookup" ;;
+    filament-asyncclick-gen)                         echo "AsyncClick" ;;
     *) return 1 ;;
   esac
 }
@@ -433,6 +438,7 @@ blazor_label_for() {
     filament-linq-gen)                               echo "blazor-linq" ;;
     filament-arrayindex-gen)                         echo "blazor-arrayindex" ;;
     filament-dictlookup-gen)                         echo "blazor-dictlookup" ;;
+    filament-asyncclick-gen)                         echo "blazor-asyncclick" ;;
     *) return 1 ;;
   esac
 }
@@ -484,6 +490,7 @@ css_for() {
     filament-linq-gen)                               echo "$REPO_ROOT/baseline/Linq.Blazor/wwwroot/css/app.css" ;;
     filament-arrayindex-gen)                         echo "$REPO_ROOT/baseline/ArrayIndex.Blazor/wwwroot/css/app.css" ;;
     filament-dictlookup-gen)                         echo "$REPO_ROOT/baseline/DictLookup.Blazor/wwwroot/css/app.css" ;;
+    filament-asyncclick-gen)                         echo "$REPO_ROOT/baseline/AsyncClick.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }

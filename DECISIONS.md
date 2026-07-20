@@ -4134,3 +4134,28 @@ réassignation en gros sont admises. Divulgué.
 `"one" → "two" → "three" → "one"`, à l'identique. Le témoin `Code/TypeDict.razor` bascule refusé → compilé ;
 `object` reste refusé. `HARNESS_VERSION` 1.31.0 → 1.32.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste
 **« ni éliminée ni établie »**.
+
+## 119. `async`/`await` entre dans le §5 — une async function + le await propre de JS ; supersède le refus « non-goal spec 3 »
+
+**Décision.** `async`/`await` rejoint le §5. Il était refusé (`unsupported-modifier`). Une méthode `async Task`
+émet une **`async function`** (un `async Task<T>` renvoyant une valeur est différé — le caller awaitant en aurait
+besoin, ce qu'aucune construction du §5 ne consomme) ; `await x` → le **`await x`** propre de JS ; `Task.Delay(ms)`
+→ `new Promise((resolve) => setTimeout(resolve, ms))`. `Method()` admet le modificateur `async` (traqué dans
+`MethodInfo.IsAsync`) et exige un `Task` non générique en retour. Suite : **362 tests** (284 générateur / 60 subset
+/ 18 analyzer), runtime 214. **LEÇON (9e over-refus corrigé) : « non-goal spec 3 » supposait un sous-système Task ;
+mais `async function`/`await`/`Promise` sont natifs à JS.**
+
+**LE GARDE DE CONTEXTE ASYNC.** `await` est admis comme FORME d'expression (`ClassifyExpression`), mais n'est
+émis QUE dans un contexte async : `InAsyncContext` vérifie que la méthode/lambda englobante est `async`, sinon
+REFUSE (`unsupported-expression`). C'est nécessaire pour deux raisons qui coïncident : `await` hors async est du C#
+invalide (CS4033, `Code/Await.razor` : `await` dans une méthode `void`), ET `await` dans une fonction JS non-async
+est une erreur de syntaxe. Un gestionnaire async inliné dans un `listen()` émet donc `async () => { … }`
+(`IsAsyncHandler` + `HandlerArrow`) pour que son `await` soit légal.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `async function`, `await`, `Promise`, `setTimeout` sont des builtins JS — aucune
+primitive runtime. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°38) : `baseline/AsyncClick.Blazor`
+(`#go` → `LoadAsync` await un délai 1ms puis `count++`) et `filament-asyncclick-gen` rendent `#count` `0 → 1 → 2`,
+à l'identique, chacun APRÈS le délai awaité (l'oracle attend la continuation). Le témoin `Gate/AsyncTask.razor`
+bascule refusé → compilé ; `await` hors async reste refusé (`Code/Await.razor`). Seul `Task.Delay` est mappé ;
+Task.Run/WhenAll/ContinueWith restent refusés. `HARNESS_VERSION` 1.32.0 → 1.33.0, divulgué. §5 s'élargit d'un cran ;
+RADICAL reste **« ni éliminée ni établie »**.

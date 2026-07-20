@@ -4211,3 +4211,44 @@ Blazor indexe le même `Dictionary` C#. `git diff -- src/filament-runtime` vide 
 ---
 
 *Fin de l'entrée n°37. Ne pas modifier — ajouter une entrée n°38 pour toute rectification.*
+
+---
+
+## Entrée n°38 — 2026-07-20 — Phase 4 : `async`/`await` mesuré contre Blazor (CORRECTION)
+
+**`async`/`await`** (décision #119) rejoint le §5. Une méthode `async Task` émet une `async function` (un
+`async Task<T>` qui renvoie une valeur est différé) ; `await x` → le `await x` propre de JS (valide seulement dans
+un contexte async, que le générateur garde — `await` hors async est du C# invalide, `Code/Await.razor`) ;
+`Task.Delay(ms)` → `new Promise((resolve) => setTimeout(resolve, ms))`. Un gestionnaire async inliné dans un
+`listen()` devient `async () => { … }` pour que son `await` soit du JS légal. **AUCUNE primitive runtime** :
+Promise/setTimeout/await sont des builtins JS. Task.Run/WhenAll/etc. différés.
+
+### Ce qui est mesuré
+
+`baseline/AsyncClick.Blazor` : `#go` lance `LoadAsync`, qui AWAIT un délai de 1ms puis incrémente `count`. `count`
+est lu par `@count` ET assigné par LoadAsync → signal ; l'effet re-rend quand la continuation awaitée l'écrit. La
+branche `asyncclick` de `verifyContract` clique `#go`, ATTEND (au-delà du délai), puis exige `#count` : `0 → 1 → 2`.
+**`HARNESS_VERSION` 1.32.0 → 1.33.0**, divulgué.
+
+```
+dotnet publish baseline/AsyncClick.Blazor -c Release -o bench/publish/blazor-asyncclick
+./bench/build-filament.sh filament-asyncclick-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-asyncclick/wwwroot --app asyncclick --label blazor-asyncclick       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-asyncclick-gen   --app asyncclick --label filament-asyncclick-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#count` | verdict |
+|---|---|---|
+| **blazor-asyncclick** (autorité) | `0 → 1 → 2` | contrat OK |
+| **filament-asyncclick-gen** (générateur) | `0 → 1 → 2` | contrat OK |
+
+**Les deux vont à `1` puis `2`, à l'identique**, chacun APRÈS le délai awaité — Blazor await le gestionnaire et
+re-rend à la complétion, le générateur await la Promise et l'effet re-rend quand `count.value++` s'exécute. `git
+diff -- src/filament-runtime` vide (Promise/setTimeout/await sont des builtins). Le témoin `Gate/AsyncTask.razor`
+bascule de refusé à compilé ; `await` hors async (`Code/Await.razor`) reste refusé. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°38. Ne pas modifier — ajouter une entrée n°39 pour toute rectification.*
