@@ -210,6 +210,11 @@ public static class RepoPaths
 
     /// <summary>The async-Task&lt;T&gt; SPEC (decisions 51/123). Never edited to make a gate pass.</summary>
     public static string AsyncResultAnswerKey => Path.Combine(Root, "samples", "AsyncResult", "asyncresult.js");
+
+    public static string ForeachArrayRazor => Path.Combine(Root, "baseline", "ForeachArray.Blazor", "App.razor");
+
+    /// <summary>The @foreach-over-array SPEC (decisions 51/124). Never edited to make a gate pass.</summary>
+    public static string ForeachArrayAnswerKey => Path.Combine(Root, "samples", "ForeachArray", "foreacharray.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
