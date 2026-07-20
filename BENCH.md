@@ -4409,3 +4409,43 @@ de fixture `Unsupported/` distinct). §8 inchangé.
 ---
 
 *Fin de l'entrée n°42. Ne pas modifier — ajouter une entrée n°43 pour toute rectification.*
+
+---
+
+## Entrée n°43 — 2026-07-20 — Phase 4 : le `@foreach` sur un tableau réassigné mesuré contre Blazor (CORRECTION)
+
+**Un `@foreach` sur un champ `T[]` réassigné** (décision #124) rejoint le §5. Un tableau réassigné en bloc est un
+SIGNAL (lu par le `@foreach` ET assigné hors construction, conjonction #67) ; contrairement à une `List<T>` (dont la
+réactivité est un signal de version séparé, rows.js décision 1), le tableau EST sa propre source : `list()` reçoit la
+lecture auto-abonnante `() => items.value` au lieu du bloc `{ version.value; return array; }`. **AUCUNE primitive
+runtime** — `signal`/`list`/`insert`/`listen` sont le runtime de Rows. Le chemin List émet des octets IDENTIQUES
+(snapshot Rows/RootForeach vert), l'effondrement de la source ne se déclenchant que pour le tableau.
+
+### Ce qui est mesuré
+
+`baseline/ForeachArray.Blazor` : `items` démarre `[1,2,3]` → trois `<li>` ; `#add` RÉASSIGNE en bloc à `[3,4,1,5,2]`.
+`list()` réconcilie par `@key="n"` — insère 4 et 5, DÉPLACE 1/2/3 dans le nouvel ordre — comme le diff keyed de
+Blazor. La branche `foreacharray` de `verifyContract` clique `#add` puis exige le texte de `#list` et son compte de
+`<li>`. **`HARNESS_VERSION` 1.37.0 → 1.38.0**, divulgué.
+
+```
+dotnet publish baseline/ForeachArray.Blazor -c Release -o bench/publish/blazor-foreacharray
+./bench/build-filament.sh filament-foreacharray-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-foreacharray/wwwroot --app foreacharray --label blazor-foreacharray       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-foreacharray-gen   --app foreacharray --label filament-foreacharray-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#list` (texte / compte `<li>`) | verdict |
+|---|---|---|
+| **blazor-foreacharray** (autorité) | `"123"/3 → "34152"/5` | contrat OK |
+| **filament-foreacharray-gen** (générateur) | `"123"/3 → "34152"/5` | contrat OK |
+
+**Les deux réconcilient à l'identique** — le tableau réassigné `[3,4,1,5,2]` produit le même ordre DOM des `<li>`
+(insertion + déplacement par clé) des deux côtés. `git diff -- src/filament-runtime` vide. Élargissement de
+couverture (le fixture `Unsupported/Foreach.razor` reste refusé — collection non déclarée). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°43. Ne pas modifier — ajouter une entrée n°44 pour toute rectification.*

@@ -4238,3 +4238,31 @@ un délai puis retourne `count + 42`) et `filament-asyncresult-gen` rendent `#co
 chacun après le délai awaité (l'oracle attend la continuation). Élargissement de COUVERTURE de #119 — pas de
 fixture `Unsupported/` distinct. `HARNESS_VERSION` 1.36.0 → 1.37.0, divulgué. §5 s'élargit d'un cran ; RADICAL
 reste **« ni éliminée ni établie »**.
+
+## 124. Le `@foreach` sur un TABLEAU réassigné entre dans le §5 — le tableau EST sa propre source de signal ; élargit la machinerie list()
+
+**Décision.** Un `@foreach` sur un champ `T[]` rejoint le §5 quand ce tableau est un SIGNAL — lu par le `@foreach`
+ET réassigné en bloc (la conjonction de la décision #67). Contrairement à une `List<T>`, dont la réactivité est un
+signal de VERSION séparé (`_xVersion`, décision rows.js 1) à côté d'un tableau nu, un tableau n'a pas de version :
+son propre signal est la chose à laquelle `list()` s'abonne. La source de `list()` se réduit donc à une seule
+lecture auto-abonnante `() => items.value` — lire le signal l'abonne ET rend le tableau. (Pour une List les deux
+diffèrent — un signal à lire, un tableau nu à rendre —, d'où le bloc `{ version.value; return array; }` ; ici ils
+coïncident, la source s'effondre en une expression.) La réassignation en bloc déclenche `list()`, qui réconcilie
+par `@key` (insertion/déplacement/suppression) exactement comme le diff keyed de Blazor.
+
+**Ce que ça touche, ADDITIVEMENT.** `ForEach()` résout d'abord `(versionJs, listJs)` selon la forme du champ —
+`List<T>` mutée → `(version, tableau)` ; `T[]` réassigné → `(items, items.value)` ; sinon REFUS (un tableau jamais
+réassigné est un arbre STATIQUE, non implémenté, refusé comme une List jamais mutée). Le chemin List émet des
+octets IDENTIQUES (le snapshot Rows/RootForeach le prouve) : l'effondrement de la source ne se déclenche que quand
+`{version}.value` EST littéralement l'expression rendue, ce qui est faux pour une List. `MarkConditionReads` marque
+aussi la collection du `@foreach` comme lecture-template (comme une condition `@if`), sinon un tableau lu SEULEMENT
+par `@foreach` ne serait jamais promu en signal. `f.IsSignal` (`List is null && ReadByTemplate && AssignedOutside`)
+donne pile la bonne réponse pour un tableau (List non nulle ⇒ jamais signal). Suite : **310 tests** (304→310 : +4
+ForeachArray, +2 témoins subset), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `signal`/`list`/`insert`/`listen` sont le runtime du chemin phare Rows.
+`git diff -- src/filament-runtime` vide. MESURÉ (entrée n°43) : `baseline/ForeachArray.Blazor` (`items` [1,2,3]
+réassigné à [3,4,1,5,2]) et `filament-foreacharray-gen` rendent `#list` texte `"123" → "34152"` et compte de `<li>`
+`3 → 5`, à l'identique — la réconciliation keyed produit le même ordre DOM des deux côtés. Élargissement de
+COUVERTURE (le fixture `Unsupported/Foreach.razor` reste refusé — collection non déclarée). `HARNESS_VERSION`
+1.37.0 → 1.38.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
