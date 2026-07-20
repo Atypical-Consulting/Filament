@@ -1258,16 +1258,21 @@ public sealed class CSharpFrontEnd
         var returnType = _model.GetTypeInfo(method.ReturnType).Type;
         if (isAsync)
         {
-            // An async method must return a NON-GENERIC Task (a void-like async): `async function` returns a
-            // Promise JS discards, exactly as a fire-and-forget Blazor handler. A value-returning `async Task<T>`
-            // is deferred -- the awaiting caller would need the value, which no subset construct consumes.
-            if (returnType?.ToDisplayString() != "System.Threading.Tasks.Task")
+            // An async method returns Task (a void-like async -> `async function` whose Promise JS discards) OR
+            // Task<T> (a value-returning async -> `async function` that returns T; `await Compute()` unwraps it).
+            // T must be a subset type. Any other async return type is refused. Decisions 119/123.
+            var rt = returnType as INamedTypeSymbol;
+            var isTask = rt?.ToDisplayString() == "System.Threading.Tasks.Task";
+            var isTaskT = rt?.OriginalDefinition.ToDisplayString() == "System.Threading.Tasks.Task<TResult>"
+                          && rt.TypeArguments.Length == 1;
+            if (!isTask && !isTaskT)
             {
                 Refuse("unsupported-type",
-                    $"async method '{method.Identifier.Text}' must return a non-generic Task; a value-returning " +
-                    "async Task<T> is deferred. Refusing to emit.", method.ReturnType.SpanStart);
+                    $"async method '{method.Identifier.Text}' must return Task or Task<T> (T a subset type). Refusing to emit.",
+                    method.ReturnType.SpanStart);
                 return;
             }
+            if (isTaskT && !CheckType(rt!.TypeArguments[0], method.ReturnType.SpanStart)) return;   // the awaited value type
         }
         else if (returnType is { SpecialType: not SpecialType.System_Void })
             if (!CheckType(returnType, method.ReturnType.SpanStart)) return;
