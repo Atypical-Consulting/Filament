@@ -205,6 +205,11 @@ public static class RepoPaths
 
     /// <summary>The sized-array SPEC (decisions 51/122). Never edited to make a gate pass.</summary>
     public static string SizedArrayAnswerKey => Path.Combine(Root, "samples", "SizedArray", "sizedarray.js");
+
+    public static string AsyncResultRazor => Path.Combine(Root, "baseline", "AsyncResult.Blazor", "App.razor");
+
+    /// <summary>The async-Task&lt;T&gt; SPEC (decisions 51/123). Never edited to make a gate pass.</summary>
+    public static string AsyncResultAnswerKey => Path.Combine(Root, "samples", "AsyncResult", "asyncresult.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
