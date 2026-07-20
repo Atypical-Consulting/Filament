@@ -1465,6 +1465,10 @@ public sealed class CSharpFrontEnd
                 _ => null,
             };
             if (target is null) continue;
+            // `arr[i] = v` / `d[k] = v` mutate the FIELD (decision 127): the assigned thing is the element, but the
+            // field is what must lift to a signal (its copy-on-write reassignment fires the effects). So the receiver
+            // of an element-access target is what gets marked -- not the indexer symbol, which is no field at all.
+            if (target is ElementAccessExpressionSyntax ea) target = ea.Expression;
             if (node.Ancestors().OfType<ExpressionStatementSyntax>().FirstOrDefault() is { } st &&
                 folded.Contains(st)) continue;
 
@@ -1766,6 +1770,9 @@ public sealed class CSharpFrontEnd
                     or SyntaxKind.PreDecrementExpression => p.Operand,
                 _ => null,
             };
+            // `arr[i] = v` / `d[k] = v` is a copy-on-write reassignment of the field (decision 127): count it
+            // against the RECEIVER signal, so two element writes batch like any other pair (decision 68).
+            if (target is ElementAccessExpressionSyntax ea) target = ea.Expression;
             if (target is not null)
                 switch (_model.GetSymbolInfo(target).Symbol)
                 {
@@ -1870,6 +1877,11 @@ public sealed class CSharpFrontEnd
     // A field whose type is a single-rank array (decision 117). Its indexer and .Length are the JS array's own.
     bool IsArrayReceiver(ExpressionSyntax e) =>
         _model.GetSymbolInfo(e).Symbol is IFieldSymbol { Type: IArrayTypeSymbol { Rank: 1 } };
+
+    // The FieldInfo an element-access receiver names, or null. Used to check IsSignal on the array/Dict a
+    // `arr[i] = v` / `d[k] = v` mutates (decision 127) -- the copy-on-write write is admitted only if it fires.
+    FieldInfo? FieldOfReceiver(ExpressionSyntax e) =>
+        _model.GetSymbolInfo(e).Symbol is IFieldSymbol fs ? Field(fs) : null;
 
     // A T[] literal's elements -> a JS array literal, in order.
     string ArrayLiteral(InitializerExpressionSyntax init) =>
@@ -2314,21 +2326,30 @@ public sealed class CSharpFrontEnd
             case ConditionalExpressionSyntax c:
                 return $"{Expr(c.Condition)} ? {Expr(c.WhenTrue)} : {Expr(c.WhenFalse)}";
 
-            // `arr[i] = v` -- an array is admitted READ-ONLY (a mutable collection is a List<T>, whose element
-            // write bumps the reactive version). Refused rather than emitted as a plain write that no effect
-            // would ever see -- a stale display, the silently-wrong outcome §10 forbids. Decision 117. Placed
-            // BEFORE the general assignment case so an array element write never slips through to a plain `=`.
-            case AssignmentExpressionSyntax asg when asg.Left is ElementAccessExpressionSyntax lea && IsArrayReceiver(lea.Expression):
-                return Refuse("unsupported-expression",
-                    "assigning an array element (`arr[i] = v`) is not in the subset: an array is admitted " +
-                    "READ-ONLY. A mutable collection is a List<T>. Refusing to emit.", asg.SpanStart);
+            // `arr[i] = v` on a reactive array -> COPY-ON-WRITE (decision 127). The signal fires only on a NEW
+            // reference (its setter guards with Object.is), so a plain in-place `arr.value[i] = v` would leave every
+            // effect reading the array stale -- the silently-wrong outcome §10 forbids, and why #117 refused it.
+            // `.with(i, v)` returns a COPY with element i replaced; assigning it fires the signal and every display
+            // re-runs. Only on a SIGNAL array (the template reads it AND this write lifts it, decision 67); on a
+            // non-reactive array the write has no observer, so it stays refused. Placed BEFORE the general case.
+            case AssignmentExpressionSyntax { Left: ElementAccessExpressionSyntax lea } asg when IsArrayReceiver(lea.Expression):
+                return FieldOfReceiver(lea.Expression) is { IsSignal: true }
+                    ? $"{Expr(lea.Expression)} = {Expr(lea.Expression)}.with({Expr(lea.ArgumentList.Arguments[0].Expression)}, {Expr(asg.Right)})"
+                    : Refuse("unsupported-expression",
+                        "`arr[i] = v` is admitted only on a REACTIVE array -- one the template reads AND this method " +
+                        "writes, so it lifts to a signal whose copy-on-write reassignment fires the display. A write " +
+                        "to an array nothing displays has no observer. Refusing to emit.", asg.SpanStart);
 
-            // `d[key] = v` -- a Dictionary is admitted READ-ONLY (no reactive version signal, decision 118), so a
-            // write no effect would see is a stale display (§10). Refused. Placed before the general assignment.
-            case AssignmentExpressionSyntax asg when asg.Left is ElementAccessExpressionSyntax dea && IsDictReceiver(dea.Expression):
-                return Refuse("unsupported-expression",
-                    "assigning a Dictionary entry (`d[key] = v`) is not in the subset: a Dictionary is admitted " +
-                    "READ-ONLY. Refusing to emit.", asg.SpanStart);
+            // `d[key] = v` on a reactive Dictionary -> COPY-ON-WRITE (decision 127), the Map sibling of the array
+            // write. `new Map(d.value).set(key, v)` returns a fresh Map with the entry replaced; assigning it fires
+            // the signal. Only on a SIGNAL Dict; otherwise the write has no observer and stays refused.
+            case AssignmentExpressionSyntax { Left: ElementAccessExpressionSyntax dea } asg when IsDictReceiver(dea.Expression):
+                return FieldOfReceiver(dea.Expression) is { IsSignal: true }
+                    ? $"{Expr(dea.Expression)} = new Map({Expr(dea.Expression)}).set({Expr(dea.ArgumentList.Arguments[0].Expression)}, {Expr(asg.Right)})"
+                    : Refuse("unsupported-expression",
+                        "`d[key] = v` is admitted only on a REACTIVE Dictionary -- one the template reads AND this " +
+                        "method writes, so it lifts to a signal whose copy-on-write reassignment fires the display. " +
+                        "Refusing to emit.", asg.SpanStart);
 
             case AssignmentExpressionSyntax a when Filament.Subset.ConstructSubset.JsAssignmentOperator(a) is { } op:
                 return $"{Expr(a.Left)} {op} {Expr(a.Right)}";

@@ -53,9 +53,13 @@ public class ArrayIndexTests
             Assert.True(allowed.Contains(name), $"'{name}' is not a runtime export.");
     }
 
-    /// <summary>Array element assignment (`arr[i] = v`) is REFUSED: an array is read-only (a mutable collection is a List).</summary>
+    /// <summary>
+    /// Array element assignment (`arr[i] = v`) on a REACTIVE array now COMPILES to copy-on-write (decision 127):
+    /// `xs.value = xs.value.with(0, 9)` -- a new reference, so the signal fires and `@xs[0]` refreshes. Was refused
+    /// under #117 (an array had no reactive write); the array-as-signal of #124 gives it one.
+    /// </summary>
     [Fact]
-    public void ArrayElementAssignment_IsRefused()
+    public void ArrayElementAssignment_OnAReactiveArray_CompilesToCopyOnWrite()
     {
         var src = Path.Combine(RepoPaths.Unsupported, $".arrw-{Guid.NewGuid():N}.razor");
         var outPath = Path.Combine(RepoPaths.Unsupported, $".arrw-{Guid.NewGuid():N}.js");
@@ -63,6 +67,27 @@ public class ArrayIndexTests
         {
             File.WriteAllText(src,
                 "<p id=\"p\">@xs[0]</p>\n<button id=\"b\" @onclick=\"M\">m</button>\n" +
+                "@code {\n    private int[] xs = new int[] { 1, 2 };\n    private void M() { xs[0] = 9; }\n}\n");
+            var (exit, _, stderr) = Run.Generator(src, outPath);
+            Assert.True(exit == 0, "arr[i] = v on a reactive array is in the subset (decision 127):\n" + stderr);
+            Assert.Contains("xs.value = xs.value.with(0, 9)", File.ReadAllText(outPath));
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); if (File.Exists(src)) File.Delete(src); }
+    }
+
+    /// <summary>
+    /// The boundary: `arr[i] = v` on an array NOTHING displays has no observer, so it stays refused (decision 127).
+    /// Here xs is written but never read by the template -> not a signal -> the copy-on-write would fire nothing.
+    /// </summary>
+    [Fact]
+    public void ArrayElementAssignment_OnANonReactiveArray_IsRefused()
+    {
+        var src = Path.Combine(RepoPaths.Unsupported, $".arrw-{Guid.NewGuid():N}.razor");
+        var outPath = Path.Combine(RepoPaths.Unsupported, $".arrw-{Guid.NewGuid():N}.js");
+        try
+        {
+            File.WriteAllText(src,
+                "<button id=\"b\" @onclick=\"M\">m</button>\n" +
                 "@code {\n    private int[] xs = new int[] { 1, 2 };\n    private void M() { xs[0] = 9; }\n}\n");
             var (exit, _, stderr) = Run.Generator(src, outPath);
             Assert.NotEqual(0, exit);

@@ -51,9 +51,13 @@ public class DictLookupTests
             Assert.True(allowed.Contains(name), $"'{name}' is not a runtime export.");
     }
 
-    /// <summary>A Dictionary entry write (`d[key] = v`) is REFUSED: a Dictionary is read-only (no reactive version).</summary>
+    /// <summary>
+    /// A Dictionary entry write (`d[key] = v`) on a REACTIVE Dictionary now COMPILES to copy-on-write (decision 127):
+    /// `d.value = new Map(d.value).set(0, 9)` -- a fresh Map, so the signal fires and `@d[0]` refreshes. Was refused
+    /// under #118; the Dict-as-signal of #125 gives it a reactive write.
+    /// </summary>
     [Fact]
-    public void DictionaryEntryWrite_IsRefused()
+    public void DictionaryEntryWrite_OnAReactiveDict_CompilesToCopyOnWrite()
     {
         var src = Path.Combine(RepoPaths.Unsupported, $".dw-{Guid.NewGuid():N}.razor");
         var outPath = Path.Combine(RepoPaths.Unsupported, $".dw-{Guid.NewGuid():N}.js");
@@ -64,8 +68,8 @@ public class DictLookupTests
                 "@code {\n    private System.Collections.Generic.Dictionary<int,int> d = new System.Collections.Generic.Dictionary<int,int> { { 0, 1 } };\n" +
                 "    private void M() { d[0] = 9; }\n}\n");
             var (exit, _, stderr) = Run.Generator(src, outPath);
-            Assert.NotEqual(0, exit);
-            Assert.Contains("[unsupported-expression]", stderr);
+            Assert.True(exit == 0, "d[key] = v on a reactive Dictionary is in the subset (decision 127):\n" + stderr);
+            Assert.Contains("d.value = new Map(d.value).set(0, 9)", File.ReadAllText(outPath));
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); if (File.Exists(src)) File.Delete(src); }
     }
