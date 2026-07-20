@@ -1,0 +1,22 @@
+@* Mixed @if branch body (BENCH n°39, decision 120): a branch that mixes MARKUP with a nested @if. The outer
+   @if (show) body is `<p id="x">x</p>` (always on when show) FOLLOWED by `@if (other) { <span id="a">a</span> }`
+   (on iff other). This flattens to ONE list() whose source SPREADS the nested @if's active indices beside the
+   always-on markup leaf: (show ? [0, ...(other ? [1] : [])] : []). Two independent toggles exercise it: #s
+   flips show (the whole branch), #o flips other (just the nested span). So #w goes [x,a] -> [x] (o) -> [x,a]
+   (o) -> [] (s), exactly as Blazor mounts/unmounts the same nodes. *@
+
+<div id="w">@if (show)
+{
+    <p id="x">x</p>@if (other) { <span id="a">a</span> }
+}</div>
+
+<button id="s" @onclick="ToggleShow">s</button>
+<button id="o" @onclick="ToggleOther">o</button>
+
+@code {
+    private bool show = true;
+    private bool other = true;
+
+    private void ToggleShow() { show = !show; }
+    private void ToggleOther() { other = !other; }
+}
