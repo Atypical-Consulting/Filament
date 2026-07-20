@@ -4573,3 +4573,45 @@ même C#. `git diff -- src/filament-runtime` vide. Lève un refus réel #117/#11
 ---
 
 *Fin de l'entrée n°46. Ne pas modifier — ajouter une entrée n°47 pour toute rectification.*
+
+---
+
+## Entrée n°47 — 2026-07-20 — Phase 4 : LINQ `GroupBy` mesuré contre Blazor (CORRECTION)
+
+**`GroupBy(x => clé)` sur une List** (décision #128) rejoint le §5 — le dernier opérateur LINQ produisant une
+séquence. Il produit des `IGrouping<K,T>`, chacun À LA FOIS porteur de clé (`.Key`) ET séquence de ses éléments,
+modélisé comme un TABLEAU JS de ses éléments AVEC une propriété `.key`. `GroupBy` compile en un `reduce` construisant
+une `Map<K, groupe>` puis `[...map.values()]` (ordre de première apparition = ordre LINQ) ; `g.Key` → `g.key`, et
+`g.Count()`/`First()` passent par le chemin tableau car un groupe EST un tableau. Clé SCALAIRE requise (une Map
+compare par valeur ; une clé record grouperait par référence, refusée). **AUCUNE primitive runtime** —
+reduce/Map/spread sont des builtins JS.
+
+### Ce qui est mesuré
+
+`baseline/GroupBy.Blazor` : sur `_nums` = [3,7,2,9,5] groupé par `x % 2` — impairs 3,7,9,5 (clé 1, vue en premier),
+pair 2 (clé 0). `#go` calcule `groups = GroupBy(...).Count()` (2), `firstKey = ...First().Key` (1), `firstSize =
+...First().Count()` (4). La branche `groupby` de `verifyContract` clique `#go` puis exige `#g`/`#k`/`#s`.
+**`HARNESS_VERSION` 1.41.0 → 1.42.0**, divulgué.
+
+```
+dotnet publish baseline/GroupBy.Blazor -c Release -o bench/publish/blazor-groupby
+./bench/build-filament.sh filament-groupby-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-groupby/wwwroot --app groupby --label blazor-groupby       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-groupby-gen   --app groupby --label filament-groupby-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#g` / `#k` / `#s` | verdict |
+|---|---|---|
+| **blazor-groupby** (autorité) | `0/-1/0 → 2/1/4` | contrat OK |
+| **filament-groupby-gen** (générateur) | `0/-1/0 → 2/1/4` | contrat OK |
+
+**Les deux vont à `2`/`1`/`4`, à l'identique** — le nombre de groupes, la clé du premier groupe (ordre de première
+apparition) et sa taille coïncident, si bien que le modèle « groupe = tableau muni de `.key` » reproduit la
+sémantique GroupBy de Blazor. `git diff -- src/filament-runtime` vide. Élargissement de couverture de #116/#121/#126
+(pas de fixture `Unsupported/` distinct). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°47. Ne pas modifier — ajouter une entrée n°48 pour toute rectification.*

@@ -4345,3 +4345,27 @@ ajoutée. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°46) : `ba
 (`xs[1] = xs[1] + 5` : 20→25 ; `scores["b"] = scores["b"] + 100` : 2→102) et `filament-elementwrite-gen` rendent
 `#a`/`#m` `20/2 → 25/102`, à l'identique. Lève un refus RÉEL (#117/#118, avec témoins) — pas une simple couverture.
 `HARNESS_VERSION` 1.40.0 → 1.41.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 128. LINQ `GroupBy` (avec `IGrouping`) entre dans le §5 — un groupe est un tableau JS AVEC une propriété `.key` ; élargit #116/#121/#126
+
+**Décision.** `GroupBy(x => clé)` sur une List rejoint le §5, dernier des opérateurs LINQ produisant une séquence.
+Il produit des `IGrouping<K,T>`, et un `IGrouping` est À LA FOIS un porteur de clé (`.Key`) ET une séquence de ses
+éléments. Le modèle JS fidèle : un groupe est un TABLEAU de ses éléments AVEC une propriété `.key`. Alors `g.Key` →
+`g.key` (dans `MemberAccess`), et TOUTE opération de séquence sur un groupe (`g.Count()` → `.length`, `g.Sum()` →
+reduce, `First()`) passe par le chemin tableau/LINQ existant SANS cas spécial — car un groupe EST un tableau.
+`GroupBy` compile en un `reduce` construisant une `Map<K, groupe>` (la clé vue en PREMIER insère un tableau frais
+muni de `.key`, chaque élément est `push`é), puis `[...map.values()]` — un tableau de groupes dans l'ordre de
+PREMIÈRE APPARITION des clés, exactement l'ordre de LINQ.
+
+**La clé doit être un SCALAIRE.** Une `Map` JS compare ses clés par valeur (SameValueZero), donc une clé scalaire
+(`int`/`string`/`bool`) groupe correctement ; une clé BOXÉE (un objet decimal, un record) grouperait par RÉFÉRENCE,
+scindant silencieusement des clés égales, donc elle est REFUSÉE (`ScalarGroupKey`, différée) — tout comme un
+sélecteur à corps-bloc. Suite : **411 tests** (333 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `reduce`/`Map`/spread sont des builtins JS ; aucune primitive ajoutée. `git diff
+-- src/filament-runtime` vide. MESURÉ (entrée n°47) : `baseline/GroupBy.Blazor` (sur `[3,7,2,9,5]` groupé par
+`x % 2` : impairs 3,7,9,5 → clé 1 vue en premier, pair 2 → clé 0 ; `GroupBy(...).Count()` = 2, `.First().Key` = 1,
+`.First().Count()` = 4) et `filament-groupby-gen` rendent `#g`/`#k`/`#s` `0/-1/0 → 2/1/4`, à l'identique — l'ordre
+de première apparition (Map JS) coïncide avec l'ordre de LINQ, vérifié contre l'autorité Blazor. Élargissement de
+COUVERTURE de #116/#121/#126 (pas de fixture `Unsupported/` distinct). `HARNESS_VERSION` 1.41.0 → 1.42.0, divulgué.
+§5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
