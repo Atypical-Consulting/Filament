@@ -215,6 +215,7 @@ ALL_LABELS=(
   filament-groupby-gen
   filament-eventcb-gen
   filament-fragment-gen
+  filament-elemref-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -269,6 +270,7 @@ project_for() {
     filament-groupby-gen)                            echo "samples/filament-groupby-gen" ;;
     filament-eventcb-gen)                            echo "samples/filament-eventcb-gen" ;;
     filament-fragment-gen)                           echo "samples/filament-fragment-gen" ;;
+    filament-elemref-gen)                            echo "samples/filament-elemref-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -278,7 +280,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -342,6 +344,7 @@ razor_for() {
     filament-groupby-gen)                            echo "$REPO_ROOT/baseline/GroupBy.Blazor/App.razor" ;;
     filament-eventcb-gen)                            echo "$REPO_ROOT/baseline/EventCb.Blazor/App.razor" ;;
     filament-fragment-gen)                           echo "$REPO_ROOT/baseline/Fragment.Blazor/App.razor" ;;
+    filament-elemref-gen)                            echo "$REPO_ROOT/baseline/ElemRef.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -398,6 +401,7 @@ generated_js_for() {
     filament-groupby-gen)                            echo "App.g.js" ;;
     filament-eventcb-gen)                            echo "App.g.js" ;;
     filament-fragment-gen)                           echo "App.g.js" ;;
+    filament-elemref-gen)                            echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -450,6 +454,7 @@ title_for() {
     filament-groupby-gen)                            echo "GroupBy" ;;
     filament-eventcb-gen)                            echo "EventCb" ;;
     filament-fragment-gen)                           echo "Fragment" ;;
+    filament-elemref-gen)                            echo "ElemRef" ;;
     *) return 1 ;;
   esac
 }
@@ -505,6 +510,7 @@ blazor_label_for() {
     filament-groupby-gen)                            echo "blazor-groupby" ;;
     filament-eventcb-gen)                            echo "blazor-eventcb" ;;
     filament-fragment-gen)                           echo "blazor-fragment" ;;
+    filament-elemref-gen)                            echo "blazor-elemref" ;;
     *) return 1 ;;
   esac
 }
@@ -568,6 +574,7 @@ css_for() {
     filament-groupby-gen)                            echo "$REPO_ROOT/baseline/GroupBy.Blazor/wwwroot/css/app.css" ;;
     filament-eventcb-gen)                            echo "$REPO_ROOT/baseline/EventCb.Blazor/wwwroot/css/app.css" ;;
     filament-fragment-gen)                           echo "$REPO_ROOT/baseline/Fragment.Blazor/wwwroot/css/app.css" ;;
+    filament-elemref-gen)                            echo "$REPO_ROOT/baseline/ElemRef.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }

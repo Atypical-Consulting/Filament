@@ -111,6 +111,14 @@ public static class TypeSubset
     /// </summary>
     public static bool IsRenderFragment(ITypeSymbol? type) => IsComponentsType(type, "RenderFragment");
 
+    /// <summary>
+    /// An <c>ElementReference</c> (decision 132) — the target of an <c>@ref</c>. Like EventCallback and
+    /// RenderFragment, deliberately NOT admitted by Classify: it is not a value §5 can hold, compare or
+    /// display. It is admitted in ONE shape only, an uninitialised FIELD an <c>@ref</c> captures into,
+    /// where the emitted module already holds the node in a const and the reference is just its NAME.
+    /// </summary>
+    public static bool IsElementReference(ITypeSymbol? type) => IsComponentsType(type, "ElementReference");
+
     /// <summary>Name + namespace rather than a display string, so a NULLABLE annotation cannot change the
     /// answer: `RenderFragment?` is the same type as `RenderFragment`, and the ONE declaration form Blazor
     /// authors actually write for ChildContent is the nullable one.</summary>

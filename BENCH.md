@@ -4776,3 +4776,43 @@ fragment dans une expression). §8 inchangé.
 ---
 
 *Fin de l'entrée n°50. Ne pas modifier — ajouter une entrée n°51 pour toute rectification.*
+
+---
+
+## Entrée n°51 — 2026-07-20 — Phase 4 : `@ref` mesuré contre Blazor (CORRECTION)
+
+**`@ref` sur un élément** (décision #132) rejoint le §5 — le premier non-but §3 de niveau DIRECTIVE à tomber.
+Blazor a besoin qu'`ElementReference` soit un objet parce qu'il transporte un identifiant opaque à travers la
+frontière .NET/JS ; un module qui EST du JS détient déjà le nœud, donc `@ref` se réduit à une décision de
+NOMMAGE (l'élément est émis dans `const box`) et `FocusAsync()` devient `.focus()`. `ElementReference.Id`
+n'est **pas** mappé : c'est un GUID interne sans signification DOM, toute valeur émise serait inventée.
+**AUCUNE primitive runtime** ; ce module n'importe même ni `signal` ni `effect`.
+
+### Ce qui est mesuré
+
+`baseline/ElemRef.Blazor` : `<input id="box" @ref="box" />` et `<button id="go" @onclick="Focus">`, avec
+`async Task Focus() { await box.FocusAsync(); }`. Le contrat lit `document.activeElement.id` — **sur le
+DOCUMENT, pas sur le markup de l'élément**, de sorte qu'aucun attribut émis ne peut simuler le résultat : il
+exige `""` avant, puis `"box"` après le clic. **`HARNESS_VERSION` 1.44.0 → 1.45.0**, divulgué.
+
+```
+dotnet publish baseline/ElemRef.Blazor -c Release -o bench/publish/blazor-elemref
+./bench/build-filament.sh filament-elemref-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-elemref/wwwroot --app elemref --label blazor-elemref       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-elemref-gen   --app elemref --label filament-elemref-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `document.activeElement.id` (initial → après `#go`) | verdict |
+|---|---|---|
+| **blazor-elemref** (autorité) | `"" → "box"` | contrat OK |
+| **filament-elemref-gen** (générateur) | `"" → "box"` | contrat OK |
+
+**Les deux focalisent le même nœud.** La réduction de la référence à un nom est donc fidèle sur la seule
+surface qui en a une. `git diff -- src/filament-runtime` vide. Témoin `Unsupported/Ref.razor` maintenu, son
+motif de refus affiné (champ `ElementReference` absent, même emplacement). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°51. Ne pas modifier — ajouter une entrée n°52 pour toute rectification.*

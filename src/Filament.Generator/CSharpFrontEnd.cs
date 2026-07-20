@@ -219,8 +219,12 @@ public sealed class CSharpFrontEnd
         /// <summary>Non-null iff this field is a List&lt;T&gt; -- rows.js mapping decision (1).</summary>
         public ListInfo? List;
 
+        /// <summary>An @ref target (decision 132): the element the template captured into this name. Never
+        /// a signal -- it is not state, it is a handle on a node that exists for the module's lifetime.</summary>
+        public bool IsElementRef;
+
         /// <summary>counter.js + rows.js decision (2), CONJOINED. Decision 67.</summary>
-        public bool IsSignal => List is null && ReadByTemplate && AssignedOutsideConstruction;
+        public bool IsSignal => List is null && !IsElementRef && ReadByTemplate && AssignedOutsideConstruction;
     }
 
     /// <summary>A List&lt;T&gt; field: a mutable array, and -- iff anything mutates it -- a version signal.</summary>
@@ -337,6 +341,11 @@ public sealed class CSharpFrontEnd
     public bool IsIntSignal(string name) =>
         _fieldsByName.TryGetValue(name, out var f) && f.IsSignal &&
         f.Symbol.Type.SpecialType == SpecialType.System_Int32;
+
+    /// <summary>Does @code declare this name as an ElementReference field — i.e. is it a valid @ref
+    /// target (decision 132)? Asked of the compiler's own table, never of the spelling.</summary>
+    public bool IsElementRefField(string name) =>
+        _fieldsByName.TryGetValue(name, out var f) && f.IsElementRef;
 
     /// <summary>The JS name of a field (e.g. `text`), so a signal read is `{FieldJs}.value`.</summary>
     public string? FieldJs(string name) => _fieldsByName.TryGetValue(name, out var f) ? f.Js : null;
@@ -1261,6 +1270,41 @@ public sealed class CSharpFrontEnd
             }
 
         var type = _model.GetTypeInfo(field.Declaration.Type).Type;
+
+        // AN ELEMENTREFERENCE FIELD (decision 132) -- the target of an @ref. It is not state and it
+        // EMITS NOTHING here: the element it names is created by the TEMPLATE, and @ref makes the
+        // template emit it into a const of exactly this name, so `const box = …` is already the
+        // declaration. Registered so that a read of it resolves; skipped so it is not declared twice.
+        //
+        // Admitted only in this shape, and never through CheckType: an ElementReference is not a value
+        // §5 can hold, compare or display -- its only faithful surface is FocusAsync() (see
+        // ElementRefMethod). ElementReference.Id is deliberately NOT mapped: in Blazor it is a
+        // framework-internal GUID with no DOM meaning, so any value emitted for it would be invented.
+        if (Filament.Subset.TypeSubset.IsElementReference(type))
+        {
+            foreach (var v in field.Declaration.Variables)
+            {
+                if (_model.GetDeclaredSymbol(v) is not IFieldSymbol sym) continue;
+                if (v.Initializer is not null)
+                {
+                    Refuse("unsupported-expression",
+                        $"the ElementReference field '{v.Identifier.Text}' has an initialiser. An @ref target is " +
+                        "assigned by the TEMPLATE, from the element that captures it; there is no value to " +
+                        "initialise it with. Refusing to emit.",
+                        v.Identifier.SpanStart);
+                    return;
+                }
+                var er = new FieldInfo
+                {
+                    Name = v.Identifier.Text, Js = JsName(v.Identifier.Text),
+                    Symbol = sym, At = v.Identifier.SpanStart, IsElementRef = true,
+                };
+                _fields.Add(er);
+                _fieldsByName[er.Name] = er;
+            }
+            return;
+        }
+
         if (!CheckType(type, field.Declaration.Type.SpanStart)) return;
 
         foreach (var v in field.Declaration.Variables)
@@ -1766,6 +1810,11 @@ public sealed class CSharpFrontEnd
         foreach (var f in _fields)
         {
             if (f.List is { Hoisted: true }) continue;
+
+            // An @ref target declares NOTHING here: the TEMPLATE emits `const box = document.createElement(…)`
+            // and that IS its declaration (decision 132). Emitting one here too produced `const box = ;` --
+            // invalid JS, caught by generating the slice's own baseline rather than by reasoning about it.
+            if (f.IsElementRef) continue;
 
             if (f.List is { } li)
             {
@@ -2671,6 +2720,26 @@ public sealed class CSharpFrontEnd
         return "/*refused*/";
     }
 
+    /// <summary>
+    /// A method on an @ref'd element (decision 132). ONLY FocusAsync(), and that narrowness is the point:
+    /// the rest of the ElementReference surface is interop plumbing whose meaning is a framework's, not a
+    /// DOM node's. `await box.FocusAsync()` -> `await box.focus()` -- the await is KEPT rather than
+    /// stripped, because preserving it preserves the ordering the C# states, and `await` on a non-promise
+    /// is exactly the same program.
+    /// </summary>
+    string ElementRefMethod(InvocationExpressionSyntax inv, IMethodSymbol m)
+    {
+        if (m.Name != "FocusAsync" || inv.ArgumentList.Arguments.Count > 0 ||
+            inv.Expression is not MemberAccessExpressionSyntax ma)
+            return Refuse("unsupported-call",
+                $"'{Trunc(inv.ToString())}' is not in the subset. An @ref'd element admits FocusAsync() and " +
+                "nothing else: the rest of the ElementReference API exists to carry an id across the " +
+                ".NET/JS boundary, which a module that already holds the node does not have. Refusing to emit.",
+                inv.SpanStart);
+
+        return $"{Expr(ma.Expression)}.focus()";
+    }
+
     string Invocation(InvocationExpressionSyntax inv)
     {
         var info = _model.GetSymbolInfo(inv);
@@ -2698,6 +2767,13 @@ public sealed class CSharpFrontEnd
                 inv.SpanStart);
             return "/*refused*/";
         }
+
+        // FocusAsync() on an @ref'd element (decision 132). ElementReference's ONLY faithful surface: Blazor
+        // needs the reference because it hands an id across the .NET/JS boundary, while the emitted module
+        // already holds the node in a const, so this is just `.focus()`.
+        if (symbol is not null &&
+            symbol.ContainingType?.ToDisplayString() == "Microsoft.AspNetCore.Components.ElementReferenceExtensions")
+            return ElementRefMethod(inv, symbol);
 
         // A DateTime instance method (decision 115): .AddDays(constant int) is tick arithmetic. The rest of the
         // DateTime API is deferred (refused in DateTimeMethod), so it can never slip through to a wrong emission.

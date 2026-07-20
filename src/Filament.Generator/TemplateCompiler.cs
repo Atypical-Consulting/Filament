@@ -921,8 +921,13 @@ public sealed class TemplateCompiler
                     key.Source);
                 return null;
 
+            // A capture that reached the EMIT walk was not consumed by an element (EmitElement takes the
+            // ones it names). @ref on anything else has no node to capture.
             case ReferenceCaptureIntermediateNode r:
-                Diag("unsupported-directive", "@ref is not in the v0 subset. Refusing to emit.", r.Source);
+                Diag("unsupported-directive",
+                    "@ref is admitted on an ELEMENT, where it names the const the element is emitted into " +
+                    "(decision 132). Here there is no element for it to name. Refusing to emit.",
+                    r.Source);
                 return null;
 
             case TagHelperIntermediateNode th:
@@ -948,7 +953,18 @@ public sealed class TemplateCompiler
         if (LooksLikeComponent(el.TagName))
             return EmitComposition(el);
 
+        // @ref (decision 132). An element the template captures into a name simply BECOMES that name:
+        // Blazor needs an ElementReference because it carries an id across the .NET/JS boundary, but the
+        // emitted module already holds the node in a const, so @ref only decides what that const is
+        // CALLED. Resolved BEFORE the element is named, because the name is the whole mapping.
+        var capture = el.Children.OfType<ReferenceCaptureIntermediateNode>().FirstOrDefault();
         var v = $"_el{_el++}";
+        if (capture is not null)
+        {
+            if (RefTargetJs(capture) is not { } refJs) return null;
+            v = refJs;
+            _el--;   // the generated name was not used; do not burn the counter on it
+        }
         _create.Add($"const {v} = document.createElement({JsString(el.TagName)});");
 
         // TWO-WAY BINDING (@bind): Razor lowers it to a synthesised value=/onchange pair; TryBind emits
@@ -975,6 +991,8 @@ public sealed class TemplateCompiler
         foreach (var child in el.Children)
         {
             if (child is HtmlAttributeIntermediateNode) continue;
+            // CONSUMED above: the capture is what named this element, so there is nothing left to emit.
+            if (ReferenceEquals(child, capture)) continue;
             var c = EmitNode(child, parent: v);
             if (c is not null) _create.Add($"insert({v}, {c});");
         }
@@ -1080,6 +1098,32 @@ public sealed class TemplateCompiler
     /// Anything outside the slice -- a missing sibling, a bound parameter, a non-string parameter, a
     /// child with state/behaviour, or not exactly one root element -- refuses, loud and located.
     /// </summary>
+    /// <summary>
+    /// The JS const an @ref names, or null (refused). The target must be an ElementReference FIELD that
+    /// @code declares: that is what makes `box` mean this node in the compiled C#, and it is checked
+    /// against the compiler's own table rather than against the spelling (decision 57's rule again).
+    /// </summary>
+    string? RefTargetJs(ReferenceCaptureIntermediateNode capture)
+    {
+        var name = capture.IdentifierToken?.Content?.Trim();
+        if (string.IsNullOrEmpty(name))
+            throw new GeneratorException(
+                "FIL-WIRING: an @ref arrived with no identifier. This is the TOOL being broken, not the input.");
+
+        if (!_code.IsElementRefField(name!))
+        {
+            Diag("unsupported-directive",
+                $"@ref=\"{name}\" names '{name}', which @code does not declare as an ElementReference field. " +
+                "An @ref captures the element into a field the component declares (`private ElementReference " +
+                $"{name};`); without one there is nothing for the capture to name, and a capture wired to " +
+                "nothing is a handle that silently refers to no node. Refusing to emit.",
+                capture.Source);
+            return null;
+        }
+
+        return _code.FieldJs(name!);
+    }
+
     /// <summary>
     /// The markup a composing parent passed INTO a child (`&lt;Card&gt;…&lt;/Card&gt;`), together with the
     /// parent context it must be compiled in (decision 131). All four fields travel together because the

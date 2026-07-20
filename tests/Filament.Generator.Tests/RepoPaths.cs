@@ -236,6 +236,11 @@ public static class RepoPaths
     /// <summary>The GroupBy SPEC (decisions 51/128). Never edited to make a gate pass.</summary>
     public static string GroupByAnswerKey => Path.Combine(Root, "samples", "GroupBy", "groupby.js");
 
+    public static string ElemRefRazor => Path.Combine(Root, "baseline", "ElemRef.Blazor", "App.razor");
+
+    /// <summary>The @ref SPEC (decisions 51/132). Never edited to make a gate pass.</summary>
+    public static string ElemRefAnswerKey => Path.Combine(Root, "samples", "ElemRef", "elemref.js");
+
     public static string FragmentRazor => Path.Combine(Root, "baseline", "Fragment.Blazor", "App.razor");
 
     /// <summary>The Fragment SPEC (decisions 51/131). Never edited to make a gate pass.</summary>

@@ -4494,3 +4494,46 @@ perd sa liaison resterait à « 0 » indéfiniment). DOM observé identique à B
 
 §5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »** — la composition est maintenant complète
 dans ses trois axes (valeur, événement, markup), mais les non-buts §3 de niveau DIRECTIVE restent devant.
+
+## 132. `@ref` — la référence EST le nom de l'élément
+
+**Décision.** `@ref="box"` sur un ÉLÉMENT entre dans le sous-ensemble, avec un champ
+`private ElementReference box;` que `@code` déclare. C'est le premier des non-buts §3 de niveau
+DIRECTIVE à tomber.
+
+**Le lowering — une décision de NOMMAGE, rien de plus.** Blazor a besoin qu'`ElementReference` soit un objet
+réel parce qu'il transporte un identifiant opaque à travers la frontière .NET/JS, pour qu'un appel JS
+retrouve le nœud. Un module qui EST du JS ne franchit jamais cette frontière : il détient déjà le nœud. Donc
+`@ref="box"` se réduit à décider comment s'appelle la const — l'élément est émis dans `const box` au lieu de
+`const _el1` — et la référence ne coûte **rien du tout** : aucun objet, aucune affectation, aucune ligne.
+`await box.FocusAsync()` → `await box.focus()`.
+
+**L'`await` est CONSERVÉ**, pas supprimé : attendre un non-promise est exactement le même programme, et le
+garder préserve l'ordre que le C# énonce au lieu de parier sur le fait que `focus()` se trouve être synchrone.
+
+**CE QUI N'EST DÉLIBÉRÉMENT PAS MAPPÉ : `ElementReference.Id`.** Chez Blazor c'est un GUID interne au
+framework, sans aucune signification DOM. Toute valeur émise pour lui serait **inventée** et non traduite —
+et un `Id` qui a l'air de marcher tout en ne désignant rien est précisément le genre de fidélité fictive que
+le §10 interdit. `FocusAsync()` est la seule surface fidèle de la référence, donc c'est la seule admise ;
+tout le reste de l'API est refusé dans `ElementRefMethod`.
+
+**UN DÉFAUT ATTRAPÉ EN GÉNÉRANT, PAS EN RAISONNANT.** Enregistrer le champ sans exclure son ÉMISSION
+produisait `const box = ;` — du JS invalide — parce que la déclaration venait alors deux fois : du `@code` et
+du template. Trouvé en compilant la baseline de la tranche, ce qui est la raison d'être de l'ordre
+« baseline d'abord ».
+
+**FRONTIÈRES.** `Unsupported/Ref.razor` reste refusé et son témoignage s'est AFFINÉ : il refusait « @ref
+n'est pas dans le sous-ensemble v0 », il refuse maintenant, au même emplacement (1,22), parce que
+`theButton` n'est déclaré nulle part comme `ElementReference` — une capture câblée sur rien est une poignée
+qui ne désigne silencieusement aucun nœud. Un `ElementReference` avec initialiseur est refusé (le template
+l'affecte, il n'y a pas de valeur à initialiser) ; comme valeur §5 il n'est jamais admis (`Classify` ne le
+connaît pas), donc il ne peut ni s'afficher, ni se comparer, ni se stocker.
+Suite : **435 tests** (357 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `git diff -- src/filament-runtime` vide ; runtime gelé à 1 943 o. Ce module
+importe d'ailleurs MOINS de primitives que les autres : ni `signal` ni `effect`, seulement `listen`/`insert`.
+MESURÉ (entrée n°51) : `document.activeElement.id` passe de `""` à `"box"` au clic sur `#go`, identique à
+Blazor (autorité). Le focus est lu sur le DOCUMENT, pas sur le markup de l'élément, donc aucun attribut émis
+ne peut le simuler. `HARNESS_VERSION` 1.44.0 → 1.45.0, divulgué.
+
+§5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.

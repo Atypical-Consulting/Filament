@@ -1,0 +1,17 @@
+@* @ref captures a reference to a rendered element. In Blazor that reference is opaque -- its only
+   public surface is FocusAsync(); ElementReference.Id is a framework-internal GUID with no DOM
+   meaning, so it is deliberately NOT part of this slice (decision 132).
+
+   The lowering: an element the template names with @ref simply BECOMES that name. Blazor needs an
+   ElementReference because it hands the id across the .NET/JS boundary; Filament emits the element
+   into a JS const, so @ref="box" only decides what that const is CALLED. FocusAsync() -> .focus().
+
+   DOM contract: #box starts unfocused; clicking #go focuses it, so document.activeElement.id
+   becomes "box". That transition IS the measurement (BENCH n°51). *@
+
+<div id="wrap"><input id="box" @ref="box" /><button id="go" @onclick="Focus">go</button></div>
+
+@code {
+    private ElementReference box;
+    async Task Focus() { await box.FocusAsync(); }
+}
