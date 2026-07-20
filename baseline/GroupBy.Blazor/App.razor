@@ -1,0 +1,29 @@
+@* LINQ GroupBy over a List (BENCH n°47, decision 128): GroupBy(x => key) groups a sequence into
+   IGrouping<K,T> groups. Each IGrouping is BOTH a key holder (.Key) AND a sequence of its elements, so it is
+   modelled as a JS array of the elements WITH a `.key` property. GroupBy compiles to a reduce building a
+   Map<K, group> (first-seen key inserts a fresh keyed array), then [...map.values()] -- an array of groups in
+   first-key-appearance order, exactly LINQ's order. g.Key -> g.key; every sequence op on a group (Count/Sum/
+   First) flows through the array path because a group IS an array.
+
+   Over _nums = [3,7,2,9,5] grouped by x % 2: 3,7,9,5 are odd (key 1, first seen), 2 is even (key 0). So there
+   are 2 groups; the first group (key 1) has 4 elements. #g -> "2" (group count), #k -> "1" (first group's Key),
+   #s -> "4" (first group's element count). A SCALAR key (int here) is required -- a JS Map compares keys by
+   value, so a boxed key (decimal/record) would group by reference. No @using System.Linq (it would be refused). *@
+
+<p>G:<span id="g">@groups</span> K:<span id="k">@firstKey</span> S:<span id="s">@firstSize</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private List<int> _nums = new List<int> { 3, 7, 2, 9, 5 };
+    private int groups = 0;
+    private int firstKey = -1;
+    private int firstSize = 0;
+
+    private void Go()
+    {
+        groups = _nums.GroupBy(x => x % 2).Count();
+        firstKey = _nums.GroupBy(x => x % 2).First().Key;
+        firstSize = _nums.GroupBy(x => x % 2).First().Count();
+    }
+}
