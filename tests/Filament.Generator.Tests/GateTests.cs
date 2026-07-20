@@ -326,6 +326,8 @@ public static class Generate
 
     public static string LinqAggregateToTemp() => ToTemp(RepoPaths.LinqAggregateRazor, "LinqAggregate");
 
+    public static string SizedArrayToTemp() => ToTemp(RepoPaths.SizedArrayRazor, "SizedArray");
+
     /// <summary>
     /// Emit a fixture from the Unsupported dir (some of which now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the

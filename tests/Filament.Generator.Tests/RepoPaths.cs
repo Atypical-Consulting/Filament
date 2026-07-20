@@ -200,6 +200,11 @@ public static class RepoPaths
 
     /// <summary>The LINQ-aggregate SPEC (decisions 51/121). Never edited to make a gate pass.</summary>
     public static string LinqAggregateAnswerKey => Path.Combine(Root, "samples", "LinqAggregate", "linqaggregate.js");
+
+    public static string SizedArrayRazor => Path.Combine(Root, "baseline", "SizedArray.Blazor", "App.razor");
+
+    /// <summary>The sized-array SPEC (decisions 51/122). Never edited to make a gate pass.</summary>
+    public static string SizedArrayAnswerKey => Path.Combine(Root, "samples", "SizedArray", "sizedarray.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>
