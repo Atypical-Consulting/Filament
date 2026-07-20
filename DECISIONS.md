@@ -4221,3 +4221,20 @@ runtime. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°41) : `bas
 `#len`/`#first` `3/0 → 4/7`, à l'identique. Le témoin subset `new int[0]` bascule refusé → supporté — c'est un
 élargissement de COUVERTURE de #117, pas la fermeture d'un fixture `Unsupported/`. `HARNESS_VERSION` 1.35.0 →
 1.36.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 123. L'`async Task<T>` à valeur de retour entre dans le §5 — une async function qui retourne sa valeur ; élargit #119
+
+**Décision.** Une méthode `async Task<T>` (T un type du §5) rejoint le §5, élargissant #119 (qui n'admettait que
+`async Task`, sans valeur). Elle émet une `async function` qui RETOURNE sa valeur ; l'appel `count = await
+Compute()` devient `count.value = await compute()`, où `await` déballe la Promise. `Method()` admet un type de
+retour `Task` OU `Task<T>` (`isTaskT` via `OriginalDefinition == "System.Threading.Tasks.Task<TResult>"`), et
+vérifie que T est dans le sous-ensemble (`CheckType`). L'émission est INCHANGÉE (`async function` + `return
+<valeur>` — le `ReturnStatement` était déjà admis). Suite : **382 tests** (304 générateur / 60 subset / 18
+analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** async/await/Promise sont des builtins JS. `git diff -- src/filament-runtime`
+vide. MESURÉ (entrée n°42) : `baseline/AsyncResult.Blazor` (`Go` fait `count = await Compute()` ; `Compute` await
+un délai puis retourne `count + 42`) et `filament-asyncresult-gen` rendent `#count` `0 → 42 → 84`, à l'identique,
+chacun après le délai awaité (l'oracle attend la continuation). Élargissement de COUVERTURE de #119 — pas de
+fixture `Unsupported/` distinct. `HARNESS_VERSION` 1.36.0 → 1.37.0, divulgué. §5 s'élargit d'un cran ; RADICAL
+reste **« ni éliminée ni établie »**.

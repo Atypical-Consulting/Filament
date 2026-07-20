@@ -4372,3 +4372,40 @@ témoin subset `new int[0]` bascule de refusé à supporté (élargissement de c
 ---
 
 *Fin de l'entrée n°41. Ne pas modifier — ajouter une entrée n°42 pour toute rectification.*
+
+---
+
+## Entrée n°42 — 2026-07-20 — Phase 4 : l'`async Task<T>` à valeur de retour mesuré contre Blazor (CORRECTION)
+
+**Une méthode `async Task<T>` à valeur de retour** (décision #123) rejoint le §5, élargissant #119 (qui n'admettait
+que `async Task`). Elle émet une `async function` qui RETOURNE sa valeur ; `count = await Compute()` devient
+`count.value = await compute()` (l'await déballe la Promise). T doit être un type du §5. **AUCUNE primitive runtime**.
+
+### Ce qui est mesuré
+
+`baseline/AsyncResult.Blazor` : `#go` lance `Go` (async Task), qui fait `count = await Compute()` ; `Compute`
+(async Task<int>) await un délai 1ms puis retourne `count + 42`. Donc chaque clic ajoute 42 APRÈS le délai awaité :
+`#count` va 0 → 42 → 84. La branche `asyncresult` de `verifyContract` clique `#go`, ATTEND, puis exige `#count`.
+**`HARNESS_VERSION` 1.36.0 → 1.37.0**, divulgué.
+
+```
+dotnet publish baseline/AsyncResult.Blazor -c Release -o bench/publish/blazor-asyncresult
+./bench/build-filament.sh filament-asyncresult-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-asyncresult/wwwroot --app asyncresult --label blazor-asyncresult       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-asyncresult-gen   --app asyncresult --label filament-asyncresult-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#count` | verdict |
+|---|---|---|
+| **blazor-asyncresult** (autorité) | `0 → 42 → 84` | contrat OK |
+| **filament-asyncresult-gen** (générateur) | `0 → 42 → 84` | contrat OK |
+
+**Les deux vont à `42` puis `84`, à l'identique**, chacun APRÈS le délai awaité — `Compute` retourne `count + 42`
+et `await Compute()` le déballe. `git diff -- src/filament-runtime` vide. Élargissement de couverture de #119 (pas
+de fixture `Unsupported/` distinct). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°42. Ne pas modifier — ajouter une entrée n°43 pour toute rectification.*

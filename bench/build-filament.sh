@@ -207,6 +207,7 @@ ALL_LABELS=(
   filament-ifnestedmixed-gen
   filament-linqaggregate-gen
   filament-sizedarray-gen
+  filament-asyncresult-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -253,6 +254,7 @@ project_for() {
     filament-ifnestedmixed-gen)                      echo "samples/filament-ifnestedmixed-gen" ;;
     filament-linqaggregate-gen)                      echo "samples/filament-linqaggregate-gen" ;;
     filament-sizedarray-gen)                         echo "samples/filament-sizedarray-gen" ;;
+    filament-asyncresult-gen)                        echo "samples/filament-asyncresult-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -262,7 +264,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -318,6 +320,7 @@ razor_for() {
     filament-ifnestedmixed-gen)                      echo "$REPO_ROOT/baseline/IfNestedMixed.Blazor/App.razor" ;;
     filament-linqaggregate-gen)                      echo "$REPO_ROOT/baseline/LinqAggregate.Blazor/App.razor" ;;
     filament-sizedarray-gen)                         echo "$REPO_ROOT/baseline/SizedArray.Blazor/App.razor" ;;
+    filament-asyncresult-gen)                        echo "$REPO_ROOT/baseline/AsyncResult.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -366,6 +369,7 @@ generated_js_for() {
     filament-ifnestedmixed-gen)                      echo "App.g.js" ;;
     filament-linqaggregate-gen)                      echo "App.g.js" ;;
     filament-sizedarray-gen)                         echo "App.g.js" ;;
+    filament-asyncresult-gen)                        echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -410,6 +414,7 @@ title_for() {
     filament-ifnestedmixed-gen)                      echo "IfNestedMixed" ;;
     filament-linqaggregate-gen)                      echo "LinqAggregate" ;;
     filament-sizedarray-gen)                         echo "SizedArray" ;;
+    filament-asyncresult-gen)                        echo "AsyncResult" ;;
     *) return 1 ;;
   esac
 }
@@ -457,6 +462,7 @@ blazor_label_for() {
     filament-ifnestedmixed-gen)                      echo "blazor-ifnestedmixed" ;;
     filament-linqaggregate-gen)                      echo "blazor-linqaggregate" ;;
     filament-sizedarray-gen)                         echo "blazor-sizedarray" ;;
+    filament-asyncresult-gen)                        echo "blazor-asyncresult" ;;
     *) return 1 ;;
   esac
 }
@@ -512,6 +518,7 @@ css_for() {
     filament-ifnestedmixed-gen)                      echo "$REPO_ROOT/baseline/IfNestedMixed.Blazor/wwwroot/css/app.css" ;;
     filament-linqaggregate-gen)                      echo "$REPO_ROOT/baseline/LinqAggregate.Blazor/wwwroot/css/app.css" ;;
     filament-sizedarray-gen)                         echo "$REPO_ROOT/baseline/SizedArray.Blazor/wwwroot/css/app.css" ;;
+    filament-asyncresult-gen)                        echo "$REPO_ROOT/baseline/AsyncResult.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }
