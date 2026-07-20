@@ -2267,12 +2267,15 @@ public sealed class CSharpFrontEnd
             case ElementAccessExpressionSyntax ea when IsDictReceiver(ea.Expression) && ea.ArgumentList.Arguments.Count == 1:
                 return $"{Expr(ea.Expression)}.get({Expr(ea.ArgumentList.Arguments[0].Expression)})";
 
-            // A T[] literal -> a JS array literal (decision 117). `new int[]{10,20,30}` -> `[10, 20, 30]`.
-            case ArrayCreationExpressionSyntax ac:
-                return ac.Initializer is { } init ? ArrayLiteral(init)
-                    : Refuse("unsupported-expression",
-                        "a sized array `new T[n]` (no initialiser) is not in the subset; use an array literal " +
-                        "`new T[]{…}`. Refusing to emit.", ac.SpanStart);
+            // A T[] literal -> a JS array literal (decision 117): `new int[]{10,20,30}` -> `[10, 20, 30]`. A SIZED
+            // `new T[n]` -> `new Array(n).fill(default(T))` (decision 122): `new int[3]` -> `new Array(3).fill(0)`,
+            // exactly C#'s n-defaults array (int->0, string->null, bool->false).
+            case ArrayCreationExpressionSyntax ac when ac.Initializer is { } init:
+                return ArrayLiteral(init);
+
+            case ArrayCreationExpressionSyntax ac
+                when ac.Type.RankSpecifiers is [{ Sizes: [var size] }] && size is not OmittedArraySizeExpressionSyntax:
+                return $"new Array({Expr(size)}).fill({DefaultOf(_model.GetTypeInfo(ac.Type.ElementType).Type!)})";
 
             case ImplicitArrayCreationExpressionSyntax iac:
                 return ArrayLiteral(iac.Initializer);

@@ -208,9 +208,12 @@ public static class ConstructSubset
             ObjectCreationExpressionSyntax oc =>
                 IsExceptionCreation(oc, model) || IsLocalRecordCreation(oc, model) || IsDateTimeCreation(oc, model)
                 || IsDictionaryCreation(oc, model),
-            // A T[] LITERAL (`new int[]{…}`, `new[]{…}`) -> a JS array literal. Decision 117. A sized array with
-            // no initialiser (`new int[n]`) is NOT admitted -- it needs an n-defaults array, deferred.
-            ArrayCreationExpressionSyntax ac => ac.Initializer is not null && IsArrayCreation(ac.Type.ElementType, model),
+            // A T[] creation of a scalar element, single-rank: a LITERAL `new int[]{…}` -> a JS array literal
+            // (decision 117), OR a SIZED `new int[n]` -> new Array(n).fill(default) (decision 122). Multi-dim
+            // (`new int[3,3]`) is refused (rank != 1).
+            ArrayCreationExpressionSyntax ac =>
+                ac.Type.RankSpecifiers.Count == 1 && ac.Type.RankSpecifiers[0].Rank == 1 &&
+                IsArrayCreation(ac.Type.ElementType, model),
             ImplicitArrayCreationExpressionSyntax => true,
             AwaitExpressionSyntax => true,   // `await x` -> JS's own `await x` (inside an async method). Decision 119.
             _ => false,
