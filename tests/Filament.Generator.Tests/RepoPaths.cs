@@ -236,6 +236,17 @@ public static class RepoPaths
     /// <summary>The GroupBy SPEC (decisions 51/128). Never edited to make a gate pass.</summary>
     public static string GroupByAnswerKey => Path.Combine(Root, "samples", "GroupBy", "groupby.js");
 
+    /// <summary>The routed app's pages — a SET, because a router is the one generator input that is not
+    /// one file (decision 139).</summary>
+    public static string[] RoutingPages =>
+    [
+        Path.Combine(Root, "baseline", "Routing.Blazor", "Pages", "Home.razor"),
+        Path.Combine(Root, "baseline", "Routing.Blazor", "Pages", "About.razor"),
+    ];
+
+    /// <summary>The router SPEC (decisions 51/139). Never edited to make a gate pass.</summary>
+    public static string RouterAnswerKey => Path.Combine(Root, "samples", "Routing", "router.js");
+
     public static string FormsRazor => Path.Combine(Root, "baseline", "Forms.Blazor", "App.razor");
 
     /// <summary>The forms SPEC (decisions 51/138). Never edited to make a gate pass.</summary>

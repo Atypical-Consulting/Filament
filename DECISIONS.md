@@ -4765,3 +4765,53 @@ que `#out` reste vide (un formulaire lié dans un seul sens passerait l'une et �
 `HARNESS_VERSION` 1.49.0 → 1.50.0, divulgué.
 
 §5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.
+
+## 139. Routage (`@page`) — le SEUL non-but §3 qui ne s'efface pas, donc généré DANS l'app
+
+**Décision.** `@page "/route"` entre dans le §5, avec un **routeur généré** : `--router <sortie> <pages…>`
+compile chaque page dans son propre module et émet à côté un routeur qui les importe. C'est le dernier des
+onze non-buts §3.
+
+**POURQUOI CELUI-CI EST DIFFÉRENT, ET CE N'EST PAS UNE QUESTION D'EFFORT.** Les huit autres se sont révélés
+être des **recherches** que le compilateur effectue à la compilation puis supprime : `@ref` est une décision
+de nommage, l'interop JS est un appel direct, une cascade est une portée lexicale, les génériques s'effacent,
+`@inherits` fusionne du texte. Une route ne peut pas l'être : elle doit être appariée à une URL qui n'existe
+que pendant l'exécution, ré-appariée à chaque navigation, et les pages démontées puis remontées à mesure
+qu'elle change. C'est du **COMPORTEMENT**, et un comportement doit être quelque part à l'exécution.
+
+**DONC IL EST GÉNÉRÉ DANS L'APP, PAS AJOUTÉ AU RUNTIME**, et ce placement EST l'affirmation :
+le runtime de signaux partagé reste **gelé à 1 943 o** — `git diff -- src/filament-runtime` vide, comme pour
+les huit autres tranches — de sorte qu'une app **qui ne route pas paie exactement zéro** pour l'existence du
+routage ; et le coût réellement payé atterrit dans l'app qui l'a demandé, **sur le fil, où il est MESURÉ**
+(entrée n°57 : **425 o gzip**). C'était la condition posée par l'ADR 0003 : *« une tranche de routage qui
+n'annonce aucun changement de poids a mesuré la mauvaise chose. »*
+
+**LE ROUTEUR IMPORTE LES PAGES, il ne les inline pas.** Le routage change la façon dont les pages sont
+**ASSEMBLÉES**, pas la façon dont elles sont compilées : un module de page est **identique octet pour octet**
+qu'il soit routé ou compilé seul. C'est aussi pourquoi `@page` ne contribue RIEN au module de sa propre page —
+une route est une **métadonnée** que le routeur lit (`RazorFrontEnd.RouteOf`), et le témoin
+`Unsupported/Page.razor` a donc migré vers `Supported/Code/` : compiler une page seule ignore simplement sa
+route.
+
+**QUATRE COMPORTEMENTS, chacun parce que l'omettre est un bug que l'utilisateur rencontre immédiatement :**
+apparier le `pathname` (avec `'*'` en attrape-tout) ; monter dans une cible **VIDÉE** (un routeur qui
+*ajoute* affiche deux pages à la fois dès la première navigation) ; intercepter les clics de liens de même
+origine (sans quoi « naviguer » est un rechargement complet et l'app est un site multi-pages avec des étapes
+en plus) ; écouter `popstate` (sans quoi le bouton Retour laisse l'utilisateur bloqué).
+
+**REFUS.** Deux pages sur la même route sont refusées — la première gagnerait toujours et la seconde serait
+**inatteignable**, donc trancher par l'ordre des fichiers supprimerait silencieusement une page écrite par
+l'auteur. Une page sans `@page` passée à `--router` est refusée aussi : le routeur ne pourrait pas l'atteindre,
+et un composant silencieusement absent d'une app est l'échec que le §10 interdit.
+Suite : **466 tests** (388 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**MESURÉ (entrée n°57)** : contrat DOM identique à Blazor sur les huit champs observés — la navigation par
+clic change l'URL **sans recharger**, une page porteuse d'état est **remontée à neuf** en y revenant (un
+routeur qui masque au lieu de démonter passe les premiers contrôles et échoue celui-là), et Retour fonctionne.
+**ET le poids**, que cette tranche doit annoncer et que les autres n'avaient pas à annoncer.
+`HARNESS_VERSION` 1.50.0 → 1.51.0, divulgué.
+
+§5 s'élargit d'un cran — **et les onze non-buts §3 sont désormais fermés**. §8 : RADICAL reste **« ni éliminée
+ni établie »**. Fermer les onze est une preuve que le modèle de compilation les ABSORBE ; ce n'est pas une
+preuve qu'une app réelle tiendrait sur ce sous-ensemble, et le routage vient précisément de montrer où le
+modèle atteint sa limite : il a fallu émettre du code.

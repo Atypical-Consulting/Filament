@@ -141,6 +141,25 @@ public static class RazorFrontEnd
     // The reference-assembly probe lives in ReferenceAssemblies: the C# front end needs
     // the same set to resolve the types in @code, and decision 53's lesson is that the
     // wiring gets described ONCE or the two copies drift.
+    /// <summary>
+    /// The route an `@page "/about"` declares, or null if the file has none (decision 139).
+    ///
+    /// A route is METADATA, not code: the page's own module is identical with or without it, and the only
+    /// consumer is the generated router. It is read from the directive TOKENS (captured by
+    /// DirectiveSpyPass) rather than from the lowered route-attribute node, because the lowered node has
+    /// no span and a malformed route has to be reportable at the place the author wrote it.
+    /// </summary>
+    public static string? RouteOf(ParseResult parse)
+    {
+        var page = parse.Directives.FirstOrDefault(d => d.Name == "page");
+        if (page.Name is null) return null;
+
+        // Razor hands the route back as a C# string literal, quotes included.
+        var raw = page.Tokens.FirstOrDefault()?.Trim();
+        if (raw is null || raw.Length < 2 || raw[0] != '"' || raw[^1] != '"') return null;
+        return raw[1..^1];
+    }
+
     /// <summary>An `@inject T Name` site, read back off the lowered IR (decision 133).</summary>
     public readonly record struct InjectSite(string TypeName, string MemberName);
 
@@ -194,7 +213,13 @@ public sealed record ParseResult(
     string FilePath);
 
 /// <summary>A directive as WRITTEN: its name and the exact place it was written.</summary>
-public readonly record struct DirectiveSite(string Name, SourceSpan? Source);
+/// <param name="Name">the directive's name, e.g. "page"</param>
+/// <param name="Source">where the author wrote it — Razor drops this during lowering, which is why
+///   DirectiveSpyPass exists</param>
+/// <param name="Tokens">the directive's own tokens, e.g. the route string of `@page "/about"`
+///   (decision 139). Captured here because the lowered node keeps the value and loses the span, and a
+///   router needs the VALUE while every diagnostic needs the span.</param>
+public readonly record struct DirectiveSite(string Name, SourceSpan? Source, IReadOnlyList<string> Tokens);
 
 /// <summary>
 /// Captures every directive Razor recognised, WITH ITS SOURCE SPAN, before Razor
@@ -246,7 +271,8 @@ public sealed class DirectiveSpyPass : IntermediateNodePassBase, IRazorDirective
     protected override void ExecuteCore(RazorCodeDocument codeDocument, DocumentIntermediateNode documentNode)
     {
         foreach (var d in documentNode.FindDescendantNodes<DirectiveIntermediateNode>())
-            _directives.Add(new DirectiveSite(d.DirectiveName, d.Source));
+            _directives.Add(new DirectiveSite(d.DirectiveName, d.Source,
+                d.Tokens.Select(t => t.Content).ToList()));
     }
 
 }

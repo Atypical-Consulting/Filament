@@ -221,6 +221,7 @@ ALL_LABELS=(
   filament-generic-gen
   filament-inherits-gen
   filament-forms-gen
+  filament-routing-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -281,6 +282,7 @@ project_for() {
     filament-generic-gen)                            echo "samples/filament-generic-gen" ;;
     filament-inherits-gen)                           echo "samples/filament-inherits-gen" ;;
     filament-forms-gen)                              echo "samples/filament-forms-gen" ;;
+    filament-routing-gen)                            echo "samples/filament-routing-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -290,7 +292,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen|filament-inherits-gen|filament-forms-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen|filament-inherits-gen|filament-forms-gen|filament-routing-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -308,6 +310,16 @@ mode_for() {
 # bytes. Counter has a separate file only because its header documents the Phase 3
 # mapping; a test (PureRazor_CounterRazor_IsTheBaselinesComponent) pins its markup
 # and @code to the baseline's for exactly this reason.
+# The PAGES of a routed app (decision 139). Routing is the one label whose generator invocation is not
+# one-file-in/one-file-out: a router needs the SET of @page components, so it gets its own switch rather
+# than a special case bolted onto razor_for(). Empty for every non-routed label.
+router_pages_for() {
+  case "$1" in
+    filament-routing-gen) echo "$REPO_ROOT/baseline/Routing.Blazor/Pages/Home.razor $REPO_ROOT/baseline/Routing.Blazor/Pages/About.razor" ;;
+    *)                    echo "" ;;
+  esac
+}
+
 razor_for() {
   case "$1" in
     filament-counter-gen|filament-counter-gen-stats) echo "$REPO_ROOT/samples/Counter/Counter.razor" ;;
@@ -480,6 +492,7 @@ title_for() {
     filament-generic-gen)                            echo "Generic" ;;
     filament-inherits-gen)                           echo "Inherits" ;;
     filament-forms-gen)                              echo "Forms" ;;
+    filament-routing-gen)                            echo "Routing" ;;
     *) return 1 ;;
   esac
 }
@@ -541,6 +554,7 @@ blazor_label_for() {
     filament-generic-gen)                            echo "blazor-generic" ;;
     filament-inherits-gen)                           echo "blazor-inherits" ;;
     filament-forms-gen)                              echo "blazor-forms" ;;
+    filament-routing-gen)                            echo "blazor-routing" ;;
     *) return 1 ;;
   esac
 }
@@ -610,6 +624,7 @@ css_for() {
     filament-generic-gen)                            echo "$REPO_ROOT/baseline/Generic.Blazor/wwwroot/css/app.css" ;;
     filament-inherits-gen)                           echo "$REPO_ROOT/baseline/Inherits.Blazor/wwwroot/css/app.css" ;;
     filament-forms-gen)                              echo "$REPO_ROOT/baseline/Forms.Blazor/wwwroot/css/app.css" ;;
+    filament-routing-gen)                            echo "$REPO_ROOT/baseline/Routing.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }
@@ -940,6 +955,29 @@ for label in "${REQUESTED[@]}"; do
   # asserts "the generator produced this" while the bytes say otherwise -- with
   # nothing to catch it. The rm is what makes the assertion below meaningful:
   # after it, the file exists IF AND ONLY IF this run's generator wrote it.
+  # A ROUTED app (decision 139): many pages plus a generated router, so the single-file path below
+  # cannot express it. Same rm-then-emit discipline -- every emitted file is deleted first, so it
+  # exists afterwards IF AND ONLY IF this run's generator wrote it.
+  router_pages="$(router_pages_for "$label")"
+  if [[ -n "$router_pages" ]]; then
+    rm -f "$project_dir"/*.g.js
+
+    grep -qF "./Router.g.js" "$entry" || die "'$label' is a routed label but $entry does not
+     import './Router.g.js'. The label would be weighed on JS this run's generator did not produce."
+
+    printf '    dotnet run --project src/Filament.Generator -- --router %s <pages>\n' \
+      "${project_dir#"$REPO_ROOT"/}/Router.g.js"
+    # shellcheck disable=SC2086
+    dotnet run --project "$REPO_ROOT/src/Filament.Generator" -c Release \
+      -- --router "$project_dir/Router.g.js" $router_pages \
+      || die "the generator refused to emit the routed app for '$label'. Read the diagnostic above."
+
+    [[ -s "$project_dir/Router.g.js" ]] || die "'$label': the generator exited 0 but wrote no
+     Router.g.js. Verified from the ARTIFACT, never from the exit code."
+    printf '        emitted %s B of router + pages\n' \
+      "$(cat "$project_dir"/*.g.js | wc -c | tr -d ' ')"
+  fi
+
   razor_src="$(razor_for "$label")"
   if [[ -n "$razor_src" ]]; then
     [[ -f "$razor_src" ]] || die "'$label' is a generator label but its Razor source

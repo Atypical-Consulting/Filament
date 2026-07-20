@@ -55,6 +55,7 @@ if (args.Length < 2 || args.Contains("--help") || args.Contains("-h"))
 {
     Console.Error.WriteLine("usage: Filament.Generator <in.razor> <out.js> [--runtime <specifier>]");
     Console.Error.WriteLine("       Filament.Generator --dump-ir <in.razor>");
+    Console.Error.WriteLine("       Filament.Generator --router <out.js> <page1.razor> [page2.razor ...]");
     return 2;
 }
 
@@ -63,6 +64,77 @@ try
     if (args[0] == "--dump-ir")
     {
         Console.WriteLine(IrDumper.Dump(RazorFrontEnd.Parse(args[1]).Ir));
+        return 0;
+    }
+
+    // --router: compile a SET of @page components into one app (decision 139). Each page is compiled to
+    // its own module exactly as it would be standalone -- routing changes how pages are ASSEMBLED, not
+    // how they are compiled -- and the router module that imports them is generated alongside.
+    if (args[0] == "--router")
+    {
+        var routerOut = args[1];
+        // Skip flags AND the value that follows one: `--runtime ./x.js` must not be read as a page.
+        var pageFiles = new List<string>();
+        for (var i = 2; i < args.Length; i++)
+        {
+            if (args[i].StartsWith("--")) { i++; continue; }
+            pageFiles.Add(args[i]);
+        }
+        if (pageFiles.Count == 0)
+        {
+            Console.Error.WriteLine("error: --router needs at least one page .razor");
+            return 2;
+        }
+
+        var outDir = Path.GetDirectoryName(Path.GetFullPath(routerOut))!;
+        Directory.CreateDirectory(outDir);
+        var routerRuntime = ArgValue(args, "--runtime") ?? ResolveRuntimeSpecifier(routerOut);
+
+        var pages = new List<RouterEmitter.Page>();
+        foreach (var pageFile in pageFiles)
+        {
+            var pageParse = RazorFrontEnd.Parse(pageFile);
+            if (Refused(pageParse, pageFile)) return 1;
+
+            // A page WITHOUT @page has no route, so the router could not reach it. Refused rather than
+            // dropped: a component silently absent from an app is the failure section 10 forbids.
+            if (RazorFrontEnd.RouteOf(pageParse) is not { } route)
+            {
+                Console.Error.WriteLine(
+                    $"error: {Path.GetFileName(pageFile)} has no @page route, so the router could not reach it. " +
+                    "Give it an @page directive or leave it out of the app.");
+                return 1;
+            }
+
+            var pageCompiler = new TemplateCompiler();
+            var pageJs = pageCompiler.Compile(pageParse, routerRuntime, Path.GetFileName(pageFile));
+            if (pageCompiler.Diagnostics.Count > 0)
+            {
+                Console.Error.WriteLine(
+                    $"{Path.GetFileName(pageFile)}: refusing to emit ({pageCompiler.Diagnostics.Count} diagnostic(s)):");
+                foreach (var d in pageCompiler.Diagnostics) Console.Error.WriteLine($"  error {d}");
+                return 1;
+            }
+
+            var name = Path.GetFileNameWithoutExtension(pageFile);
+            var pageOut = Path.Combine(outDir, name + ".g.js");
+            File.WriteAllText(pageOut, pageJs);
+            Console.Error.WriteLine($"{pageFile} -> {pageOut} ({System.Text.Encoding.UTF8.GetByteCount(pageJs)} B)  route {route}");
+            pages.Add(new RouterEmitter.Page($"./{name}.g.js", route, "mount" + name));
+        }
+
+        var duplicate = pages.GroupBy(p => p.Route, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
+        if (duplicate is not null)
+        {
+            Console.Error.WriteLine(
+                $"error: two pages declare the route '{duplicate.Key}'. The first would always win and the " +
+                "second would be unreachable, so this is refused rather than resolved by file order.");
+            return 1;
+        }
+
+        var routerJs = RouterEmitter.Emit(pages);
+        File.WriteAllText(routerOut, routerJs);
+        Console.Error.WriteLine($"router -> {routerOut} ({System.Text.Encoding.UTF8.GetByteCount(routerJs)} B, {pages.Count} pages)");
         return 0;
     }
 
@@ -103,6 +175,21 @@ catch (GeneratorException ex)
 {
     Console.Error.WriteLine($"error {ex.Message}");
     return 1;
+}
+
+/// <summary>Razor's OWN diagnostics, reported before anything is compiled past them. Shared by the
+/// single-file and --router paths so a page in an app is gated exactly as it is on its own.</summary>
+static bool Refused(ParseResult parse, string file)
+{
+    var errors = parse.Document.GetSyntaxTree().Diagnostics
+        .Concat(parse.Ir.Diagnostics)
+        .Where(d => d.Severity == Microsoft.AspNetCore.Razor.Language.RazorDiagnosticSeverity.Error)
+        .ToList();
+    if (errors.Count == 0) return false;
+
+    Console.Error.WriteLine($"{Path.GetFileName(file)}: Razor reported {errors.Count} error(s):");
+    foreach (var d in errors) Console.Error.WriteLine($"  error: {d}");
+    return true;
 }
 
 static string? ArgValue(string[] args, string name)

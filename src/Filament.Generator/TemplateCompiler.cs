@@ -134,7 +134,7 @@ public sealed class TemplateCompiler
     /// types this compiler happens to know) is what makes the gate complete: a
     /// directive nobody here has heard of is refused too.
     /// </summary>
-    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code", "inject", "typeparam", "inherits" };
+    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code", "inject", "typeparam", "inherits", "page" };
 
     /// <summary>
     /// The base class Razor gives EVERY component whether or not @inherits was written.
@@ -490,6 +490,13 @@ public sealed class TemplateCompiler
                 case UsingDirectiveIntermediateNode:
                     break; // synthesised by Razor; not the author's, nothing to compile
 
+                // @page (decision 139). Razor lowers it to a route-attribute node BESIDE the class, with no
+                // span. It contributes nothing to this component's own module: a route is metadata the
+                // generated ROUTER reads (RazorFrontEnd.RouteOf), and the page compiles identically with or
+                // without it -- which is what lets a page module be byte-identical routed or standalone.
+                case { } route when route.GetType().Name == "RouteAttributeExtensionNode":
+                    break;
+
                 default:
                     Unaccounted(child, "beside the component class");
                     break;
@@ -520,6 +527,12 @@ public sealed class TemplateCompiler
             {
                 case MethodDeclarationIntermediateNode m when m.MethodName == "BuildRenderTree":
                 case CSharpCodeIntermediateNode: // the @code seam -- spliced verbatim
+                    break;
+
+                // @page (decision 139). Razor lowers it to a route-attribute extension node with no span. It
+                // contributes NOTHING to this component's own module: a route is metadata the ROUTER reads
+                // (RazorFrontEnd.RouteOf), and the page itself compiles exactly as it would without it.
+                case { } r when r.GetType().Name == "RouteAttributeExtensionNode":
                     break;
 
                 // @inject (decision 133). Admitted for IJSRuntime and nothing else; the site itself is read

@@ -408,6 +408,16 @@ public static class Run
         return Exec("dotnet", [dll, input, output]);
     }
 
+    /// <summary>The generator in --router mode: a SET of pages into one app (decision 139).</summary>
+    public static (int exit, string stdout, string stderr) Router(string routerOut, params string[] pages)
+    {
+        var dll = Path.Combine(RepoPaths.Root, "src", "Filament.Generator", "bin",
+            Configuration, "net10.0", "Filament.Generator.dll");
+        Assert.True(File.Exists(dll), $"generator not built at {dll}");
+        string[] args = [dll, "--router", routerOut, .. pages, "--runtime", "../../src/filament-runtime/src/index.ts"];
+        return Exec("dotnet", args);
+    }
+
     public static (int exit, string stdout, string stderr) Node(params string[] args) => Exec("node", args);
 
     const string Configuration =

@@ -5028,3 +5028,67 @@ la validation est refusée, pas ignorée. §8 inchangé.
 ---
 
 *Fin de l'entrée n°56. Ne pas modifier — ajouter une entrée n°57 pour toute rectification.*
+
+---
+
+## Entrée n°57 — 2026-07-20 — Phase 4 : routage (`@page`) mesuré contre Blazor — **contrat ET POIDS**
+
+**`@page` + un routeur GÉNÉRÉ** (décision #139) rejoignent le §5 : le dernier des onze non-buts §3, et le
+**seul qui ne s'efface pas**. Les huit autres étaient des recherches faites à la compilation puis supprimées ;
+une route doit être appariée à une URL qui n'existe qu'à l'exécution, ré-appariée à chaque navigation, et les
+pages démontées/remontées. C'est du comportement, donc du code — **généré DANS l'app, jamais ajouté au
+runtime partagé**.
+
+**CETTE ENTRÉE MESURE DONC AUSSI LE POIDS**, ce que les tranches précédentes n'avaient pas à faire. C'est la
+condition posée par l'ADR 0003 : une tranche de routage qui n'annonce aucun changement de poids a mesuré la
+mauvaise chose.
+
+### Ce qui est mesuré
+
+`baseline/Routing.Blazor` : deux pages (`/` et `/about`), la seconde portant un compteur. Le contrat
+**navigue en CLIQUANT** des liens, puis vérifie huit champs, dont deux qui séparent un vrai routeur d'un
+simple afficher/masquer : `noReload` (le document n'a pas été rechargé — sans interception, « naviguer » est
+un rechargement complet) et **`remounted`** (après avoir incrémenté le compteur de `/about`, être parti et
+revenu, il doit valoir `0` : un routeur qui masque les pages au lieu de les démonter passe tout le reste et
+échoue celui-ci). `history.back()` est vérifié en dernier — un routeur qui ne gère que les clics y échoue.
+**`HARNESS_VERSION` 1.50.0 → 1.51.0**, divulgué.
+
+```
+dotnet publish baseline/Routing.Blazor -c Release -o bench/publish/blazor-routing
+./bench/build-filament.sh filament-routing-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-routing/wwwroot --app routing --label blazor-routing       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-routing-gen   --app routing --label filament-routing-gen --headless --contract-only
+```
+
+### Résultat — contrat
+
+| Label | initial | après clic | chemin | sans rechargement | remonté à neuf | après Retour | verdict |
+|---|---|---|---|---|---|---|---|
+| **blazor-routing** (autorité) | `home` | `about` | `/about` | `true` | `0` | `home` | contrat OK |
+| **filament-routing-gen** (générateur) | `home` | `about` | `/about` | `true` | `0` | `home` | contrat OK |
+
+**Les huit champs coïncident**, y compris le remontage à neuf : les deux routeurs démontent réellement la page
+quittée.
+
+### Résultat — POIDS (le point de cette entrée)
+
+| Mesure | Valeur |
+|---|---|
+| Routeur seul (minifié) | **681 o** |
+| Routeur seul (minifié + gzip) | **425 o** |
+| App routée complète, sur le fil (gzip) | **1 641 o** — soit **6,1× sous** le budget C1 de 10 000 o |
+| Runtime de signaux partagé | **1 943 o, INCHANGÉ** (`git diff -- src/filament-runtime` vide) |
+| Baseline Blazor routée, `_framework` (brut) | **4 972 261 o** |
+
+**Le coût du routage est de 425 o gzip, et il est payé PAR L'APP QUI ROUTE.** Le runtime partagé n'a pas
+bougé d'un octet, donc une app qui ne route pas ne paie rien pour l'existence du routage — c'est exactement
+ce que le placement devait garantir, et c'est vérifié ici plutôt qu'affirmé. C1 tient largement.
+
+**RÉSERVE, divulguée.** Les 425 o sont mesurés sur le routeur **isolé** (esbuild, `--external` sur les pages) ;
+dans le bundle réel, le dédoublonnage peut rendre sa contribution marginale légèrement différente. Le chiffre
+qui n'a pas cette réserve est celui de l'app complète : **1 641 o gzip**. Aucun chiffre de VITESSE n'est
+avancé pour cette entrée : le contrat est correctionnel, aucun scénario chronométré n'a été exécuté.
+
+---
+
+*Fin de l'entrée n°57. Ne pas modifier — ajouter une entrée n°58 pour toute rectification.*

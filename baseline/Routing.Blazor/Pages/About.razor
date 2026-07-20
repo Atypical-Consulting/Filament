@@ -1,0 +1,10 @@
+@page "/about"
+
+@* The second page, with state of its own -- so navigating away and back must MOUNT IT AFRESH rather
+   than reveal a hidden copy carrying stale state. *@
+<div id="page"><h2 id="where">about</h2><span id="n">@count</span><button id="bump" @onclick="Bump">bump</button><a id="to-home" href="/">home</a></div>
+
+@code {
+    private int count = 0;
+    void Bump() { count++; }
+}

@@ -1,0 +1,11 @@
+@* Blazor's routing host: a <Router> over this assembly, rendering the matched page.
+
+   Filament has no equivalent of this file, and that difference IS the slice (decision 139). Blazor
+   discovers routable components by scanning an ASSEMBLY at run time, so it needs a Router component,
+   a RouteView, and reflection over route attributes. Filament knows the whole set of pages at BUILD
+   time, so its router is generated from them -- a table and four behaviours, in the app module. *@
+
+<Router AppAssembly="@typeof(Program).Assembly">
+    <Found Context="routeData"><RouteView RouteData="@routeData" /></Found>
+    <NotFound><p id="missing">not found</p></NotFound>
+</Router>

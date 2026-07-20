@@ -36,7 +36,6 @@ public class DiagnosticTests
     [Theory]
     // fixture,                 line, col, the reason tag, and what must be named in the text
     [InlineData("Inject.razor", 1, 1, "unsupported-directive", "@inject")]
-    [InlineData("Page.razor", 1, 1, "unsupported-directive", "@page")]
     [InlineData("Layout.razor", 1, 1, "unsupported-directive", "@layout")]
     [InlineData("Inherits.razor", 1, 1, "unsupported-directive", "@inherits")]
     [InlineData("Using.razor", 1, 2, "unsupported-directive", "@using")]
@@ -595,7 +594,6 @@ public class DiagnosticTests
     /// </summary>
     [Theory]
     [InlineData("Inject.razor")]
-    [InlineData("Page.razor")]
     [InlineData("Layout.razor")]
     [InlineData("Inherits.razor")]
     [InlineData("Using.razor")]
@@ -638,7 +636,6 @@ public class DiagnosticTests
     /// </summary>
     [Theory]
     [InlineData("Inject.razor")]
-    [InlineData("Page.razor")]
     [InlineData("Component.razor")]
     // The handler cases especially: this generator DID write these files, and the module
     // it wrote looked perfect and had a dead button.

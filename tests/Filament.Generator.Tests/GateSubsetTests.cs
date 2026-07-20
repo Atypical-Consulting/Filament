@@ -93,7 +93,10 @@ public class GateSubsetTests
     [InlineData("Inherits.razor", 1, 1, "FIL0003", "unsupported-directive")]
     [InlineData("Gate/Implements.razor", 1, 1, "FIL0003", "unsupported-directive")]
     [InlineData("Inject.razor", 1, 1, "FIL0003", "unsupported-directive")]
-    [InlineData("Page.razor", 1, 1, "FIL0003", "unsupported-directive")]
+    // Page.razor LEFT this list at decision 139: @page compiles now. A route is METADATA the generated
+    // router reads, not code the page emits -- so a page module is byte-identical routed or standalone,
+    // and compiling one on its own simply ignores its route. Moved to Supported/Code/ and pinned by
+    // Page_NowCompiles_WithTheRouteAsMetadata below.
     // Gate/Typeparam.razor LEFT this list at decision 135: @typeparam compiles now. A type parameter is a
     // COMPILE-TIME constraint, and this compiler resolves every composition at compile time into a scope
     // where the value is the parent's own expression -- so generics erase, and JS has no type to carry.
@@ -431,6 +434,21 @@ public class NegativeControls
         Assert.Contains("document.createElement('button')", js);
         Assert.DoesNotContain("EditForm", js);
         Assert.DoesNotContain("listen(", js);      // no OnValidSubmit in this fixture
+    }
+
+    /// <summary>
+    /// @page COMPILES NOW (decision 139). The route contributes NOTHING to the page's own module -- it is
+    /// metadata the generated router reads -- so this asserts the page compiles exactly as it would
+    /// without the directive, and that no trace of the route leaks into it.
+    /// </summary>
+    [Fact]
+    public void Page_NowCompiles_WithTheRouteAsMetadata()
+    {
+        var js = File.ReadAllText(Generate.ToTempFixture("Code/Page.razor"));
+
+        Assert.Contains("export function mount(target)", js);
+        Assert.DoesNotContain("/counter", js);   // the route is the ROUTER's, not the page's
+        Assert.DoesNotContain("@page", js);
     }
 
     /// <summary>Section 5's List&lt;T&gt;: indexing, .Count, .Add, .RemoveAt -- all four.</summary>
