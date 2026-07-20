@@ -1,0 +1,49 @@
+name: Bug report
+description: The generator emits wrong JS, refuses valid code, or the runtime misbehaves
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! A **minimal `.razor` component that reproduces the problem** is the
+        single most helpful thing you can include.
+
+        Filament's core promise is that it never emits silently-wrong JS — anything outside the
+        supported C# subset must raise a located diagnostic instead. So **"the emitted JS behaves
+        differently from Blazor" is the most serious class of bug here**, more serious than a
+        refusal. If you have both the Filament and Blazor behaviour, please say what each did.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: razor-source
+    attributes:
+      label: Minimal .razor component
+      description: The smallest component that reproduces the issue, template and @code.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Emitted JS / diagnostic
+      description: >
+        The generated `.g.js` (or the relevant part of it), or the FIL#### diagnostic you got.
+        If the bug is a behaviour divergence, what did Blazor do instead?
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Filament version
+      description: The commit SHA, or the Filament.Sdk package version.
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      placeholder: "OS, .NET SDK version (dotnet --version), Node version (node --version)"

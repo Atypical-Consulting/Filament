@@ -1,0 +1,45 @@
+name: Website
+
+# PR gate for the evidence site. deploy-docs.yml only runs on main, so without this a
+# build-time failure in website/ would pass every PR check and only redden the deploy.
+
+on:
+  pull_request:
+    paths:
+      - 'website/**'
+      - '.github/workflows/website.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check
+        run: npm run check
+
+      # A real `astro build`, same as the deploy — the only thing that catches a broken
+      # route or a base-path regression before it reaches production.
+      - name: Build
+        run: npm run build

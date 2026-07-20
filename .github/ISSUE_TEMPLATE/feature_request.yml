@@ -1,0 +1,49 @@
+name: Feature request
+description: Propose widening the supported subset, or any other improvement
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Most feature requests here are **subset widenings**: a C# or Razor construct that Filament
+        currently refuses and that has a faithful JavaScript mapping. If that's what you're filing,
+        the key question is what the *faithful* lowering is — a mapping that merely looks right but
+        diverges from C# semantics (integer division, `long` overflow, a stale collection read) is
+        worse than a refusal, because it fails silently.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What can't you express today? Include the construct that gets refused.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed lowering
+      description: >
+        What JS should this compile to, and why is that faithful to the C# semantics?
+        Note any edge cases where it would diverge.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - generator (Razor/C# → JS lowering)
+        - runtime (signals, effects, list reconciliation)
+        - analyzer (author-time FIL#### diagnostics)
+        - subset (the shared definition of what compiles)
+        - sdk (packaging, dotnet new template, dotnet watch)
+        - bench (measurement harness, baselines)
+        - website (the evidence site)
+        - ci (build, test, release infrastructure)
+        - docs
+    validations:
+      required: true

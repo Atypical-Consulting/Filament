@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📖 Evidence & benchmarks
+    url: https://atypical-consulting.github.io/Filament/
+    about: What Filament is, how it compiles, and every measurement behind the claims.
+  - name: 💬 Questions & ideas
+    url: https://github.com/Atypical-Consulting/Filament/discussions
+    about: Ask a question or discuss an idea before filing a feature request.
+  - name: 🔒 Report a security issue
+    url: https://github.com/Atypical-Consulting/Filament/security/advisories/new
+    about: Please report vulnerabilities privately — see SECURITY.md.

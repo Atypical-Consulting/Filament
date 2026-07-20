@@ -1,0 +1,114 @@
+name: CI
+
+# Build and test the compiler on every push and pull request.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same PR branch; never cancel a push to main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dotnet:
+    name: .NET (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    # Backstop so a hung restore can't run to the 6-hour default; a cold build+test is ~3 min.
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # NOT optional, and not obvious: `dotnet test` shells out to `node`. 45 of the 46
+      # generator test files run tools/canon.mjs (the alpha-equivalence checker) against the
+      # emitted JS via Run.Node() in GateTests.cs, and there is no trait, Skip, or env-var
+      # gate on any of them — without node on PATH the whole generator suite fails.
+      # canon.mjs has zero npm dependencies, so the bare binary is enough; no install step.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      # The repo has no packages.lock.json, so setup-dotnet's `cache: true` (which requires
+      # lock files) cannot be used — cache the global NuGet package folder directly instead.
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore Filament.sln
+
+      - name: Build
+        run: dotnet build Filament.sln --no-restore -c Release
+
+      # The tests locate the repo root by walking up for DECISIONS.md (RepoPaths.Find), so
+      # they are cwd-independent but need the full checkout, not just the test binaries.
+      - name: Test
+        run: dotnet test Filament.sln --no-build -c Release --logger "trx;LogFileName=test-results.trx"
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v7
+        if: always() && matrix.os == 'ubuntu-latest'
+        with:
+          name: test-results
+          path: "**/*.trx"
+          if-no-files-found: ignore
+
+  runtime:
+    name: Signals runtime (vitest)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: src/filament-runtime
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: src/filament-runtime/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # The runtime is the one part of the system the generator does NOT emit — it ships as
+      # written, so its own suite is the only thing standing behind it.
+      - name: Test
+        run: npm test
+
+# NOTE — deliberately NOT in CI:
+#
+#   bench/  The Playwright measurement harness behind BENCH.md. It needs a real browser plus
+#           multi-megabyte Blazor WASM baseline publishes, and every BENCH.md entry records the
+#           CPU, thermal state, load average, and Chrome build it was measured on. Re-running it
+#           on a shared GitHub runner would produce numbers that contradict the committed
+#           evidence while looking equally authoritative — the committed bench/results/*.json
+#           are the record, and they are deliberately not gitignored for exactly that reason.
+#
+#   Coverage gate  The sibling repos (AdrMcp, RoselineMCP) gate on 80% line coverage via
+#           coverlet.msbuild. No project here references coverlet, so the flags would collect
+#           nothing and the threshold check would fail on a missing report. Add the package
+#           first if the gate is wanted.

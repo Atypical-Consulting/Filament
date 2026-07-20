@@ -10,6 +10,11 @@ const {
   title = "Filament — Blazor components, compiled to JavaScript",
   description = "Filament compiles Blazor-style .razor components to lean static HTML + JS with a tiny signals runtime and no .NET in the browser. Smaller bundles, faster DOM, measured against Blazor WebAssembly.",
 } = Astro.props;
+
+// The site is served from /Filament/, not a domain root, so a hand-written href="/favicon.svg"
+// would 404 in production. Derive it from `base` instead. The trailing-slash strip keeps this
+// correct whether or not Astro normalises BASE_URL with one.
+const baseUrl = import.meta.env.BASE_URL.replace(/\/$/, "");
 ---
 
 <!doctype html>
@@ -24,7 +29,7 @@ const {
     <meta property="og:description" content={description} />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href={`${baseUrl}/favicon.svg`} type="image/svg+xml" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

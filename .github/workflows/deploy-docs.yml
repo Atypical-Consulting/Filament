@@ -1,0 +1,85 @@
+name: Deploy docs to GitHub Pages
+
+# Builds the Astro evidence site in website/ and publishes it to GitHub Pages at
+# https://atypical-consulting.github.io/Filament/.
+# Enabled under: repo Settings → Pages → Build and deployment → Source: GitHub Actions.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel an in-progress production deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          # Astro 5 requires Node >=18.20.8 / >=20.3 / >=22. Nothing in the repo pins a
+          # version (no .nvmrc, no engines field), so this workflow is the pin.
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # The site is a PROJECT page served from /Filament/, not a domain root — astro.config.mjs
+      # sets `base` accordingly and the build rewrites every asset and link under it. A
+      # hand-written root-absolute href would bypass that and 404 only in production, so if you
+      # add one, derive it from import.meta.env.BASE_URL (see Layout.astro's favicon).
+      - name: Build site
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: ./website/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.d3.outputs.page_url || steps.d2.outputs.page_url || steps.d1.outputs.page_url }}
+    steps:
+      # The Pages deployment API intermittently returns "Deployment failed, try again later"
+      # on an otherwise-valid artifact. Retry twice rather than redden a green build — the
+      # same pattern AdrMcp and RoselineMCP use.
+      - name: Deploy to GitHub Pages (attempt 1)
+        id: d1
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Deploy to GitHub Pages (attempt 2)
+        id: d2
+        if: steps.d1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Deploy to GitHub Pages (attempt 3)
+        id: d3
+        if: steps.d1.outcome == 'failure' && steps.d2.outcome == 'failure'
+        uses: actions/deploy-pages@v5

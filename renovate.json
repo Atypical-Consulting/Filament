@@ -1,0 +1,13 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
+  "//": "baseBranchPatterns overrides the org-level default of [\"dev\"] — this repo's default branch is main, and without this override Renovate would target a branch that does not exist here.",
+  "baseBranchPatterns": ["main"],
+  "packageRules": [
+    {
+      "description": "Microsoft.AspNetCore.Razor.Language is deliberately frozen at 6.0.36. The generator reads Razor's internal syntax tree through a narrow seam; a version bump is a migration, not a dependency update. See docs/adr/0001-eol-razor-mitigation.md.",
+      "matchPackageNames": ["Microsoft.AspNetCore.Razor.Language"],
+      "enabled": false
+    }
+  ]
+}

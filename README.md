@@ -8,6 +8,10 @@
 
 [How it works](#how-it-works) · [The evidence](#the-evidence) · [What compiles](#what-compiles) · [Honest limits](#honest-limits) · [Quickstart](#quickstart)
 
+[![CI](https://github.com/Atypical-Consulting/Filament/actions/workflows/ci.yml/badge.svg)](https://github.com/Atypical-Consulting/Filament/actions/workflows/ci.yml)
+[![Site](https://img.shields.io/badge/evidence-site-f59e0b)](https://atypical-consulting.github.io/Filament/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 </div>
 
 ---
