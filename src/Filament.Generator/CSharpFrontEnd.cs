@@ -2539,6 +2539,9 @@ public sealed class CSharpFrontEnd
                 "a LINQ operator must be called on a source (e.g. items.Where(...)). Refusing to emit.", inv.SpanStart);
         var recv = Expr(ma.Expression);
         var args = inv.ArgumentList.Arguments;
+        // The numeric aggregates (Sum/Min/Max/Average) are admitted only when the RESULT is int or double -- a
+        // long (BigInt) or decimal (boxed) aggregate would need a typed reduction, deferred (decision 121).
+        var numAgg = _model.GetTypeInfo(inv).Type?.SpecialType is SpecialType.System_Int32 or SpecialType.System_Double;
         return (symbol.Name, args.Count) switch
         {
             ("Where", 1) => $"{recv}.filter({Lambda(args[0])})",
@@ -2550,9 +2553,20 @@ public sealed class CSharpFrontEnd
             ("All", 1) => $"{recv}.every({Lambda(args[0])})",
             ("ToList", 0) => recv,
             ("ToArray", 0) => recv,
+            // Aggregates over a number list (decision 121). Sum -> reduce; Min/Max -> Math.min/max spread;
+            // Average -> sum/length. Empty-source divergence (C# throws; JS gives 0/Infinity/NaN) is disclosed.
+            ("Sum", 0) when numAgg => $"{recv}.reduce((a, b) => a + b, 0)",
+            ("Min", 0) when numAgg => $"Math.min(...{recv})",
+            ("Max", 0) when numAgg => $"Math.max(...{recv})",
+            ("Average", 0) when numAgg => $"({recv}.reduce((a, b) => a + b, 0) / {recv}.length)",
+            // First/Last -> index (element type is whatever the list holds). First(pred) -> find.
+            ("First", 0) => $"{recv}[0]",
+            ("First", 1) => $"{recv}.find({Lambda(args[0])})",
+            ("Last", 0) => $"{recv}.at(-1)",
             _ => Refuse("unsupported-call",
                 $"the LINQ operator '{symbol.Name}' (arity {args.Count}) is not in the subset. Section 5 admits " +
-                "Where, Select, Count, Any, All and ToList/ToArray over a List. Refusing to emit.", inv.SpanStart),
+                "Where, Select, Count, Any, All, ToList/ToArray, and the number aggregates Sum/Min/Max/Average/" +
+                "First/Last over a List. Refusing to emit.", inv.SpanStart),
         };
     }
 
