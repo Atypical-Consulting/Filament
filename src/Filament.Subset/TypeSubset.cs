@@ -96,7 +96,26 @@ public static class TypeSubset
     /// <c>EventCallback&lt;T&gt;</c> is NOT matched, and stays refused: an argument would have to be
     /// marshalled from a DOM event, which is a different question and is not measured yet.
     /// </summary>
-    public static bool IsEventCallback(ITypeSymbol? type) =>
+    public static bool IsEventCallback(ITypeSymbol? type) => IsComponentsType(type, "EventCallback");
+
+    /// <summary>
+    /// A non-generic <c>RenderFragment</c> (decision 131). Like EventCallback, deliberately NOT admitted
+    /// by Classify -- it is not a value the subset can hold or display -- and admitted in ONE position
+    /// only: a <c>[Parameter]</c>, where it names the HOLE a composing parent's markup drops into. There
+    /// is no delegate at runtime: the parent's markup subtree is inlined at the child's
+    /// <c>@ChildContent</c> position, compiled in the PARENT's scope because that is the scope it was
+    /// written in.
+    ///
+    /// <c>RenderFragment&lt;T&gt;</c> is NOT matched, and stays refused: a templated fragment takes a
+    /// context argument per item, which is a different question and is not measured yet.
+    /// </summary>
+    public static bool IsRenderFragment(ITypeSymbol? type) => IsComponentsType(type, "RenderFragment");
+
+    /// <summary>Name + namespace rather than a display string, so a NULLABLE annotation cannot change the
+    /// answer: `RenderFragment?` is the same type as `RenderFragment`, and the ONE declaration form Blazor
+    /// authors actually write for ChildContent is the nullable one.</summary>
+    static bool IsComponentsType(ITypeSymbol? type, string name) =>
         type is INamedTypeSymbol { TypeArguments.Length: 0 } n &&
-        n.ToDisplayString() == "Microsoft.AspNetCore.Components.EventCallback";
+        n.Name == name &&
+        n.ContainingNamespace?.ToDisplayString() == "Microsoft.AspNetCore.Components";
 }

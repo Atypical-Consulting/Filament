@@ -4725,3 +4725,54 @@ l'exécution, Filament la connaît à la compilation, donc la fonctionnalité co
 ---
 
 *Fin de l'entrée n°49. Ne pas modifier — ajouter une entrée n°50 pour toute rectification.*
+
+---
+
+## Entrée n°50 — 2026-07-20 — Phase 4 : `RenderFragment` / `ChildContent` mesuré contre Blazor (CORRECTION)
+
+**`RenderFragment` en position `[Parameter]`** (décision #131) rejoint le §5 — la moitié STRUCTURELLE de la
+composition. #88/#90 passaient une VALEUR vers le bas, #130 un ÉVÉNEMENT vers le haut ; celui-ci passe du MARKUP.
+Il n'existe aucun objet `RenderFragment` à l'exécution : le sous-arbre du parent est **splicé à la compilation** à
+la position du `@ChildContent` de l'enfant, mais **compilé dans la portée où il a été écrit** (celle du parent).
+**AUCUNE primitive runtime** : le runtime reste gelé à 1 943 o.
+
+### Un défaut trouvé au passage, consigné comme tel
+
+Avant cette tranche, `EmitComposition` ne lisait que les enfants ATTRIBUTS d'un élément composant : le contenu
+passé à un enfant était **ni émis ni refusé, mais SUPPRIMÉ à exit 0**. Sonde :
+`<Greeting Name="World"><span id="dropped">I AM CONTENT</span></Greeting>` → module émis sans le `<span>`.
+C'est le mal-compilé silencieux que le §10 interdit. Fermé par cette tranche, avec témoin dédié.
+
+### Ce qui est mesuré
+
+`baseline/Fragment.Blazor` : `App.razor` compose `<Card Title="hits"><span id="body">@count</span></Card>` ;
+`Card.razor` rend `<div id="card"><h3 id="title">@Title</h3>@ChildContent</div>`. Le contrat vérifie **DEUX
+affirmations distinctes**, parce qu'un fragment peut échouer de deux façons indépendantes :
+**la STRUCTURE** — `#body` est-il DANS `#card` (`card.contains(body)`) et APRÈS `#title`
+(`compareDocumentPosition`) ? Un fragment émis À CÔTÉ de l'enfant plutôt que DEDANS se lierait pourtant
+correctement, et un contrôle de valeur seul ne le verrait pas. **La LIAISON** — `#body` passe-t-il de `0` à `1`
+puis `2` en cliquant `#inc` ? Un fragment qui rend mais perd la liaison qu'il portait resterait à « 0 »
+indéfiniment. **`HARNESS_VERSION` 1.43.0 → 1.44.0**, divulgué.
+
+```
+dotnet publish baseline/Fragment.Blazor -c Release -o bench/publish/blazor-fragment
+./bench/build-filament.sh filament-fragment-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-fragment/wwwroot --app fragment --label blazor-fragment       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-fragment-gen   --app fragment --label filament-fragment-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#body` dans `#card` | après `#title` | `#body` (initial → 1 clic → 2 clics) | verdict |
+|---|---|---|---|---|
+| **blazor-fragment** (autorité) | `true` | `true` | `0 → 1 → 2` | contrat OK |
+| **filament-fragment-gen** (générateur) | `true` | `true` | `0 → 1 → 2` | contrat OK |
+
+**Les cinq champs observés coïncident.** Le splice à la compilation est donc fidèle sur les deux axes : le markup
+du parent atterrit à la position que l'ENFANT a choisie, et il conserve la liaison écrite dans la portée du
+PARENT. `git diff -- src/filament-runtime` vide. Trois témoins `Unsupported/` (champ, contenu non plaçable,
+fragment dans une expression). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°50. Ne pas modifier — ajouter une entrée n°51 pour toute rectification.*

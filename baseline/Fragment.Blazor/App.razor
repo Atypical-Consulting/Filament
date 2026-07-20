@@ -1,0 +1,21 @@
+@* Parent: hands a child a FRAGMENT OF ITS OWN MARKUP. `<Card>…</Card>` passes everything between
+   the tags as the child's [Parameter] RenderFragment ChildContent, and the child decides WHERE to
+   put it (decision 131). This is the structural half of composition: #88/#90/#130 passed values and
+   an event across the boundary, this passes MARKUP.
+
+   The lowering: the fragment is inlined at the child's @ChildContent position, and it is compiled in
+   the PARENT's scope, because that is the scope it was written in. So @count inside the fragment is
+   a live binding on the parent's own signal even though it renders inside the child's <div id="card">.
+
+   DOM contract: #title is the child's own heading, folded from the static Title. #body is the
+   PARENT's markup, sitting INSIDE #card. Clicking #inc must move #body 0 -> 1 -> 2 -- a fragment
+   that rendered but lost its binding would sit at "0" forever; that is the measurement (BENCH n°50).
+
+   No whitespace between the siblings inside #wrap, matching BoundCompose.Blazor's contract. *@
+
+<div id="wrap"><Card Title="hits"><span id="body">@count</span></Card><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

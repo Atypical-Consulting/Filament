@@ -881,6 +881,12 @@ public sealed class TemplateCompiler
             case HtmlContentIntermediateNode html:
                 return $"document.createTextNode({JsString(RawText(html))})";
 
+            // `@ChildContent` inside a composed child: not a binding but a POSITION -- the composing
+            // parent's markup is inlined here, in the PARENT's scope (decision 131).
+            case CSharpExpressionIntermediateNode frag when _code.SlotIsFragment(frag):
+                EmitFragment(frag, parent);
+                return null;
+
             // @currentCount
             case CSharpExpressionIntermediateNode expr:
                 return EmitBinding(expr, parent);
@@ -1074,6 +1080,69 @@ public sealed class TemplateCompiler
     /// Anything outside the slice -- a missing sibling, a bound parameter, a non-string parameter, a
     /// child with state/behaviour, or not exactly one root element -- refuses, loud and located.
     /// </summary>
+    /// <summary>
+    /// The markup a composing parent passed INTO a child (`&lt;Card&gt;…&lt;/Card&gt;`), together with the
+    /// parent context it must be compiled in (decision 131). All four fields travel together because the
+    /// fragment is written in the PARENT's file and scope: its `@count` names the PARENT's signal, and its
+    /// regions were planned by the PARENT's collect walk. Emitting it under the child's context would
+    /// resolve those names against the wrong component -- or, worse, silently against nothing.
+    /// </summary>
+    sealed record Fragment(
+        IReadOnlyList<IntermediateNode> Nodes,
+        CSharpFrontEnd Code,
+        HashSet<IntermediateNode> Regions,
+        string File);
+
+    /// <summary>The fragment in scope for the child currently being inlined, or null. Saved/restored
+    /// around each composition exactly as _code/_regions/_file are, so a nested composition cannot see
+    /// its grandparent's fragment.</summary>
+    Fragment? _fragment;
+
+    /// <summary>
+    /// Inline the composing parent's markup at the child's `@ChildContent` (decision 131). The parent
+    /// context is restored for the duration, so the fragment compiles in the scope it was WRITTEN in --
+    /// which is what makes `<span id="body">@count</span>` a live binding on the parent's signal even
+    /// though it renders inside the child's element.
+    /// </summary>
+    void EmitFragment(CSharpExpressionIntermediateNode slot, string? parent)
+    {
+        if (_fragment is not { } frag)
+        {
+            // No parent supplied one. Blazor renders a null RenderFragment as NOTHING, so this emits
+            // nothing -- the one case where silence is the faithful answer rather than a dropped node.
+            return;
+        }
+
+        if (parent is null)
+            throw new GeneratorException(
+                "FIL-WIRING: a RenderFragment reached the emitter with no container to insert into. " +
+                "A fragment slot is always a child of the element the composed child declared it in. " +
+                "This is the TOOL being broken, not the input.");
+
+        var savedFile = _file;
+        var savedCode = _code;
+        var savedRegions = _regions;
+        var savedFragment = _fragment;
+
+        _file = frag.File;
+        _code = frag.Code;
+        _regions = frag.Regions;
+        // The fragment's own content may compose further children, but it is not itself inside one:
+        // clearing this is what stops a fragment that contains `@ChildContent` from re-inlining itself.
+        _fragment = null;
+
+        foreach (var node in frag.Nodes)
+        {
+            var c = EmitNode(node, parent);
+            if (c is not null) _create.Add($"insert({parent}, {c});");
+        }
+
+        _file = savedFile;
+        _code = savedCode;
+        _regions = savedRegions;
+        _fragment = savedFragment;
+    }
+
     string? EmitComposition(MarkupElementIntermediateNode el)
     {
         var childPath = Path.Combine(Path.GetDirectoryName(_file)!, el.TagName + ".razor");
@@ -1145,9 +1214,20 @@ public sealed class TemplateCompiler
         var childCode = new CSharpFrontEnd();
         childCode.BindParameters(bindings, reactive, handlers);
 
+        // THE MARKUP THE PARENT PASSED IN (decision 131). Everything that is not an attribute is the
+        // child content: `<Card Title="x"><span>…</span></Card>` hands the child that <span>.
+        //
+        // THIS LOOP CLOSED A SILENT MIS-COMPILE. Before it existed, EmitComposition read only the
+        // ATTRIBUTE children, so a composed element's content was neither emitted nor refused -- it was
+        // DROPPED, at exit 0, and the module rendered a card with nothing in it. That is precisely the
+        // failure section 10 forbids and the reason the node gate exists; it was measured, not guessed
+        // (a probe emitted a module with the passed <span> simply absent).
+        var fragmentNodes = el.Children.Where(c => c is not HtmlAttributeIntermediateNode).ToList();
+
         var savedFile = _file;
         var savedCode = _code;
         var savedRegions = _regions;
+        var savedFragment = _fragment;
         var diagBefore = _diagnostics.Count;
 
         _file = childParse.FilePath;
@@ -1175,6 +1255,15 @@ public sealed class TemplateCompiler
                 Diag("composition-out-of-subset",
                     $"<{el.TagName}> has no parameter '{unknown}'. {el.TagName}.razor declares: " +
                     $"{string.Join(", ", childCode.ParameterNames)}. Refusing to emit.", el.Source);
+            // Content passed to a child that declares no RenderFragment has nowhere to go. Blazor calls
+            // this out at build time; before decision 131 this compiler DROPPED it silently.
+            else if (fragmentNodes.Count > 0 && !childCode.FragmentParameterNames.Any())
+                Diag("composition-out-of-subset",
+                    $"<{el.TagName}> was given content, but {el.TagName}.razor declares no " +
+                    "[Parameter] RenderFragment to place it in, so there is nowhere in the child for it to " +
+                    "render. Declare `[Parameter] public RenderFragment? ChildContent { get; set; }` and " +
+                    "render it with @ChildContent. Refusing to emit rather than drop the content silently.",
+                    el.Source);
             else if (roots.Count != 1)
                 Diag("composition-out-of-subset",
                     $"<{el.TagName}> ({el.TagName}.razor) must have exactly ONE root element for the " +
@@ -1186,6 +1275,11 @@ public sealed class TemplateCompiler
                 // the bound constant. Same save/restore idiom EmitBranchFn uses for _create/_bindings.
                 _code = childCode;
                 _regions = childRegions;
+                // The fragment travels with the PARENT context it was written in, so that when the child's
+                // @ChildContent is reached the parent's scope can be restored to compile it (decision 131).
+                _fragment = fragmentNodes.Count > 0
+                    ? new Fragment(fragmentNodes, savedCode, savedRegions, savedFile)
+                    : null;
                 result = EmitNode(roots[0], parent: null);
             }
         }
@@ -1193,6 +1287,7 @@ public sealed class TemplateCompiler
         _file = savedFile;
         _code = savedCode;
         _regions = savedRegions;
+        _fragment = savedFragment;
         return result;
     }
 

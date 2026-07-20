@@ -1,0 +1,9 @@
+@* Leaf-display child that PLACES a fragment: two [Parameter]s and nothing else, so IsLeafDisplay
+   still holds. @Title folds to the static string the parent supplied; @ChildContent is the hole the
+   parent's markup drops into -- the child chooses the position, the parent owns the content. *@
+<div id="card"><h3 id="title">@Title</h3>@ChildContent</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

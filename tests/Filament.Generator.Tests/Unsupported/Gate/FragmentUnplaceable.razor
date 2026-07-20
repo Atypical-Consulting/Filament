@@ -1,0 +1,8 @@
+@* THE SILENT MIS-COMPILE decision 131 CLOSED. This parent hands <Plain> a span, but Plain.razor
+   declares no [Parameter] RenderFragment, so there is nowhere in the child for that span to render.
+
+   BEFORE #131 THIS COMPILED, AT EXIT 0, WITH THE SPAN SIMPLY ABSENT: EmitComposition read only the
+   ATTRIBUTE children of a component element, so passed content was neither emitted nor refused. A
+   module that looks right and does less than the source says -- exactly what section 10 forbids and
+   what the node gate exists to prevent. Measured with a probe, not guessed. *@
+<div id="wrap"><Plain Name="World"><span id="dropped">I AM CONTENT</span></Plain></div>

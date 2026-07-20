@@ -1,0 +1,8 @@
+@* The sibling child FragmentUnplaceable.razor composes: a leaf display with a value parameter and
+   NO RenderFragment, so it has nowhere to put content a parent passes in. Compiles perfectly well on
+   its own -- it is the PARENT that is refused, which is the point. *@
+<p id="g">@Name</p>
+
+@code {
+    [Parameter] public string Name { get; set; } = "";
+}

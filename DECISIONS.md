@@ -4450,3 +4450,47 @@ détacherait après le premier serait pris aussi sûrement qu'un qui ne partirai
 
 §5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »** — la composition est désormais complète
 dans les deux sens, mais `RenderFragment` et les non-buts §3 restent devant.
+
+## 131. `RenderFragment` / `ChildContent` — la moitié STRUCTURELLE de la composition (et un mal-compilé silencieux fermé)
+
+**Décision.** Un `[Parameter] public RenderFragment? ChildContent { get; set; }` entre dans le sous-ensemble, dans
+la même position unique qu'`EventCallback` : celle d'un paramètre. `<Card Title="hits"><span id="body">@count</span></Card>`
+passe à l'enfant TOUT ce qui se trouve entre les balises ; l'enfant décide OÙ le placer, via `@ChildContent`.
+#88/#90 passaient une VALEUR vers le bas, #130 un ÉVÉNEMENT vers le haut ; celui-ci passe du MARKUP.
+
+**Le lowering — un splice à la compilation.** Il n'existe aucun objet `RenderFragment` à l'exécution et aucune
+seconde passe de rendu : le sous-arbre de markup du parent est **inliné à la position du `@ChildContent` de
+l'enfant**. Le point délicat n'est pas de le rendre, c'est de le rendre **dans la bonne portée** : le fragment est
+compilé dans la portée où il a été ÉCRIT — celle du PARENT — bien qu'il soit émis à une position choisie par
+l'ENFANT. D'où `effect(() => setText(_tx0, count.value))` sous un élément que l'enfant a créé. `Fragment` (le
+record interne) transporte donc les quatre choses ensemble — nœuds, `CSharpFrontEnd`, régions, fichier — parce
+qu'émettre le fragment sous le contexte de l'enfant résoudrait ses noms contre le mauvais composant, ou pire,
+silencieusement contre rien.
+
+**UN MAL-COMPILÉ SILENCIEUX TROUVÉ ET FERMÉ — consigné comme un défaut, pas comme une lacune.** Avant cette
+tranche, `EmitComposition` ne lisait que les enfants ATTRIBUTS d'un élément composant. Le contenu passé à un
+enfant n'était donc **ni émis ni refusé : il était SUPPRIMÉ, à exit 0**. Mesuré par sonde, pas supposé :
+`<Greeting Name="World"><span id="dropped">I AM CONTENT</span></Greeting>` émettait un module où le `<span>` était
+purement absent. C'est exactement le « module qui a l'air juste et fait moins que la source ne dit » que le §10
+interdit et pour quoi la barrière de nœuds existe — elle avait un trou, sur le seul type d'élément qui ne la
+traverse pas. Fermé : du contenu remis à un enfant qui ne déclare AUCUN `RenderFragment` est désormais refusé,
+localisé, et le message dit comment corriger (témoin `Gate/FragmentUnplaceable.razor` + son enfant `Plain.razor`).
+
+**NON LIÉ EST ADMIS, et c'est une vraie différence avec #130, pas une incohérence.** Un `EventCallback` non lié est
+un BOUTON MORT — il s'affiche puis ne part jamais. Un `RenderFragment` non lié ne rend RIEN, ce qui est exactement
+ce que fait Blazor d'un fragment nul ; l'admettre est donc fidèle, et le refuser refuserait `<Card Title="x" />`.
+**FRONTIÈRES MAINTENUES REFUSÉES** : `Gate/RenderFragment.razor` (forme CHAMP) reste refusée à son type — il
+n'existe aucune valeur de ce type à détenir ; `RenderFragment<T>` (fragment templaté, argument de contexte par
+item) n'est pas reconnu et reste refusé ; et un fragment utilisé DANS une expression plus large est refusé
+explicitement (`unsupported-expression`) — un fragment est du MARKUP, il n'y a rien à concaténer ni à afficher.
+Suite : **430 tests** (352 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `git diff -- src/filament-runtime` vide ; runtime toujours gelé à 1 943 o.
+MESURÉ (entrée n°50) : le contrat vérifie DEUX affirmations distinctes, parce qu'un fragment peut échouer de deux
+façons — la STRUCTURE (`#body` est bien DANS `#card`, et APRÈS le `#title` de l'enfant : un fragment émis à côté de
+l'enfant plutôt que dedans lierait pourtant correctement) et la LIAISON (`0 → 1 → 2` : un fragment qui rend mais
+perd sa liaison resterait à « 0 » indéfiniment). DOM observé identique à Blazor (autorité) sur les cinq champs.
+`HARNESS_VERSION` 1.43.0 → 1.44.0, divulgué.
+
+§5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »** — la composition est maintenant complète
+dans ses trois axes (valeur, événement, markup), mais les non-buts §3 de niveau DIRECTIVE restent devant.

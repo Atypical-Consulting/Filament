@@ -298,6 +298,11 @@ public sealed class CSharpFrontEnd
         /// methods (decision 130). Nowhere else can a slot be a method group -- the marker overload that
         /// lets C# bind one is emitted only for component-attribute slots.</summary>
         public bool IsMethodGroup;
+
+        /// <summary>The slot is a whole-expression read of a RenderFragment [Parameter] -- `@ChildContent`
+        /// (decision 131). It has no JS: the template compiler inlines the composing parent's markup here
+        /// instead of binding anything.</summary>
+        public bool IsFragment;
     }
 
     /// <summary>The decimal helpers this module actually used (`decAdd`, `decStr`, …). A `decimal` value is a
@@ -373,6 +378,18 @@ public sealed class CSharpFrontEnd
     /// methods; there is no value to display and no signal to track, so the bound-parameter reactivity
     /// rule does not apply to it.</summary>
     public bool SlotIsMethodGroup(IntermediateNode node) => Get(node).IsMethodGroup;
+
+    /// <summary>The slot is `@ChildContent` — the POSITION a composing parent's markup is inlined at,
+    /// not a value to bind (decision 131).</summary>
+    public bool SlotIsFragment(IntermediateNode node) => Get(node).IsFragment;
+
+    /// <summary>Is this [Parameter] declared as a RenderFragment? (decision 131)</summary>
+    public bool IsFragmentParameter(string name) =>
+        _paramsByName.TryGetValue(name, out var p) && Filament.Subset.TypeSubset.IsRenderFragment(p.Type);
+
+    /// <summary>The RenderFragment [Parameter] names this child declares — the holes a parent may fill.</summary>
+    public IEnumerable<string> FragmentParameterNames =>
+        _paramsByName.Where(kv => Filament.Subset.TypeSubset.IsRenderFragment(kv.Value.Type)).Select(kv => kv.Key);
 
     /// <summary>What to emit for a container whose children held template C#, in order.</summary>
     /// <summary>
@@ -1081,6 +1098,19 @@ public sealed class CSharpFrontEnd
                 return;
             }
         }
+        // A RENDERFRAGMENT PARAMETER -- the STRUCTURAL half of composition (decision 131). It names the
+        // HOLE the composing parent's markup drops into. Like EventCallback it holds no runtime value:
+        // the parent's markup subtree is inlined at the child's @ChildContent position, and emitting it
+        // is the template compiler's job, not this one's -- see TemplateCompiler.EmitFragment.
+        //
+        // UNBOUND IS ADMITTED HERE, and that is a real difference from EventCallback rather than an
+        // inconsistency. An unbound EventCallback is a DEAD BUTTON -- it renders and then never fires.
+        // An unbound RenderFragment renders NOTHING, which is exactly what Blazor does with a null
+        // fragment, so admitting it is faithful and refusing it would refuse `<Card Title="x" />`.
+        else if (Filament.Subset.TypeSubset.IsRenderFragment(type))
+        {
+            // nothing to check: the parameter emits nothing on its own, bound or not.
+        }
         // The mirror image: the parent bound a METHOD to a parameter that declares a VALUE. Folding a
         // function where a number or a string is meant would render "inc" where the author wrote data.
         else if (_paramHandlers.ContainsKey(name))
@@ -1641,6 +1671,20 @@ public sealed class CSharpFrontEnd
         foreach (var node in slots)
         {
             var e = SlotSyntax(node);
+
+            // `@ChildContent` ON ITS OWN is not an expression to translate -- it is the position where a
+            // composing parent's markup is inlined (decision 131). Recognised HERE, at the WHOLE-slot
+            // level, so that a fragment used as part of a larger expression never reaches this branch and
+            // is refused by Identifier() instead: there is no value to concatenate or compare.
+            var isFragment = e is IdentifierNameSyntax fid
+                && _model.GetSymbolInfo(fid).Symbol is IPropertySymbol fp
+                && IsFragmentParameter(fp.Name);
+            if (isFragment)
+            {
+                _slots[node] = new Slot { Js = "/*fragment*/", IsFragment = true };
+                continue;
+            }
+
             _slots[node] = new Slot
             {
                 Js = Expr(e),
@@ -2558,6 +2602,17 @@ public sealed class CSharpFrontEnd
             // into the parent's scope, so the signal it names is reachable.
             case IPropertySymbol ps when _paramEnv.TryGetValue(ps.Name, out var boundJs):
                 return boundJs;
+
+            // A RenderFragment reached here, which means it is NOT the whole slot (TranslateSlots takes
+            // that case first) -- it is part of a larger expression. A fragment is MARKUP, not a value:
+            // there is nothing to concatenate it with, compare it to, or print (decision 131).
+            case IPropertySymbol ps when IsFragmentParameter(ps.Name):
+                return Refuse("unsupported-expression",
+                    $"'{ps.Name}' is a RenderFragment used inside a larger expression. A fragment is MARKUP, " +
+                    "and it is admitted only as a whole binding on its own (`@" + ps.Name + "`), which is the " +
+                    "position its content is inlined at. There is no value here to combine with anything. " +
+                    "Refusing to emit.",
+                    id.SpanStart);
 
             default:
                 Refuse("unresolved-name",
