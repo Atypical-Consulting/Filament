@@ -4449,3 +4449,47 @@ couverture (le fixture `Unsupported/Foreach.razor` reste refusé — collection 
 ---
 
 *Fin de l'entrée n°43. Ne pas modifier — ajouter une entrée n°44 pour toute rectification.*
+
+---
+
+## Entrée n°44 — 2026-07-20 — Phase 4 : le `@foreach` sur un Dictionary réassigné mesuré contre Blazor (CORRECTION)
+
+**Un `@foreach` sur un champ `Dictionary<K,V>` réassigné** (décision #125) rejoint le §5 — la sœur KeyValuePair du
+`@foreach`-sur-tableau (#124). Un Dictionary est une Map JS (#118) ; `list()` réconcilie un TABLEAU, donc la source
+ÉTALE la Map signal : `() => [...scores.value]` rend `[[k,v],…]`. La variable de boucle `kvp` est une paire `[k,v]` :
+`@kvp.Key` → `kvp[0]` (clé de réconciliation, statique). **Le point subtil** : `@kvp.Value` n'est PAS `kvp[1]` figé —
+`list()` réutilise la ligne d'une clé persistante sans rappeler `create`, donc une valeur figée serait PÉRIMÉE quand
+la clé change de valeur (Blazor re-rend l'élément réutilisé). `@kvp.Value` compile donc en la lecture RÉACTIVE
+`scores.value.get(kvp[0])` (un `effect` abonné au signal Dict). **AUCUNE primitive runtime** — Map/spread/.get sont
+des builtins JS ; `signal`/`effect`/`setText`/`list` sont le runtime de Rows.
+
+### Ce qui est mesuré
+
+`baseline/ForeachDict.Blazor` : `scores` démarre { a=1, b=2 } → `"a=1b=2"` ; `#bump` RÉASSIGNE à { b=20, c=3, a=1 }.
+La clé « b » PERSISTE mais sa valeur passe 2→20 (le rafraîchissement réactif), « c » est insérée, « a » persiste, et
+l'ordre keyed devient b,c,a. La branche `foreachdict` de `verifyContract` clique `#bump` puis exige le texte de
+`#list` et son compte de `<li>`. **`HARNESS_VERSION` 1.38.0 → 1.39.0**, divulgué.
+
+```
+dotnet publish baseline/ForeachDict.Blazor -c Release -o bench/publish/blazor-foreachdict
+./bench/build-filament.sh filament-foreachdict-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-foreachdict/wwwroot --app foreachdict --label blazor-foreachdict       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-foreachdict-gen   --app foreachdict --label filament-foreachdict-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#list` (texte / compte `<li>`) | verdict |
+|---|---|---|
+| **blazor-foreachdict** (autorité) | `"a=1b=2"/2 → "b=20c=3a=1"/3` | contrat OK |
+| **filament-foreachdict-gen** (générateur) | `"a=1b=2"/2 → "b=20c=3a=1"/3` | contrat OK |
+
+**Les deux réconcilient à l'identique** — l'ordre keyed (b,c,a), l'insertion de « c », ET le rafraîchissement de la
+valeur de « b » (2→20 sur une clé réutilisée) coïncident des deux côtés. La mesure PROUVE la lecture réactive : un
+`kvp[1]` statique aurait affiché « b=2 » périmé et cassé le contrat. L'ordre d'énumération d'un `Dictionary` .NET
+(insertion) coïncide avec celui d'une Map JS — vérifié contre l'autorité Blazor. `git diff -- src/filament-runtime`
+vide. Élargissement de couverture (pas de fixture `Unsupported/` distinct). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°44. Ne pas modifier — ajouter une entrée n°45 pour toute rectification.*

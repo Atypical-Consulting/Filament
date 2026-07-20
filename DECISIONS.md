@@ -4266,3 +4266,34 @@ réassigné à [3,4,1,5,2]) et `filament-foreacharray-gen` rendent `#list` texte
 `3 → 5`, à l'identique — la réconciliation keyed produit le même ordre DOM des deux côtés. Élargissement de
 COUVERTURE (le fixture `Unsupported/Foreach.razor` reste refusé — collection non déclarée). `HARNESS_VERSION`
 1.37.0 → 1.38.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+## 125. Le `@foreach` sur un DICTIONARY réassigné entre dans le §5 — la source ÉTALE la Map et `@kvp.Value` est une lecture RÉACTIVE ; sœur KeyValuePair de #124
+
+**Décision.** Un `@foreach` sur un champ `Dictionary<K,V>` rejoint le §5 quand ce Dict est un SIGNAL (lu par le
+`@foreach` ET réassigné en bloc, conjonction #67). Un Dictionary est une Map JS (#118) ; `list()` réconcilie un
+TABLEAU, pas une Map, donc la source l'ÉTALE : `() => [...scores.value]` rend `[[k,v], …]`. La variable de boucle
+`kvp` est ainsi une paire `[k, v]` : `@kvp.Key` → `kvp[0]` (la clé de réconciliation, statique). **`@kvp.Value`
+n'est PAS `kvp[1]`.** `list()` RÉUTILISE la ligne d'une clé qui persiste (il ne rappelle jamais `create`), donc un
+`kvp[1]` figé deviendrait PÉRIMÉ quand la valeur de cette clé change — là où Blazor re-rend l'élément réutilisé.
+Donc `@kvp.Value` compile en une lecture RÉACTIVE `scores.value.get(kvp[0])` : lire le signal Dict abonne le slot
+(un `effect`), qui se re-exécute à la réassignation et récupère la valeur COURANTE pour la clé stable de la ligne.
+
+**Ce que ça touche.** Trois ajouts ciblés au générateur : (1) `ForEach()` construit désormais le lambda-source
+COMPLET selon la forme (List → bloc `{ version.value; return array; }` ; `T[]` → `() => x.value` ; Dict →
+`() => [...x.value]`) — `ForEachOp` porte un unique `SourceJs`, ce qui REMPLACE l'heuristique d'égalité de chaînes
+de #124 (plus propre, et les chemins List/tableau restent octet-identiques : snapshots Rows/RootForeach/ForeachArray
+verts) ; (2) `MemberAccess` mappe `kvp.Key`→`kvp[0]` et `kvp.Value`→`{dict}.value.get(kvp[0])`, le Dict étant
+retrouvé via `DictOfForeachVar` (la variable de boucle est déclarée PAR le `ForEachStatement`, dont `.Expression`
+est le champ Dict) ; (3) `IsReactive` reconnaît `kvp.Value` comme réactif (il lit le signal Dict bien qu'aucun
+signal n'apparaisse syntaxiquement), pour que le slot devienne un `effect`. `@kvp.Key` reste NON réactif (la clé ne
+change jamais pour une ligne qui persiste). Suite : **316 tests** (310→316 : +4 ForeachDict, +2 témoins subset),
+runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `signal`/`effect`/`setText`/`list`/`insert`/`listen` sont le runtime de Rows ;
+`Map`/spread/`.get` sont des builtins JS. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°44) :
+`baseline/ForeachDict.Blazor` (`scores` { a=1, b=2 } réassigné à { b=20, c=3, a=1 } : la clé « b » PERSISTE mais sa
+valeur change 2→20, « c » ajoutée, ordre b,c,a) et `filament-foreachdict-gen` rendent `#list` texte
+`"a=1b=2" → "b=20c=3a=1"`, à l'identique — la mesure PROUVE le rafraîchissement de valeur qu'un `kvp[1]` statique
+raterait. L'ordre d'énumération d'un `Dictionary` .NET (insertion) coïncide avec celui d'une Map JS : vérifié contre
+l'autorité Blazor. Élargissement de COUVERTURE (pas de fixture `Unsupported/` distinct). `HARNESS_VERSION`
+1.38.0 → 1.39.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
