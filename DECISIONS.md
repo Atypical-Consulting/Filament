@@ -4369,3 +4369,40 @@ sélecteur à corps-bloc. Suite : **411 tests** (333 générateur / 60 subset / 
 de première apparition (Map JS) coïncide avec l'ordre de LINQ, vérifié contre l'autorité Blazor. Élargissement de
 COUVERTURE de #116/#121/#126 (pas de fixture `Unsupported/` distinct). `HARNESS_VERSION` 1.41.0 → 1.42.0, divulgué.
 §5 s'élargit d'un cran ; RADICAL reste **« ni éliminée ni établie »**.
+
+---
+
+## 129. Composition multi-paramètres et imbriquée — DÉJÀ supportées, banquées par audit (Bucket B)
+
+**Décision.** La composition à **plusieurs paramètres** (`<Badge Label="hits" Count="@n" />`) et la composition
+**imbriquée** sur trois niveaux (`Parent → Mid → Grand`) **compilent déjà** — élargissement de couverture de #88
+(feuille statique) et #90 (paramètre lié unique). Elles ne sont pas de nouvelles capacités : la boucle d'attributs
+d'`EmitComposition` n'a jamais borné le NOMBRE de paramètres, et un enfant s'insère RÉCURSIVEMENT dans le `mount()`
+du parent. Elles étaient seulement **non épinglées** ; `CompositionFanoutTests` les épingle maintenant (comportement
++ snapshot d'octets).
+
+**Raison — vérifiée en EXÉCUTANT, pas en supposant.** C'est la leçon la plus répétée du dépôt (« mesurer, ne pas
+pré-différer » — consignée 9×). Avant de traiter un item de Bucket B comme non implémenté, chacun a été passé au
+générateur (audit, ADR 0002) :
+
+| Capacité | Verdict |
+|---|---|
+| Fan-out multi-paramètres (statique + réactif) | ✅ **compile déjà** |
+| Composition imbriquée (3 niveaux) | ✅ **compile déjà** |
+| `EventCallback` (enfant→parent) | ❌ `FIL0001 [unresolved-name]` — vrai manque |
+| `RenderFragment` / `ChildContent` | ❌ `FIL0002 [unsupported-type]` — vrai manque |
+| routing / DI / héritage / `@ref` / CascadingParameter / forms / génériques / JsInterop | ❌ non-buts §3 |
+
+**Ce qui est banqué.** `Supported/Composition/{MultiParam,Badge,Nested,Mid,Grand}.razor`. MultiParam : `Label="hits"`
+se plie en `createTextNode('hits')`, `Count="@n"` se câble en `effect(() => setText(_tx0, n.value))` — liaison VIVE
+sur le signal du parent, à travers la frontière de composition. Nested : `div#w → span#mid → b#gc` aplatis en UN
+`mount()`, le `@x` réactif traversé jusqu'à un unique effet sur le signal du parent.
+
+**Mesure.** Pas de NOUVELLE app oracle : c'est le mécanisme de liaison réactive identique que #90 a déjà mesuré
+fidèle vs Blazor (entrée n°12) — un paramètre lié EST l'expression traduite du parent câblée en effet vif,
+indépendamment du nombre de paramètres ou de niveaux. Un témoin oracle distinct re-mesurerait le même mécanisme.
+Le vrai manque suivant, `EventCallback` (mécanisme GENUINEMENT nouveau), aura sa propre baseline + son run oracle.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `git diff -- src/filament-runtime` vide. 337 tests (.NET) au vert (+4).
+§8 inchangé : RADICAL reste **« ni éliminée ni établie »** — deux capacités de composition épinglées ne font pas une
+architecture de framework ; les vrais manques (EventCallback, RenderFragment) et les non-buts §3 restent devant.

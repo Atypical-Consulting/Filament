@@ -1,0 +1,10 @@
+@* Multi-parameter component composition: a leaf child receives TWO parameters at once --
+   a STATIC string (Label="hits") folded to a literal, and a REACTIVE int (Count="@n") wired
+   as a live effect on the parent's signal. Coverage-widening of #88 (static leaf) + #90
+   (single bound param): the same EmitComposition attribute loop, exercised with N>1 params. *@
+<div id="wrap"><button id="inc" @onclick="Inc">inc</button><Badge Label="hits" Count="@n" /></div>
+
+@code {
+    private int n = 0;
+    private void Inc() { n++; }
+}

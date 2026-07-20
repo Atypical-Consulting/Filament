@@ -1,0 +1,9 @@
+@* Nested composition: the parent composes <Mid>, which itself composes <Grand>. Three levels
+   deep, all inlined into one mount(); the reactive @V is threaded through each boundary and
+   ends as a single live effect on the parent's signal. *@
+<div id="w"><button id="g" @onclick="Go">g</button><Mid V="@x" /></div>
+
+@code {
+    private int x = 0;
+    private void Go() { x++; }
+}
