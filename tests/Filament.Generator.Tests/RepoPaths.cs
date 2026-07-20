@@ -190,6 +190,11 @@ public static class RepoPaths
 
     /// <summary>The async/await SPEC (decisions 51/119). Never edited to make a gate pass.</summary>
     public static string AsyncClickAnswerKey => Path.Combine(Root, "samples", "AsyncClick", "asyncclick.js");
+
+    public static string IfNestedMixedRazor => Path.Combine(Root, "baseline", "IfNestedMixed.Blazor", "App.razor");
+
+    /// <summary>The mixed-@if-branch SPEC (decisions 51/120). Never edited to make a gate pass.</summary>
+    public static string IfNestedMixedAnswerKey => Path.Combine(Root, "samples", "IfNestedMixed", "ifnestedmixed.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

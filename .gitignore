@@ -64,6 +64,7 @@ samples/filament-linq-gen/App.g.js
 samples/filament-arrayindex-gen/App.g.js
 samples/filament-dictlookup-gen/App.g.js
 samples/filament-asyncclick-gen/App.g.js
+samples/filament-ifnestedmixed-gen/App.g.js
 
 # examples/FilamentApp: emitted/copied at build, never committed (same rule as samples/*.g.js).
 examples/FilamentApp/wwwroot/App.g.js

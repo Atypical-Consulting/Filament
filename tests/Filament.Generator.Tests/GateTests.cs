@@ -322,6 +322,8 @@ public static class Generate
 
     public static string AsyncClickToTemp() => ToTemp(RepoPaths.AsyncClickRazor, "AsyncClick");
 
+    public static string IfNestedMixedToTemp() => ToTemp(RepoPaths.IfNestedMixedRazor, "IfNestedMixed");
+
     /// <summary>
     /// Emit a fixture from the Unsupported dir (some of which now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the
