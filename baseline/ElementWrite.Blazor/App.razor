@@ -1,0 +1,23 @@
+@* Mutable element writes on a reactive array + Dictionary (BENCH n°46, decision 127): `arr[i] = v` and
+   `d[key] = v` are now admitted, as COPY-ON-WRITE. The runtime signal fires only on a NEW reference (its setter
+   guards with Object.is), so a plain in-place `xs.value[i] = v` would leave every display stale -- the silently-
+   wrong outcome refused under #117/#118. Instead `xs[1] = xs[1] + 5` compiles to `xs.value = xs.value.with(1,
+   xs.value[1] + 5)` (a copy with element 1 replaced) and `scores["b"] = scores["b"] + 100` to
+   `scores.value = new Map(scores.value).set("b", scores.value.get("b") + 100)`. Each new reference fires the signal,
+   so `@xs[1]` and `@scores["b"]` refresh. Both fields are read by the template AND written here -> signals (the #124/
+   #125 array/Dict-as-signal). #a goes "20" -> "25", #m "2" -> "102", exactly as Blazor runs the same C#. *@
+
+<p>Arr: <span id="a">@xs[1]</span>, Map: <span id="m">@scores["b"]</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private int[] xs = new int[] { 10, 20, 30 };
+    private Dictionary<string, int> scores = new Dictionary<string, int> { { "a", 1 }, { "b", 2 } };
+
+    private void Go()
+    {
+        xs[1] = xs[1] + 5;
+        scores["b"] = scores["b"] + 100;
+    }
+}
