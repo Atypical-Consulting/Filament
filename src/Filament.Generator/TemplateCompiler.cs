@@ -1254,16 +1254,11 @@ public sealed class TemplateCompiler
         _bindings.Add($"function {fn}({fe.Var}) {{\n" + string.Join("\n", body.Select(l => "  " + l)) + "\n}");
 
         _used.Add("list");
-        // list()'s source must READ its dependency and RETURN the array. For a List<T> those are two
-        // distinct things -- a version signal to read and a plain array to return -- so the source is a
-        // block. For a reassigned T[] (decision 124) the dependency IS the array (`items.value`): reading
-        // it subscribes AND yields it, so the source collapses to one expression. The List path is byte-
-        // identical -- the collapse fires only when `{version}.value` is literally the returned expression.
-        var source = $"{fe.VersionJs}.value" == fe.ListJs
-            ? $"() => {fe.ListJs}"
-            : $"() => {{\n  {fe.VersionJs}.value;\n  return {fe.ListJs};\n}}";
+        // The source lambda is fixed by the collection's SHAPE (List<T> block vs signal T[]/Dict single
+        // expression) and was built once in ForEach(); list() just receives it. keyOf is @key, create is
+        // the row function, anchor is null (a list whose parent holds nothing after the rows appends).
         _bindings.Add(
-            $"list({container}, {source}, ({fe.Var}) => {_code.SlotJs(fe.Key)}, {fn}, null);");
+            $"list({container}, {fe.SourceJs}, ({fe.Var}) => {_code.SlotJs(fe.Key)}, {fn}, null);");
     }
 
     /// <summary>

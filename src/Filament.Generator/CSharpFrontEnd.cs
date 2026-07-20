@@ -680,18 +680,23 @@ public sealed class CSharpFrontEnd
     /// </summary>
     ForEachOp? ForEach(ForEachStatementSyntax fe, IReadOnlyDictionary<string, IntermediateNode> markers)
     {
-        // The collection must be a FIELD with something list() can SUBSCRIBE to. Two shapes qualify:
-        //   - a MUTATED List<T> -> its version signal is the source (rows.js decision 1); listJs is the plain array.
-        //   - a REASSIGNED T[]   -> the array field is itself a signal (decision 124); it is both the subscribable
-        //     thing and the array (listJs = field.value). A never-mutated List / never-reassigned array is a
-        //     STATIC tree, whose mapping is not implemented -> refused.
-        // versionJs is read as `{versionJs}.value` by EmitList; listJs is what it returns.
-        string versionJs, listJs;
+        // The collection must be a FIELD with something list() can SUBSCRIBE to. Three shapes qualify, each
+        // fixing the source lambda list() re-runs on:
+        //   - a MUTATED List<T>       -> a BLOCK that reads the version signal then returns the plain array
+        //     (rows.js decision 1): `() => { xVersion.value; return x; }`.
+        //   - a REASSIGNED T[]        -> the array field is itself a signal (decision 124), so reading it both
+        //     subscribes AND yields the array: `() => x.value`.
+        //   - a REASSIGNED Dictionary -> the Map field is a signal too (decision 125); list() needs an ARRAY,
+        //     so the source spreads the Map to its [k,v][] entries: `() => [...x.value]`.
+        // A never-mutated List / never-reassigned array or Dict is a STATIC tree, whose mapping is not
+        // implemented -> refused.
+        string sourceJs;
         if (_model.GetSymbolInfo(fe.Expression).Symbol is not IFieldSymbol fs || Field(fs) is not { } f)
         {
             Refuse("unsupported-foreach",
-                $"@foreach iterates '{Trunc(fe.Expression.ToString())}', which is not a List<T> or T[] field " +
-                "declared in this component. list() reconciles against a source it can SUBSCRIBE to. Refusing to emit.",
+                $"@foreach iterates '{Trunc(fe.Expression.ToString())}', which is not a List<T>, T[] or " +
+                "Dictionary<K,V> field declared in this component. list() reconciles against a source it can " +
+                "SUBSCRIBE to. Refusing to emit.",
                 fe.Expression.SpanStart);
             return null;
         }
@@ -706,7 +711,7 @@ public sealed class CSharpFrontEnd
                     fe.Expression.SpanStart);
                 return null;
             }
-            (versionJs, listJs) = (li.Version, f.Js);
+            sourceJs = $"() => {{\n  {li.Version}.value;\n  return {f.Js};\n}}";
         }
         else if (f.Symbol.Type is IArrayTypeSymbol { Rank: 1 })
         {
@@ -719,12 +724,26 @@ public sealed class CSharpFrontEnd
                     fe.Expression.SpanStart);
                 return null;
             }
-            (versionJs, listJs) = (f.Js, $"{f.Js}.value");
+            sourceJs = $"() => {f.Js}.value";
+        }
+        else if (Filament.Subset.TypeSubset.DictionaryTypes(f.Symbol.Type) is ({ } _, { } _))
+        {
+            if (!f.IsSignal)
+            {
+                Refuse("unsupported-foreach",
+                    $"@foreach iterates '{f.Name}', a Dictionary that is never reassigned, so it is not a signal " +
+                    "and list() has no source to re-run on. A never-reassigned Dictionary rendered once is a static " +
+                    "tree; that mapping is not implemented. Refusing to emit.",
+                    fe.Expression.SpanStart);
+                return null;
+            }
+            sourceJs = $"() => [...{f.Js}.value]";
         }
         else
         {
             Refuse("unsupported-foreach",
-                $"@foreach iterates '{f.Name}', which is neither a List<T> nor a T[] field. Refusing to emit.",
+                $"@foreach iterates '{f.Name}', which is neither a List<T>, a T[] nor a Dictionary<K,V> field. " +
+                "Refusing to emit.",
                 fe.Expression.SpanStart);
             return null;
         }
@@ -768,7 +787,7 @@ public sealed class CSharpFrontEnd
             return null;
         }
 
-        return new ForEachOp(JsName(fe.Identifier.Text), listJs, versionJs, markup[0].Node, key);
+        return new ForEachOp(JsName(fe.Identifier.Text), sourceJs, markup[0].Node, key);
     }
 
     /// <summary>
@@ -1557,6 +1576,13 @@ public sealed class CSharpFrontEnd
     {
         foreach (var n in e.DescendantNodesAndSelf())
         {
+            // kvp.Value in a @foreach over a Dictionary compiles to `d.value.get(kvp[0])` (decision 125), a read of
+            // the Dict signal -- so it is REACTIVE though no signal appears syntactically. Detected here so the slot
+            // becomes an effect and a reused row's value refreshes. kvp.Key is the stable reconcile key, never this.
+            if (n is MemberAccessExpressionSyntax { Name.Identifier.Text: "Value" } kv &&
+                IsKeyValuePair(kv.Expression) && DictOfForeachVar(kv.Expression) is not null)
+                return true;
+
             if (n is not (IdentifierNameSyntax or MemberAccessExpressionSyntax)) continue;
             switch (_model.GetSymbolInfo(n).Symbol)
             {
@@ -1852,6 +1878,25 @@ public sealed class CSharpFrontEnd
     // A field whose type is a Dictionary<K,V> (decision 118). Its indexer is `.get`, .Count is `.size`.
     bool IsDictReceiver(ExpressionSyntax e) =>
         _model.GetSymbolInfo(e).Symbol is IFieldSymbol fs && Filament.Subset.TypeSubset.DictionaryTypes(fs.Type).Key is not null;
+
+    // An expression typed KeyValuePair<K,V> (decision 125): a @foreach over a Dictionary iterates these, and the
+    // Map-spread source `[...d.value]` materialises each as a [k, v] pair -- so .Key is [0] and .Value is a lookup.
+    bool IsKeyValuePair(ExpressionSyntax e) =>
+        _model.GetTypeInfo(e).Type?.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.KeyValuePair<TKey, TValue>";
+
+    // The JS signal name of the Dictionary a @foreach loop variable `kvp` iterates, or null. The variable is
+    // declared BY the ForEachStatement, so its declaring syntax gives back the foreach whose collection is the
+    // Dict field. Used to compile `kvp.Value` to the reactive `d.value.get(kvp[0])` lookup (decision 125).
+    string? DictOfForeachVar(ExpressionSyntax kvp)
+    {
+        if (_model.GetSymbolInfo(kvp).Symbol is not ILocalSymbol local ||
+            local.DeclaringSyntaxReferences is not [var r, ..] ||
+            r.GetSyntax() is not ForEachStatementSyntax fe ||
+            _model.GetSymbolInfo(fe.Expression).Symbol is not IFieldSymbol dfs || Field(dfs) is not { } df ||
+            Filament.Subset.TypeSubset.DictionaryTypes(df.Symbol.Type).Key is null)
+            return null;
+        return df.Js;
+    }
 
     // `new Dictionary<K,V>()` / `{ {k,v}, … }` -> a JS Map. The collection initialiser's elements are complex
     // element initialisers `{k, v}` (each an InitializerExpression of two expressions) -> `[k, v]` pairs.
@@ -2427,6 +2472,19 @@ public sealed class CSharpFrontEnd
         // d.Count -- a JS Map's `.size` (decision 118, the Dictionary sibling of List's .Count).
         if (ma.Name.Identifier.Text == "Count" && IsDictReceiver(ma.Expression))
             return $"{Expr(ma.Expression)}.size";
+
+        // kvp.Key / kvp.Value on a @foreach-over-Dictionary variable (decision 125). The Map-spread source gives
+        // each row as a [k, v] pair, so .Key is kvp[0] -- the reconcile key, STATIC per row. But .Value must NOT be
+        // the frozen kvp[1]: list() REUSES a persisting key's row (it never re-runs create), so a static value goes
+        // STALE when that key's value changes, where Blazor re-renders the reused element. So .Value compiles to a
+        // REACTIVE lookup `d.value.get(kvp[0])` -- reading the Dict signal makes the slot an effect (see IsReactive),
+        // and the effect re-runs on reassignment to fetch the current value for this row's stable key.
+        if (IsKeyValuePair(ma.Expression) && ma.Name.Identifier.Text is "Key" or "Value")
+        {
+            var kvpJs = Expr(ma.Expression);
+            if (ma.Name.Identifier.Text == "Key") return $"{kvpJs}[0]";
+            if (DictOfForeachVar(ma.Expression) is { } dictJs) return $"{dictJs}.value.get({kvpJs}[0])";
+        }
 
         if (_model.GetSymbolInfo(ma).Symbol is IPropertySymbol ps && PropAnywhere(ps) is { } p)
             return p.IsSignal ? $"{Expr(ma.Expression)}.{p.Js}.value" : $"{Expr(ma.Expression)}.{p.Js}";

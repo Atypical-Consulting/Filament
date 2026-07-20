@@ -522,6 +522,60 @@ public class NegativeControls
         Assert.Contains("never reassigned", stderr);
     }
 
+    /// <summary>
+    /// Decision 125: a @foreach over a REASSIGNED Dictionary is admitted. The source spreads the Map signal
+    /// (`[...d.value]`), @kvp.Key is the plain reconcile key kvp[0], and @kvp.Value is the REACTIVE lookup
+    /// d.value.get(kvp[0]) -- so a reused key's value refreshes rather than going stale.
+    /// </summary>
+    [Fact]
+    public void Section5_ForeachOverAReassignedDictionary_CompilesClean()
+    {
+        var (exit, stderr, js) = CompileEmitting(
+            """
+            <ul id="list">
+            @foreach (KeyValuePair<string, int> kvp in scores)
+            {
+                <li @key="kvp.Key">@kvp.Key=@kvp.Value</li>
+            }
+            </ul>
+            <button id="go" @onclick="Go">go</button>
+
+            @code {
+                private Dictionary<string, int> scores = new Dictionary<string, int> { { "a", 1 } };
+                private void Go() { scores = new Dictionary<string, int> { { "a", 2 }, { "b", 3 } }; }
+            }
+            """);
+        Assert.True(exit == 0, "@foreach over a reassigned Dictionary is in the subset (decision 125):\n" + stderr);
+        Assert.Contains("() => [...scores.value]", js);              // the Map spread
+        Assert.Contains("scores.value.get(kvp[0])", js);            // the reactive value lookup
+    }
+
+    /// <summary>
+    /// Decision 125's boundary: a NEVER-reassigned Dictionary is not a signal, so it has no source for list()
+    /// to re-run on -- a static tree, whose mapping is not implemented. It stays refused, like a never-mutated
+    /// List and a never-reassigned array (decision 124).
+    /// </summary>
+    [Fact]
+    public void ForeachOverANeverReassignedDictionary_IsRefused()
+    {
+        var (exit, stderr, wrote) = Compile(
+            """
+            <ul id="list">
+            @foreach (KeyValuePair<string, int> kvp in scores)
+            {
+                <li @key="kvp.Key">@kvp.Key</li>
+            }
+            </ul>
+
+            @code {
+                private Dictionary<string, int> scores = new Dictionary<string, int> { { "a", 1 } };
+            }
+            """);
+        Assert.True(exit != 0 && !wrote, "a never-reassigned Dictionary @foreach is a static tree and must be refused");
+        Assert.Contains("unsupported-foreach", stderr);
+        Assert.Contains("never reassigned", stderr);
+    }
+
     /// <summary>Section 5's Razor: @oninput, alongside @onclick.</summary>
     [Fact]
     public void Section5_OnInput_CompilesClean()

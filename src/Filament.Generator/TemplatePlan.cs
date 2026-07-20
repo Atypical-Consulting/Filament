@@ -110,12 +110,14 @@ public sealed record CodeOp(IReadOnlyList<string> Lines) : TemplateOp;
 /// Everything here is read off the RE-PARSED tree and resolved against real symbols.
 /// </summary>
 /// <param name="Var">the loop variable's JS name -- list()'s create/keyOf parameter</param>
-/// <param name="ListJs">the JS binding holding the mutable array (rows.js mapping decision 1)</param>
-/// <param name="VersionJs">the version Signal that binding's mutations bump</param>
+/// <param name="SourceJs">list()'s complete source lambda `() => …`. For a mutated List&lt;T&gt; it is a
+///   block that READS the version signal then RETURNS the plain array (rows.js decision 1); for a signal
+///   T[] it is the self-subscribing `() => items.value` (decision 124); for a signal Dictionary it is
+///   `() => [...d.value]` -- the Map spread to the [k,v][] array list() reconciles (decision 125).</param>
 /// <param name="Body">the ONE markup node the loop body produces</param>
 /// <param name="Key">the @key node, which becomes list()'s keyOf</param>
 public sealed record ForEachOp(
-    string Var, string ListJs, string VersionJs, IntermediateNode Body, IntermediateNode Key) : TemplateOp;
+    string Var, string SourceJs, IntermediateNode Body, IntermediateNode Key) : TemplateOp;
 
 /// <summary>
 /// `@if (c0) { &lt;b0&gt; } else if (c1) { &lt;b1&gt; } … else { &lt;bn&gt; }` -> a conditional list()
