@@ -789,16 +789,16 @@ public sealed class CSharpFrontEnd
         IEnumerable<StatementSyntax> body = stmt is BlockSyntax b ? b.Statements : [stmt];
         var ops = RegionOps(body, markers);
 
-        var allMarkup = ops.Count >= 1 && ops.All(o => o is MarkupOp);
-        var singleNestedIf = ops.Count == 1 && ops[0] is IfOp;
-
-        if (!allMarkup && !singleNestedIf)
+        // A branch body is one or more MARKUP elements and/or nested @ifs, in any mix (decision 120). Each
+        // markup element is a constant active leaf; each nested @if spreads its own decision-tree active
+        // indices into the same conditional list (BranchExpr). A @foreach in a branch, a code block, or a
+        // stray text node is still refused.
+        if (ops.Count < 1 || !ops.All(o => o is MarkupOp or IfOp))
         {
             Refuse("unsupported-if-body",
-                $"a template @if / @else branch body must be one or more elements, OR a single nested @if, and " +
-                $"nothing else; this one produces {ops.Count} thing(s). Mixing markup with nested control flow, " +
-                "multiple nested @ifs, a @foreach in a branch, or a stray text node is not in the subset. " +
-                "Refusing to emit.",
+                $"a template @if / @else branch body must be markup elements and/or nested @ifs, and nothing " +
+                $"else; this one produces {ops.Count} thing(s), not all markup or nested @if. A @foreach in a " +
+                "branch, a code block, or a stray text node is not in the subset. Refusing to emit.",
                 stmt.SpanStart);
             return null;
         }

@@ -1317,18 +1317,45 @@ public sealed class TemplateCompiler
     /// parenthesized nested decision tree if its sole content is a nested @if.</summary>
     string? BranchExpr(IfBranch branch, int id, List<string> fns)
     {
-        if (branch.Body is [IfOp nested])                              // single nested @if
+        if (branch.Body is [IfOp nested])                              // single nested @if (slice 3, byte-identical)
             return IfExpr(nested, id, fns) is { } e ? $"({e})" : null;
 
-        var idxs = new List<int>();                                   // markup-only (slices 1/2)
+        if (branch.Body.All(o => o is MarkupOp))                       // markup-only (slices 1/2, byte-identical)
+        {
+            var idxs = new List<int>();
+            foreach (var op in branch.Body)
+            {
+                var fn = Unique($"ifBody{id}_{fns.Count}");
+                if (!EmitBranchFn(((MarkupOp)op).Node, fn)) return null;
+                idxs.Add(fns.Count);
+                fns.Add(fn);
+            }
+            return "[" + string.Join(", ", idxs) + "]";
+        }
+
+        // MIXED markup + nested @if (decision 120): a markup node is a constant active leaf `i`; a nested @if
+        // SPREADS its own decision-tree active indices `...(…)` into the same conditional-list array. So
+        // `<p>@if(c){<span>}` is `[0, ...(c ? [1] : [])]` -- the <p> is always mounted, the <span> iff c.
+        var parts = new List<string>();
         foreach (var op in branch.Body)
         {
-            var fn = Unique($"ifBody{id}_{fns.Count}");
-            if (!EmitBranchFn(((MarkupOp)op).Node, fn)) return null;
-            idxs.Add(fns.Count);
-            fns.Add(fn);
+            switch (op)
+            {
+                case MarkupOp m:
+                    var fn = Unique($"ifBody{id}_{fns.Count}");
+                    if (!EmitBranchFn(m.Node, fn)) return null;
+                    parts.Add(fns.Count.ToString());
+                    fns.Add(fn);
+                    break;
+                case IfOp io:
+                    if (IfExpr(io, id, fns) is not { } e) return null;
+                    parts.Add($"...({e})");
+                    break;
+                default:
+                    return null;
+            }
         }
-        return "[" + string.Join(", ", idxs) + "]";
+        return "[" + string.Join(", ", parts) + "]";
     }
 
     /// <summary>

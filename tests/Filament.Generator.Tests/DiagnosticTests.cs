@@ -72,7 +72,8 @@ public class DiagnosticTests
     /// </summary>
     [Theory]
     [InlineData("Foreach.razor", 2, 20, "unsupported-foreach")]
-    [InlineData("IfNestedMixed.razor", 2, 1, "unsupported-if-body")]
+    // IfNestedMixed.razor LEFT this list at decision 120 (a branch mixing markup with a nested @if compiles now
+    // -> IfNestedMixed_NowCompiles). A @foreach in a branch / a stray text node stays refused.
     public void ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation(
         string fixture, int line, int col, string reason)
     {
@@ -173,6 +174,29 @@ public class DiagnosticTests
             Assert.Contains("(show.value) ?", js);       // outer condition
             Assert.Contains("(other.value) ?", js);      // nested condition
             Assert.Contains("? [0] :", js);              // the leaf, gated by both
+            Assert.DoesNotContain("[unsupported-if-body]", js);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A branch MIXING markup with a nested @if now COMPILES (decision 120, closing #100's IfNestedMixed
+    /// deferral): `@if (show) { <p/>@if (other) { <span/> } }` flattens to ONE list() whose source SPREADS the
+    /// nested @if's active indices beside the always-on markup leaf -- `(show.value) ? [0, ...((other.value) ?
+    /// [1] : [])] : []`. It used to be refused [unsupported-if-body] @ (2,1). The pure markup-only and
+    /// pure-nested cases (#98–#100) are byte-identical -- the mixed case is a THIRD BranchExpr arm.
+    /// </summary>
+    [Fact]
+    public void IfNestedMixed_NowCompiles_ToASpreadConditionalList()
+    {
+        var outPath = InRepo();
+        try
+        {
+            var (exit, _, stderr) = Compile(Path.Combine(RepoPaths.Unsupported, "IfNestedMixed.razor"), outPath);
+
+            Assert.True(exit == 0, $"a branch mixing markup with a nested @if should compile now (decision 120):\n{stderr}");
+            var js = File.ReadAllText(outPath);
+            Assert.Contains("(show.value) ? [0, ...((other.value) ? [1] : [])] : []", js);   // markup leaf + spread nested
             Assert.DoesNotContain("[unsupported-if-body]", js);
         }
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
@@ -621,13 +645,11 @@ public class DiagnosticTests
     [InlineData("HandlerUnresolved.razor")]
     [InlineData("CodeSeamIsJs.razor")]
     [InlineData("HandlerIsState.razor")]
-    // The deferred @if variants: refused by ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation
-    // above, but that theory only asserts exit != 0 via Refused() -- it never asserted the file
-    // itself was never written. (IfAtRoot.razor is NOT here anymore: root @if COMPILES now,
-    // decision 89 -- see IfAtRoot_NowCompiles_ToAConditionalAgainstTarget. IfMultiBody.razor is NOT
-    // here either: a single-branch @if with a multi-node body COMPILES now -- see
-    // IfMultiBody_NowCompiles_ToAMultiNodeConditionalList.)
-    [InlineData("IfNestedMixed.razor")]
+    // A refused control-flow fixture: ControlFlow_OutsideTheSubset_IsRefused_AtItsExactLocation asserts exit
+    // != 0 via Refused(), but never that the file itself was never written. (The deferred @if variants all
+    // COMPILE now: IfAtRoot #89, IfMultiBody #98, IfElseMultiBody #99, IfNested #100, IfNestedMixed #120 --
+    // so Foreach.razor, refused for an undeclared collection + `var`, is the standing witness here.)
+    [InlineData("Foreach.razor")]
     public void ARefusalWritesNoFile(string fixture)
     {
         var outPath = InRepo();
