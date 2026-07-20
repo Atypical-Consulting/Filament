@@ -19,25 +19,30 @@ divergence they find in production. When in doubt, refuse.
 
 ## Getting set up
 
-**Build the signals runtime first.** `examples/FilamentApp` copies `dist/filament.js` into its
-`wwwroot` at build time, and `dist/` is gitignored — so on a fresh clone the solution does not
-compile until you've run:
+On a fresh clone, two npm steps come **before** the .NET build — the solution does not compile and
+the test suite does not pass without them:
 
 ```bash
-cd src/filament-runtime && npm ci && npm run build
-```
+npm ci                                              # root: esbuild, for tools/canon.mjs
+cd src/filament-runtime && npm ci && npm run build  # the runtime bundle
+cd -
 
-Then:
-
-```bash
 dotnet build Filament.sln
 dotnet test  Filament.sln
 ```
 
-**Node must be on your PATH.** This isn't optional tooling: 45 of the 46 generator test files shell
-out to `node` to run `tools/canon.mjs`, the alpha-equivalence checker that compares emitted JS
-against the approved output. Without it the generator suite fails wholesale. No `npm install` is
-needed for this — `canon.mjs` has no dependencies.
+Why each is needed, since neither is guessable from the error you'd otherwise get:
+
+- **Node must be on your PATH.** 45 of the 46 generator test files shell out to `node` to run
+  `tools/canon.mjs`, the alpha-equivalence checker that compares emitted JS against the approved
+  answer key. Without it the generator suite fails wholesale.
+- **The root `npm ci`** installs `esbuild`, which `canon.mjs` invokes as `npx --no-install esbuild`
+  from the repo root to minify before comparing. It's pinned to exactly `0.28.1` because the
+  minified token stream *is* what alpha-equivalence is computed over — a different esbuild is a
+  different answer key, and `canon.mjs` warns if it sees one.
+- **The runtime build** produces `src/filament-runtime/dist/filament.js`, which
+  `examples/FilamentApp` copies into its `wwwroot` at build time. `dist/` is gitignored, being
+  build output, so the solution won't compile until it exists.
 
 The signals runtime has its own suite:
 

@@ -41,12 +41,22 @@ jobs:
       # generator test files run tools/canon.mjs (the alpha-equivalence checker) against the
       # emitted JS via Run.Node() in GateTests.cs, and there is no trait, Skip, or env-var
       # gate on any of them — without node on PATH the whole generator suite fails.
-      # canon.mjs has zero npm dependencies, so the bare binary is enough; no install step.
+      # canon.mjs also needs esbuild; see the root `npm ci` below.
       - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: src/filament-runtime/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            src/filament-runtime/package-lock.json
+
+      # canon.mjs minifies through `npx --no-install esbuild` resolved from the repo root, so
+      # the gate tests need a root node_modules. Without this they fail on any machine whose
+      # ~/.npm/_npx cache doesn't already happen to hold esbuild 0.28.1 — which is every clean
+      # checkout. The version is pinned exactly because the minified token stream IS what
+      # alpha-equivalence is computed over.
+      - name: Install root tooling (esbuild, for canon.mjs)
+        run: npm ci
 
       # examples/FilamentApp copies the built runtime into its wwwroot at build time, so the
       # SOLUTION does not compile on a clean checkout until dist/filament.js exists — and
