@@ -1,0 +1,9 @@
+@* The BASE component. @inherits takes a component CLASS, and a .razor file IS one -- so a base
+   written as a sibling .razor is the form this compiler can actually resolve (decision 136). Its
+   MARKUP is irrelevant here: a derived component overrides BuildRenderTree, so only the members
+   below are inherited. *@
+
+@code {
+    protected int count = 0;
+    protected void Inc() { count++; }
+}

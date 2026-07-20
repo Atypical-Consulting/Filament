@@ -1,0 +1,15 @@
+@inherits CounterBase
+
+@* INHERITANCE (decision 136). The state and behaviour live in the BASE; this component supplies
+   only the markup that uses them.
+
+   The lowering: the base's members are merged into the derived component's own compilation, before
+   state lifting runs. `count` is then lifted exactly as if it had been written here -- which is the
+   point: inheritance is resolved at compile time and leaves nothing behind. A Filament module has no
+   base class, no vtable and no `this`.
+
+   DOM contract: #out renders the BASE's field; #inc calls the BASE's method. Clicking must move #out
+   0 -> 1 -> 2, so the inherited field is a real signal and the inherited method really writes it.
+   That is the measurement (BENCH n°55). *@
+
+<div id="wrap"><span id="out">@count</span><button id="inc" @onclick="Inc">inc</button></div>

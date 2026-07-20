@@ -219,6 +219,7 @@ ALL_LABELS=(
   filament-jsinterop-gen
   filament-cascade-gen
   filament-generic-gen
+  filament-inherits-gen
   filament-counter-stats
   filament-rows-stats
   filament-counter-gen-stats
@@ -277,6 +278,7 @@ project_for() {
     filament-jsinterop-gen)                          echo "samples/filament-jsinterop-gen" ;;
     filament-cascade-gen)                            echo "samples/filament-cascade-gen" ;;
     filament-generic-gen)                            echo "samples/filament-generic-gen" ;;
+    filament-inherits-gen)                           echo "samples/filament-inherits-gen" ;;
     *) return 1 ;;
   esac
 }
@@ -286,7 +288,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen|filament-inherits-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -354,6 +356,7 @@ razor_for() {
     filament-jsinterop-gen)                          echo "$REPO_ROOT/baseline/JsInterop.Blazor/App.razor" ;;
     filament-cascade-gen)                            echo "$REPO_ROOT/baseline/Cascade.Blazor/App.razor" ;;
     filament-generic-gen)                            echo "$REPO_ROOT/baseline/Generic.Blazor/App.razor" ;;
+    filament-inherits-gen)                           echo "$REPO_ROOT/baseline/Inherits.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -414,6 +417,7 @@ generated_js_for() {
     filament-jsinterop-gen)                          echo "App.g.js" ;;
     filament-cascade-gen)                            echo "App.g.js" ;;
     filament-generic-gen)                            echo "App.g.js" ;;
+    filament-inherits-gen)                           echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -470,6 +474,7 @@ title_for() {
     filament-jsinterop-gen)                          echo "JsInterop" ;;
     filament-cascade-gen)                            echo "Cascade" ;;
     filament-generic-gen)                            echo "Generic" ;;
+    filament-inherits-gen)                           echo "Inherits" ;;
     *) return 1 ;;
   esac
 }
@@ -529,6 +534,7 @@ blazor_label_for() {
     filament-jsinterop-gen)                          echo "blazor-jsinterop" ;;
     filament-cascade-gen)                            echo "blazor-cascade" ;;
     filament-generic-gen)                            echo "blazor-generic" ;;
+    filament-inherits-gen)                           echo "blazor-inherits" ;;
     *) return 1 ;;
   esac
 }
@@ -596,6 +602,7 @@ css_for() {
     filament-jsinterop-gen)                          echo "$REPO_ROOT/baseline/JsInterop.Blazor/wwwroot/css/app.css" ;;
     filament-cascade-gen)                            echo "$REPO_ROOT/baseline/Cascade.Blazor/wwwroot/css/app.css" ;;
     filament-generic-gen)                            echo "$REPO_ROOT/baseline/Generic.Blazor/wwwroot/css/app.css" ;;
+    filament-inherits-gen)                           echo "$REPO_ROOT/baseline/Inherits.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac
 }

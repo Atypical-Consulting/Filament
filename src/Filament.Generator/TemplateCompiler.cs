@@ -134,7 +134,7 @@ public sealed class TemplateCompiler
     /// types this compiler happens to know) is what makes the gate complete: a
     /// directive nobody here has heard of is refused too.
     /// </summary>
-    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code", "inject", "typeparam" };
+    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code", "inject", "typeparam", "inherits" };
 
     /// <summary>
     /// The base class Razor gives EVERY component whether or not @inherits was written.
@@ -301,6 +301,39 @@ public sealed class TemplateCompiler
         CollectComponentBindings(method, plan);
         CollectDynamicAttributes(method, plan);
         CollectLambdaHandlers(method, plan);
+
+        // @inherits (decision 136). A derived component overrides BuildRenderTree, so the base contributes
+        // its MEMBERS and not its markup -- exactly what Blazor renders. Merging those members into this
+        // component's own compilation, BEFORE state lifting runs, is the whole mapping: `count` is then
+        // lifted as if it had been written here, and nothing about inheritance survives into the module.
+        // A Filament module has no base class, no vtable and no `this`.
+        //
+        // The base must be a SIBLING .razor, because that is the only C# this compiler ever reads: a base
+        // in a .cs file is invisible to it, and silently inheriting nothing would produce a module missing
+        // exactly the state the author put in the base.
+        if (!string.Equals(cls.BaseType, ComponentBaseType, StringComparison.Ordinal))
+        {
+            var baseName = cls.BaseType ?? "";
+            var basePath = Path.Combine(Path.GetDirectoryName(parse.FilePath)!, baseName + ".razor");
+            var span = parse.Directives.FirstOrDefault(d => d.Name == "inherits").Source;
+
+            if (!File.Exists(basePath))
+            {
+                Diag("unsupported-directive",
+                    $"@inherits {baseName} resolves to a same-directory component {baseName}.razor, which does " +
+                    "not exist. A base component must be a sibling .razor file: it is the only C# this " +
+                    "compiler reads, so a base declared in a .cs file would silently contribute nothing and " +
+                    "leave the module missing exactly the state the base holds. Refusing to emit.",
+                    span);
+            }
+            else
+            {
+                var baseParse = RazorFrontEnd.Parse(basePath);
+                var baseCls = AccountForDocument(baseParse);
+                codeNodes.InsertRange(0, baseCls.Children.OfType<CSharpCodeIntermediateNode>()
+                    .Where(n => !string.IsNullOrWhiteSpace(RawText(n))));
+            }
+        }
 
         // @typeparam (decision 135), carried into the compilation so `T` RESOLVES there. Without this the
         // author's own type parameter is reported as an unresolved type -- the compiler blaming the author
@@ -469,8 +502,9 @@ public sealed class TemplateCompiler
         // @inherits. Asserting "BaseType is not null" here refused Counter itself --
         // caught by running the generator, which is the only reason this comment is
         // accurate rather than confident.
-        if (!string.Equals(cls.BaseType, ComponentBaseType, StringComparison.Ordinal))
-            ClassShape(cls, $"declares base type '{cls.BaseType}' (Razor's default is {ComponentBaseType}); a Filament module has no base class");
+        // A NON-DEFAULT BASE TYPE IS NO LONGER REFUSED HERE (decision 136). @inherits is resolved in
+        // PrepareComponent, which is the only place that can look for the sibling .razor the base must
+        // be; a base it cannot resolve is refused THERE, with the reason that actually applies.
         if (cls.Interfaces is { Count: > 0 })
             ClassShape(cls, "declares interfaces (@implements); a Filament module implements none");
 

@@ -236,6 +236,11 @@ public static class RepoPaths
     /// <summary>The GroupBy SPEC (decisions 51/128). Never edited to make a gate pass.</summary>
     public static string GroupByAnswerKey => Path.Combine(Root, "samples", "GroupBy", "groupby.js");
 
+    public static string InheritsRazor => Path.Combine(Root, "baseline", "Inherits.Blazor", "App.razor");
+
+    /// <summary>The @inherits SPEC (decisions 51/136). Never edited to make a gate pass.</summary>
+    public static string InheritsAnswerKey => Path.Combine(Root, "samples", "Inherits", "inherits.js");
+
     public static string GenericRazor => Path.Combine(Root, "baseline", "Generic.Blazor", "App.razor");
 
     /// <summary>The generic-component SPEC (decisions 51/135). Never edited to make a gate pass.</summary>

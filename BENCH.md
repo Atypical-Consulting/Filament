@@ -4943,3 +4943,42 @@ nouveau témoin `Gate/GenericParamUnbound.razor` pour la frontière. §8 inchang
 ---
 
 *Fin de l'entrée n°54. Ne pas modifier — ajouter une entrée n°55 pour toute rectification.*
+
+---
+
+## Entrée n°55 — 2026-07-20 — Phase 4 : `@inherits` mesuré contre Blazor (CORRECTION)
+
+**`@inherits` sur une base `.razor` frère** (décision #136) rejoint le §5. Les membres de la base sont
+fusionnés dans la compilation du dérivé AVANT le levage d'état, si bien qu'un champ hérité est levé comme
+s'il avait été écrit sur place. Le markup de la base est écarté — ce que Blazor fait aussi, le dérivé
+surchargeant `BuildRenderTree`. **AUCUNE primitive runtime.**
+
+### Ce qui est mesuré
+
+`baseline/Inherits.Blazor` : `CounterBase.razor` détient `count` et `Inc()` ; `App.razor` ne contient QUE du
+markup et `@inherits CounterBase`. Le contrat exige `#out` (le CHAMP de la base) à `0`, puis clique `#inc`
+(qui appelle la MÉTHODE de la base) deux fois et exige `1` puis `2` — un champ hérité qui ne serait pas
+devenu un vrai signal, ou une méthode héritée qui n'écrirait pas vraiment, seraient pris.
+**`HARNESS_VERSION` 1.48.0 → 1.49.0**, divulgué.
+
+```
+dotnet publish baseline/Inherits.Blazor -c Release -o bench/publish/blazor-inherits
+./bench/build-filament.sh filament-inherits-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-inherits/wwwroot --app inherits --label blazor-inherits       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-inherits-gen   --app inherits --label filament-inherits-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#out` (initial → 1 clic → 2 clics) | verdict |
+|---|---|---|
+| **blazor-inherits** (autorité) | `0 → 1 → 2` | contrat OK |
+| **filament-inherits-gen** (générateur) | `0 → 1 → 2` | contrat OK |
+
+**Les deux suivent.** Fusionner les membres de la base avant le levage est donc fidèle. `git diff --
+src/filament-runtime` vide. Témoin `Unsupported/Inherits.razor` maintenu, motif affiné (la base frère
+n'existe pas). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°55. Ne pas modifier — ajouter une entrée n°56 pour toute rectification.*

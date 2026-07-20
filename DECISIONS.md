@@ -4659,3 +4659,32 @@ indéfiniment, et c'est précisément le risque de l'effacement. Identique à Bl
 `HARNESS_VERSION` 1.47.0 → 1.48.0, divulgué.
 
 §5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.
+
+## 136. `@inherits` — l'héritage est une question de COMPILATION, et il ne laisse rien
+
+**Décision.** `@inherits Base` entre dans le sous-ensemble **quand la base est un `.razor` FRÈRE**. Les
+membres de la base sont fusionnés dans la compilation du composant dérivé, **avant** le levage d'état : un
+champ hérité est donc levé exactement comme s'il avait été écrit dans le fichier dérivé. Le module émis n'a
+ni classe de base, ni table virtuelle, ni `this` — l'héritage est une question sur *où vit le texte d'un
+membre*, ce compilateur y répond, et il ne reste plus rien à émettre.
+
+**LE MARKUP DE LA BASE EST ÉCARTÉ, ET C'EST FIDÈLE.** Un composant dérivé surcharge `BuildRenderTree` : Blazor
+rend le markup DÉRIVÉ et jamais celui de la base. L'écarter est donc ce que Blazor fait, pas un raccourci pris
+ici.
+
+**LA BASE DOIT ÊTRE UN `.razor` FRÈRE**, et cette restriction est la partie honnête. Un `.razor` frère est le
+SEUL C# que ce compilateur lise jamais. Une base écrite dans un `.cs` lui est invisible : hériter
+silencieusement de rien produirait un module auquel manque précisément l'état que l'auteur a mis dans la
+base — un module qui a l'air juste et fait moins que la source ne dit (§10). Ce cas est donc **refusé**, avec
+un message qui dit ce qui a été cherché. Le témoin `Unsupported/Inherits.razor` reste refusé au même
+emplacement (1,1), motif affiné : il refusait « un module Filament n'a pas de classe de base », il refuse
+maintenant parce que `SomeBase.razor` n'existe pas.
+Suite : **455 tests** (377 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `git diff -- src/filament-runtime` vide ; runtime gelé à 1 943 o.
+MESURÉ (entrée n°55) : `#out` — le CHAMP de la base, rendu par le markup du DÉRIVÉ — vaut `0`, `1`, puis `2`,
+le clic passant par la MÉTHODE de la base. Deux clics : un champ hérité qui ne serait pas devenu un vrai
+signal, ou une méthode héritée qui n'écrirait pas vraiment, seraient pris. Identique à Blazor (autorité).
+`HARNESS_VERSION` 1.48.0 → 1.49.0, divulgué.
+
+§5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.
