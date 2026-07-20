@@ -4252,3 +4252,44 @@ bascule de refusé à compilé ; `await` hors async (`Code/Await.razor`) reste r
 ---
 
 *Fin de l'entrée n°38. Ne pas modifier — ajouter une entrée n°39 pour toute rectification.*
+
+---
+
+## Entrée n°39 — 2026-07-20 — Phase 4 : la branche @if MIXTE (markup + @if imbriqué) mesurée contre Blazor (CORRECTION)
+
+**Une branche @if qui MÊLE du markup et un @if imbriqué** (décision #120) rejoint le §5 — la dernière pièce de la
+famille @if (déférée à #100). Le corps de `@if (show)` est `<p id="x">x</p>` (toujours actif si show) SUIVI de
+`@if (other) { <span id="a">a</span> }` (actif ssi other). Tout s'aplatit en UNE `list()` dont la source ÉTALE
+(spread) les index actifs du @if imbriqué à côté de la feuille markup constante :
+`(show.value) ? [0, ...((other.value) ? [1] : [])] : []`. Les cas markup-seul (#98/#99) et imbriqué-seul (#100)
+restent OCTET POUR OCTET — le cas mixte est un TROISIÈME bras de `BranchExpr`. Générateur seul, `list()` existe déjà.
+
+### Ce qui est mesuré
+
+`baseline/IfNestedMixed.Blazor` : le corps de `@if (show)` est `<p id="x">` PUIS `@if (other) { <span id="a"> }`.
+Deux bascules indépendantes : `#o` bascule `other` (le @if imbriqué seul), `#s` bascule `show` (toute la branche).
+La branche `ifnestedmixed` de `verifyContract` vérifie `#w` (présence de #x/#a) : `xa → x → xa → ""`.
+**`HARNESS_VERSION` 1.33.0 → 1.34.0**, divulgué.
+
+```
+dotnet publish baseline/IfNestedMixed.Blazor -c Release -o bench/publish/blazor-ifnestedmixed
+./bench/build-filament.sh filament-ifnestedmixed-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-ifnestedmixed/wwwroot --app ifnestedmixed --label blazor-ifnestedmixed       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-ifnestedmixed-gen   --app ifnestedmixed --label filament-ifnestedmixed-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#w` (#x/#a) | verdict |
+|---|---|---|
+| **blazor-ifnestedmixed** (autorité) | `xa → x → xa → ""` | contrat OK |
+| **filament-ifnestedmixed-gen** (générateur) | `xa → x → xa → ""` | contrat OK |
+
+**Les deux montent/démontent les mêmes nœuds, à l'identique.** `#o` retire le seul `<span>` imbriqué (le `<p>`
+reste) ; `#s` retire toute la branche — Blazor monte/démonte les mêmes nœuds. `git diff -- src/filament-runtime`
+vide. Le témoin `IfNestedMixed.razor` bascule de refusé à compilé ; un `@foreach` dans une branche / un nœud texte
+égaré restent refusés. La famille @if est maintenant COMPLÈTE (corps multi-nœuds, @else, imbriqué, racine, mixte). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°39. Ne pas modifier — ajouter une entrée n°40 pour toute rectification.*

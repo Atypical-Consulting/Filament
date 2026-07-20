@@ -4159,3 +4159,27 @@ primitive runtime. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°
 bascule refusé → compilé ; `await` hors async reste refusé (`Code/Await.razor`). Seul `Task.Delay` est mappé ;
 Task.Run/WhenAll/ContinueWith restent refusés. `HARNESS_VERSION` 1.32.0 → 1.33.0, divulgué. §5 s'élargit d'un cran ;
 RADICAL reste **« ni éliminée ni établie »**.
+
+## 120. La branche @if MIXTE (markup + @if imbriqué) entre dans le §5 — un troisième bras de BranchExpr qui ÉTALE les index ; complète la famille @if
+
+**Décision.** Une branche @if/@else dont le corps MÊLE du markup avec un @if imbriqué (et/ou plusieurs @if
+imbriqués) rejoint le §5 — la dernière pièce déférée de la famille @if (à #100, le témoin `IfNestedMixed`). Elle
+était refusée (`unsupported-if-body`). `BranchBody` (CSharpFrontEnd) admet désormais tout mélange de `MarkupOp` et
+`IfOp` (un `@foreach` en branche, un bloc de code, un nœud texte égaré restent refusés). `BranchExpr`
+(TemplateCompiler) gagne un TROISIÈME bras : chaque nœud markup est une feuille active constante `i` ; chaque @if
+imbriqué ÉTALE ses propres index actifs `...(…)` dans le même tableau de la `list()` conditionnelle. Donc
+`<p>@if(c){<span>}` devient `[0, ...(c ? [1] : [])]`. Suite : **366 tests** (288 générateur / 60 subset / 18
+analyzer), runtime 214.
+
+**LES DEUX CAS EXISTANTS SONT INCHANGÉS, OCTET POUR OCTET.** Le corps markup-seul (#98/#99 → `[i, j]`) et le corps
+imbriqué-seul (#100 → `(arbre de décision)`) gardent EXACTEMENT leur émission — les deux premiers bras de
+`BranchExpr` sont préservés tels quels, le cas mixte est un troisième bras AJOUTÉ. Les snapshots ifmulti/
+ifelsemulti/ifnested restent verts sans modification.
+
+**GÉNÉRATEUR SEUL.** La `list()`, l'ancre commentaire, le `keyOf` identité existent déjà (#81/#98/#100) — aucune
+primitive runtime. `git diff -- src/filament-runtime` vide. MESURÉ (entrée n°39) : `baseline/IfNestedMixed.Blazor`
+(corps `<p id=x>` + `@if(other){<span id=a>}`, bascules `#o`/`#s` indépendantes) et `filament-ifnestedmixed-gen`
+rendent `#w` `xa → x → xa → ""`, à l'identique. Le témoin `IfNestedMixed.razor` bascule refusé → compilé. La
+FAMILLE @if est maintenant COMPLÈTE : corps multi-nœuds (#98), @else multi-nœuds (#99), imbriqué (#100), racine
+(#89), mixte (#120). `HARNESS_VERSION` 1.33.0 → 1.34.0, divulgué. §5 s'élargit d'un cran ; RADICAL reste
+**« ni éliminée ni établie »**.
