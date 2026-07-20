@@ -4862,3 +4862,44 @@ calculé). §8 inchangé.
 ---
 
 *Fin de l'entrée n°52. Ne pas modifier — ajouter une entrée n°53 pour toute rectification.*
+
+---
+
+## Entrée n°53 — 2026-07-20 — Phase 4 : `[CascadingParameter]` mesuré contre Blazor (CORRECTION)
+
+**`<CascadingValue>` + `[CascadingParameter]`** (décision #134) rejoignent le §5, appariés PAR TYPE comme chez
+Blazor. Blazor a besoin d'un objet de valeur cascadée parce qu'un descendant est découvert au rendu ; ici tout
+s'inline dans UN `mount()`, donc l'expression de l'ancêtre est en portée là où le descendant est émis : une
+cascade **EST une portée lexicale**. Ni objet de contexte, ni dictionnaire, ni abonnement, ni élément
+enveloppant. **AUCUNE primitive runtime.**
+
+### Ce qui est mesuré
+
+`baseline/Cascade.Blazor` : `App.razor` enveloppe `<Gauge />` dans `<CascadingValue Value="@level">` ;
+`Gauge.razor` déclare `[CascadingParameter] public int Level` — **aucun attribut n'est passé**, ce qui est
+précisément ce qui en fait une cascade. Le contrat exige `#depth` à `1`, puis clique `#inc` **deux fois** et
+exige `2` puis `3` : une cascade résolue une seule fois au montage resterait à « 1 », et une qui livrerait la
+valeur puis cesserait de suivre est prise au deuxième clic. **`HARNESS_VERSION` 1.46.0 → 1.47.0**, divulgué.
+
+```
+dotnet publish baseline/Cascade.Blazor -c Release -o bench/publish/blazor-cascade
+./bench/build-filament.sh filament-cascade-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-cascade/wwwroot --app cascade --label blazor-cascade       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-cascade-gen   --app cascade --label filament-cascade-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#depth` (initial → 1 clic → 2 clics) | verdict |
+|---|---|---|
+| **blazor-cascade** (autorité) | `1 → 2 → 3` | contrat OK |
+| **filament-cascade-gen** (générateur) | `1 → 2 → 3` | contrat OK |
+
+**Les deux suivent.** Réduire la cascade à une portée lexicale est donc fidèle, y compris pour la réactivité.
+`git diff -- src/filament-runtime` vide. Le témoin `Gate/CascadingParameter.razor` reste refusé mais **son
+motif a changé** — il l'était pour être une propriété, il l'est maintenant pour n'avoir aucune cascade en
+portée, ce qui est le vrai reproche. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°53. Ne pas modifier — ajouter une entrée n°54 pour toute rectification.*

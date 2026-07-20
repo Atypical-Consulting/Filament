@@ -1,0 +1,18 @@
+@* CASCADING PARAMETER (decision 134). <CascadingValue> hands a value to EVERY descendant that asks
+   for it by TYPE, without each intervening component having to declare and forward it.
+
+   The lowering: because composition inlines every child into ONE mount(), a cascade is nothing more
+   than LEXICAL SCOPE. The cascaded expression is the parent's own, already in scope at the point the
+   descendant is inlined, so a [CascadingParameter] read compiles to that expression directly. There
+   is no context object, no dictionary, and no subscription.
+
+   DOM contract: #depth is rendered by the child, from a value the PARENT cascaded and never passed
+   as an attribute. Clicking #inc must move it 1 -> 2 -- a cascade that resolved once at mount would
+   sit at "1"; that update is the measurement (BENCH n°53). *@
+
+<div id="wrap"><CascadingValue Value="@level"><Gauge /></CascadingValue><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int level = 1;
+    void Inc() { level++; }
+}

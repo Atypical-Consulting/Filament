@@ -111,14 +111,17 @@ public class GateSubsetTests
     [InlineData("Gate/EventCallbackArg.razor", 7, 24, "FIL0002", "unsupported-type")]
     [InlineData("Gate/RenderFragment.razor", 5, 13, "FIL0002", "unsupported-type")]
     // THE TWO CASCADING-PARAMETER ROWS ARE REFUSED BY DIFFERENT RULES, AND THAT IS THE WHOLE
-    // POINT OF HAVING BOTH. The property form is caught for being a PROPERTY -- a verdict with
-    // nothing to do with cascading -- and while it was the suite's only coverage of this spec 3
-    // non-goal, the FIELD form compiled at exit 0 to `const depth = 0;`. See CheckNoAttributes.
+    // POINT OF HAVING BOTH. The FIELD form once compiled at exit 0 to `const depth = 0;`; it is
+    // caught by CheckNoAttributes and stays here.
     //
-    // The property form now raises TWO diagnostics, both true and both at (6,5), because both
-    // rules genuinely fire on it. This row asserts one of the two; the pair is pinned in full by
-    // TheCascadingParameterProperty_RaisesBothTrueDiagnostics, so neither can go unnoticed.
-    [InlineData("Gate/CascadingParameter.razor", 6, 5, "FIL0001", "unsupported-member")]
+    // THE PROPERTY FORM'S REASON CHANGED AT DECISION 134, AND THE CHANGE IS THE RESULT. It used to
+    // be refused for being a PROPERTY -- a verdict with nothing to do with cascading, which is
+    // exactly the "coverage in name only" this file's header warns about: green told nobody
+    // anything, and the reason column was what exposed it. Now that [CascadingParameter] is a real
+    // subset member (#134), the property is admitted as a declaration and refused for what is
+    // ACTUALLY wrong with it in isolation: nothing cascades an `int` to it. A parameter bound to no
+    // cascade would silently hold the type's default and render it as though it were real data.
+    [InlineData("Gate/CascadingParameter.razor", 7, 16, "FIL0002", "unbound-cascading-parameter")]
     [InlineData("Gate/CascadingParameterField.razor", 15, 5, "FIL0001", "unsupported-attribute")]
     [InlineData("Gate/JsInterop.razor", 5, 13, "FIL0002", "unsupported-type")]
     // ---- spec 5's TYPE list -------------------------------------------------
@@ -224,18 +227,21 @@ public class GateSubsetTests
     }
 
     /// <summary>
-    /// `[CascadingParameter] public int Depth { get; set; }` breaks TWO of section 5's rules at
-    /// once -- it carries an attribute and it is a property -- and it now says so twice, at the
-    /// same (6,5), because a PropertyDeclaration's span STARTS at its attribute list.
+    /// `[CascadingParameter] public int Depth { get; set; }` STANDALONE.
     ///
-    /// Pinned rather than tidied away. Two true diagnostics for one declaration is noise, and
-    /// noise is a cost; a suite that asserts Contains() on one of them and never mentions the
-    /// other is how a second rule's behaviour goes unrecorded until someone is surprised by it.
-    /// Deduplicating by location would be the wrong fix -- it would drop a TRUE statement about
-    /// a DIFFERENT rule, and the two rules are independent by design.
+    /// THIS TEST'S SUBJECT CHANGED AT DECISION 134, AND THAT IS THE POINT OF IT. It used to pin TWO
+    /// true-but-beside-the-point diagnostics -- "carries an attribute" and "is a property" -- because
+    /// [CascadingParameter] was outside the subset entirely, so the declaration was refused for its
+    /// SHAPE and cascading never entered into the verdict. That was this file's own warning made
+    /// flesh: coverage in name only, green telling nobody anything.
+    ///
+    /// Now the declaration is admitted and the refusal is about the thing that is actually wrong:
+    /// nothing in scope cascades an `int` to it. ONE diagnostic, and it names the real problem --
+    /// which is a better outcome than two that name incidental ones. Still refused, still writes no
+    /// file; what improved is the reason, and the reason is what the suite is for.
     /// </summary>
     [Fact]
-    public void TheCascadingParameterProperty_RaisesBothTrueDiagnostics()
+    public void TheCascadingParameterProperty_IsRefusedForBeingUnbound_NotForItsShape()
     {
         var outPath = InRepo();
         try
@@ -247,9 +253,13 @@ public class GateSubsetTests
             Assert.False(File.Exists(outPath));
 
             var errors = stderr.Split('\n').Where(l => l.TrimStart().StartsWith("error ")).ToList();
-            Assert.Equal(2, errors.Count);
-            Assert.Contains("CascadingParameter.razor(6,5): FIL0001: [unsupported-attribute]", stderr);
-            Assert.Contains("CascadingParameter.razor(6,5): FIL0001: [unsupported-member]", stderr);
+            Assert.Single(errors);
+            Assert.Contains("FIL0002: [unbound-cascading-parameter]", stderr);
+
+            // The OLD reasons must NOT come back: they were about the declaration's shape, and the
+            // shape is now legal. If either reappears, #134 has regressed to refusing the syntax.
+            Assert.DoesNotContain("unsupported-attribute", stderr);
+            Assert.DoesNotContain("unsupported-member", stderr);
         }
         finally
         {

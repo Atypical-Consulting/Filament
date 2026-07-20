@@ -50,12 +50,23 @@ public static class ConstructSubset
             or "Microsoft.AspNetCore.Components.ParameterAttribute"
             or "Components.ParameterAttribute";
 
+    /// <summary>A [CascadingParameter] (decision 134) — a parameter supplied by an ANCESTOR's
+    /// &lt;CascadingValue&gt; rather than by the immediate parent's attribute, matched by TYPE.</summary>
+    public static bool IsCascadingParameterAttribute(AttributeSyntax a) =>
+        a.Name.ToString() is "CascadingParameter" or "Microsoft.AspNetCore.Components.CascadingParameter"
+            or "Components.CascadingParameter" or "CascadingParameterAttribute"
+            or "Microsoft.AspNetCore.Components.CascadingParameterAttribute";
+
+    /// <summary>Does this property carry [CascadingParameter]?</summary>
+    public static bool IsCascadingParameter(PropertyDeclarationSyntax p) =>
+        p.AttributeLists.SelectMany(l => l.Attributes).Any(IsCascadingParameterAttribute);
+
     /// <summary>A [Parameter]-attributed property is admitted ONLY in the component-parameter role —
     /// a narrow carve-out from §5's no-properties (#85) / no-attributes (#77) rules, forced because a
     /// Blazor component parameter IS a `[Parameter] public T X { get; set; }`. Syntactic; the
     /// scalar-type and auto-property shape are checked semantically in the generator's ParamDecl.</summary>
     public static bool IsComponentParameter(PropertyDeclarationSyntax p) =>
-        p.AttributeLists.SelectMany(l => l.Attributes).Any(IsParameterAttribute);
+        p.AttributeLists.SelectMany(l => l.Attributes).Any(a => IsParameterAttribute(a) || IsCascadingParameterAttribute(a));
 
     /// <summary>null = the member KIND is in §5 (@code admits fields, methods, records, and a
     /// [Parameter] scalar property); non-null = the FIL0001 refusal. A record's INTERNAL shape is a

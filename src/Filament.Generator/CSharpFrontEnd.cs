@@ -101,6 +101,18 @@ public sealed class CSharpFrontEnd
     /// names the HOST GLOBAL SCOPE, so it only ever appears as the receiver of an Invoke*Async call,
     /// which JsInvocation turns into a direct call. Declared into the compiled source so that C# binds
     /// it -- the same "ask the compiler, do not guess" rule the method-group slot marker follows.</summary>
+    /// <summary>The values an ancestor &lt;CascadingValue&gt; has in scope, keyed by the C# TYPE they were
+    /// declared with (decision 134). A cascade matches BY TYPE, exactly as Blazor's does. Each entry is the
+    /// PARENT's translated expression plus whether it reads a parent signal, so a [CascadingParameter] read
+    /// becomes the same live effect a bound [Parameter] does -- and for the same reason: the whole
+    /// composition inlines into one mount(), so the ancestor's expression is simply IN SCOPE here.</summary>
+    readonly Dictionary<string, (string Js, bool Reactive)> _cascades = new(StringComparer.Ordinal);
+
+    public void BindCascades(IReadOnlyDictionary<string, (string Js, bool Reactive)> cascades)
+    {
+        foreach (var kv in cascades) _cascades[kv.Key] = kv.Value;
+    }
+
     string? _jsRuntime;
 
     public void BindJsRuntime(string name) => _jsRuntime = name;
@@ -311,6 +323,9 @@ public sealed class CSharpFrontEnd
         /// lets C# bind one is emitted only for component-attribute slots.</summary>
         public bool IsMethodGroup;
 
+        /// <summary>The slot expression's C# type (decision 134), for cascade matching.</summary>
+        public string? TypeDisplay;
+
         /// <summary>The slot is a whole-expression read of a RenderFragment [Parameter] -- `@ChildContent`
         /// (decision 131). It has no JS: the template compiler inlines the composing parent's markup here
         /// instead of binding anything.</summary>
@@ -399,6 +414,10 @@ public sealed class CSharpFrontEnd
     /// <summary>The slot is `@ChildContent` — the POSITION a composing parent's markup is inlined at,
     /// not a value to bind (decision 131).</summary>
     public bool SlotIsFragment(IntermediateNode node) => Get(node).IsFragment;
+
+    /// <summary>The slot expression's C# type, as a display string — the key a cascade is matched on
+    /// (decision 134). Asked of the semantic model, so `@level` cascades as `int`, not as "level".</summary>
+    public string? SlotTypeDisplay(IntermediateNode node) => Get(node).TypeDisplay;
 
     /// <summary>Is this [Parameter] declared as a RenderFragment? (decision 131)</summary>
     public bool IsFragmentParameter(string name) =>
@@ -1036,7 +1055,8 @@ public sealed class CSharpFrontEnd
         if (member is PropertyDeclarationSyntax pp && Filament.Subset.ConstructSubset.IsComponentParameter(pp)
             && member.DescendantNodesAndSelf().OfType<AttributeListSyntax>()
                 .SelectMany(l => l.Attributes)
-                .All(Filament.Subset.ConstructSubset.IsParameterAttribute))
+                .All(a => Filament.Subset.ConstructSubset.IsParameterAttribute(a)
+                          || Filament.Subset.ConstructSubset.IsCascadingParameterAttribute(a)))
             return true;
 
         if (member.DescendantNodesAndSelf().OfType<AttributeListSyntax>().FirstOrDefault() is not { } list)
@@ -1098,6 +1118,35 @@ public sealed class CSharpFrontEnd
 
         var type = _model.GetTypeInfo(p.Type).Type;
         var name = p.Identifier.Text;
+
+        // A [CascadingParameter] (decision 134). It is NOT supplied by the immediate parent as an
+        // attribute -- it is matched, BY TYPE, against whatever an ancestor <CascadingValue> put in scope.
+        // Because the whole composition inlines into one mount(), that ancestor's expression is literally
+        // in scope here, so the parameter binds to it directly: no context object, no dictionary, no
+        // subscription. Reactivity carries across with it, so a cascaded signal stays live.
+        if (Filament.Subset.ConstructSubset.IsCascadingParameter(p))
+        {
+            if (!CheckType(type, p.Type.SpanStart, allowList: true)) return;
+
+            var key = type!.ToDisplayString();
+            if (!_cascades.TryGetValue(key, out var cascaded))
+            {
+                Refuse("unbound-cascading-parameter",
+                    $"the [CascadingParameter] '{name}' has no cascaded '{key}' in scope. A cascade is matched " +
+                    "BY TYPE against an enclosing <CascadingValue Value=\"@…\">; with none, the parameter would " +
+                    "silently hold the type's default and render it as though it were real data. Refusing to " +
+                    "emit rather than cascade nothing.",
+                    p.Identifier.SpanStart, "FIL0002");
+                return;
+            }
+
+            _paramEnv[name] = cascaded.Js;
+            if (cascaded.Reactive) _paramReactive.Add(name);
+
+            _params.Add(new ParamInfo { Name = name, Symbol = (IPropertySymbol)_model.GetDeclaredSymbol(p)!, Type = type! });
+            _paramsByName[name] = _params[^1];
+            return;
+        }
 
         // AN EVENTCALLBACK PARAMETER -- the child->parent half of composition (decision 130). It is not a
         // value the child holds: at the composition site it ALIASES one of the parent's methods, and the
@@ -1751,6 +1800,7 @@ public sealed class CSharpFrontEnd
                 IsFloat = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Single,
                 IsDecimal = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Decimal,
                 IsDateTime = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_DateTime,
+                TypeDisplay = _model.GetTypeInfo(e).Type?.ToDisplayString(),
                 // Asked of the SEMANTIC MODEL, not of the text: `Inc` is a method group iff Roslyn bound
                 // it to a method this component declares. The Action marker overload above is what lets
                 // it bind at all (decision 130).

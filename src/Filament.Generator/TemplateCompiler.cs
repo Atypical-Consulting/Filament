@@ -965,6 +965,21 @@ public sealed class TemplateCompiler
                     r.Source);
                 return null;
 
+            // <CascadingValue Value="@x"> (decision 134). Razor DOES resolve this one into a component node,
+            // because it is a framework tag helper the reference pack describes. It emits no DOM of its own:
+            // it puts a value in scope for its children and nothing more.
+            case ComponentIntermediateNode c when c.TagName == "CascadingValue":
+                EmitCascadingValue(c, parent);
+                return null;
+
+            case ComponentIntermediateNode c:
+                Diag("component-composition",
+                    $"<{c.TagName}> resolved to a framework component. Composition resolves a child as a " +
+                    "sibling .razor file; the only framework component in the subset is <CascadingValue>. " +
+                    "Refusing to emit.",
+                    c.Source);
+                return null;
+
             case TagHelperIntermediateNode th:
                 Diag("component-composition",
                     $"<{th.TagName}> resolved to a component/tag helper. Component composition is not in " +
@@ -1177,6 +1192,12 @@ public sealed class TemplateCompiler
     /// its grandparent's fragment.</summary>
     Fragment? _fragment;
 
+    /// <summary>The cascaded values in scope, keyed by C# TYPE (decision 134). A stack in effect: each
+    /// &lt;CascadingValue&gt; adds its entry for the duration of its children and restores on the way out,
+    /// so a cascade's reach is exactly its lexical extent -- which, once everything inlines into one
+    /// mount(), is all a cascade ever was.</summary>
+    Dictionary<string, (string Js, bool Reactive)> _cascades = new(StringComparer.Ordinal);
+
     /// <summary>
     /// Inline the composing parent's markup at the child's `@ChildContent` (decision 131). The parent
     /// context is restored for the duration, so the fragment compiles in the scope it was WRITTEN in --
@@ -1220,6 +1241,62 @@ public sealed class TemplateCompiler
         _code = savedCode;
         _regions = savedRegions;
         _fragment = savedFragment;
+    }
+
+    /// <summary>
+    /// &lt;CascadingValue Value="@x"&gt;…&lt;/CascadingValue&gt; (decision 134). Emits NO element: it puts the
+    /// parent's translated expression in scope, keyed by its C# TYPE, for the duration of its children.
+    /// Because the whole composition inlines into one mount(), a descendant's [CascadingParameter] then
+    /// binds to that expression directly -- the cascade IS lexical scope, and it costs nothing at runtime.
+    /// </summary>
+    void EmitCascadingValue(ComponentIntermediateNode node, string? parent)
+    {
+        var valueAttr = node.Children.OfType<ComponentAttributeIntermediateNode>()
+            .FirstOrDefault(a => a.AttributeName == "Value");
+        var expr = valueAttr?.Children.OfType<CSharpExpressionIntermediateNode>().FirstOrDefault();
+
+        if (expr is null)
+        {
+            Diag("unsupported-cascade",
+                "<CascadingValue> needs a Value=\"@…\" expression. A cascade with nothing to cascade would " +
+                "put the type's default in scope and let descendants render it as real data. Refusing to emit.",
+                node.Source);
+            return;
+        }
+
+        // Named cascades are matched by NAME instead of by type, which is a second matching rule and a
+        // second set of failure modes; not measured, so not admitted.
+        if (node.Children.OfType<ComponentAttributeIntermediateNode>().Any(a => a.AttributeName == "Name"))
+        {
+            Diag("unsupported-cascade",
+                "<CascadingValue Name=\"…\"> matches by NAME rather than by type. Only type-matched cascades " +
+                "are in the subset. Refusing to emit.",
+                node.Source);
+            return;
+        }
+
+        if (_code.SlotTypeDisplay(expr) is not { } key)
+        {
+            Diag("unsupported-cascade",
+                $"the cascaded expression '{Trunc(RawText(expr))}' has no resolved type to match on. Refusing to emit.",
+                node.Source);
+            return;
+        }
+
+        var saved = _cascades;
+        _cascades = new Dictionary<string, (string, bool)>(_cascades, StringComparer.Ordinal)
+        {
+            [key] = (_code.SlotJs(expr), _code.SlotIsReactive(expr)),
+        };
+
+        foreach (var content in node.Children.OfType<ComponentChildContentIntermediateNode>())
+            foreach (var child in content.Children)
+            {
+                var c = EmitNode(child, parent);
+                if (c is not null && parent is not null) _create.Add($"insert({parent}, {c});");
+            }
+
+        _cascades = saved;
     }
 
     string? EmitComposition(MarkupElementIntermediateNode el)
@@ -1292,6 +1369,7 @@ public sealed class TemplateCompiler
         var childParse = RazorFrontEnd.Parse(childPath);
         var childCode = new CSharpFrontEnd();
         childCode.BindParameters(bindings, reactive, handlers);
+        childCode.BindCascades(_cascades);
 
         // THE MARKUP THE PARENT PASSED IN (decision 131). Everything that is not an attribute is the
         // child content: `<Card Title="x"><span>…</span></Card>` hands the child that <span>.

@@ -77,6 +77,7 @@ samples/filament-eventcb-gen/App.g.js
 samples/filament-fragment-gen/App.g.js
 samples/filament-elemref-gen/App.g.js
 samples/filament-jsinterop-gen/App.g.js
+samples/filament-cascade-gen/App.g.js
 
 # examples/FilamentApp: emitted/copied at build, never committed (same rule as samples/*.g.js).
 examples/FilamentApp/wwwroot/App.g.js

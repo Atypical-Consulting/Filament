@@ -1,0 +1,7 @@
+@* Receives the cascaded value BY TYPE -- note it declares no [Parameter] and the parent passes no
+   attribute. That is the whole point of a cascade. *@
+<span id="depth">@Level</span>
+
+@code {
+    [CascadingParameter] public int Level { get; set; }
+}

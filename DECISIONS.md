@@ -4580,3 +4580,44 @@ de sorte qu'une implémentation qui truquerait l'affichage sans toucher au stock
 Blazor (autorité). `HARNESS_VERSION` 1.45.0 → 1.46.0, divulgué.
 
 §5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.
+
+## 134. `[CascadingParameter]` — une cascade EST une portée lexicale
+
+**Décision.** `<CascadingValue Value="@x">` et `[CascadingParameter]` entrent dans le sous-ensemble, appariés
+**PAR TYPE** exactement comme chez Blazor. L'enfant ne déclare aucun `[Parameter]` et le parent ne passe aucun
+attribut — c'est ce qui distingue une cascade de la plomberie de paramètre lié de #90.
+
+**Le lowering.** Blazor a besoin d'un objet de valeur cascadée parce qu'un descendant peut être arbitrairement
+profond et n'est découvert qu'au rendu. Ici, toute la composition s'inline dans UN `mount()` : l'expression de
+l'ancêtre est donc **littéralement en portée** à l'endroit où le descendant est émis. Une cascade **EST une
+portée lexicale**, et elle ne coûte rien — ni objet de contexte, ni dictionnaire indexé par type, ni
+abonnement, ni élément enveloppant (`<CascadingValue>` n'émet aucun DOM : le module ne crée que `#wrap`,
+`#depth` et `#inc`). La réactivité traverse avec l'expression, donc un signal cascadé reste vivant.
+
+**RAZOR RÉSOUT CELUI-CI.** Contrairement à `<Gauge>`, `<CascadingValue>` arrive comme un
+`ComponentIntermediateNode` — c'est un tag helper du framework que le pack de références décrit. C'est le
+premier composant de framework admis, et le SEUL : tout autre `ComponentIntermediateNode` est refusé avec un
+message qui le dit.
+
+**LE MOTIF DE REFUS DU TÉMOIN A CHANGÉ, ET C'EST LE RÉSULTAT.** `Gate/CascadingParameter.razor` était refusé
+pour être une **propriété** — un verdict sans aucun rapport avec la cascade. C'était l'avertissement de
+`GateSubsetTests` réalisé : « couverture de nom seulement », le vert ne disait rien à personne, et c'est la
+colonne des MOTIFS qui l'avait exposé (défaut n°3 de ce fichier). Maintenant la déclaration est admise et le
+refus porte sur ce qui cloche vraiment : rien ne cascade d'`int` jusqu'à elle. **UN** diagnostic
+(`unbound-cascading-parameter`, FIL0002) au lieu de deux, et il nomme le vrai problème — ce qui vaut mieux que
+deux qui nomment des problèmes incidents. Le test l'épingle dans les deux sens : les anciens motifs ne doivent
+pas revenir, sinon #134 aurait régressé vers un refus de la syntaxe.
+
+**FRONTIÈRES.** `Gate/CascadingParameterField.razor` (forme CHAMP) reste refusé — `[CascadingParameter]` sur
+un champ n'est pas la forme Blazor et la dérogation d'attributs ne couvre que les propriétés. Une cascade
+NOMMÉE (`<CascadingValue Name="…">`) apparie par nom : deuxième règle d'appariement, deuxième jeu de modes de
+défaillance, non mesurée donc non admise. Un `<CascadingValue>` sans `Value` est refusé.
+Suite : **446 tests** (368 générateur / 60 subset / 18 analyzer), runtime 214.
+
+**GÉNÉRATEUR SEUL, ZÉRO HELPER.** `git diff -- src/filament-runtime` vide ; runtime gelé à 1 943 o.
+MESURÉ (entrée n°53) : `#depth` — rendu par l'ENFANT à partir d'une valeur que le parent ne lui a jamais
+passée — vaut `1`, puis `2`, puis `3` sur deux clics. Deux clics : une cascade qui livrerait la valeur une
+fois puis cesserait de suivre est prise aussi sûrement qu'une qui ne livrerait rien. Identique à Blazor
+(autorité). `HARNESS_VERSION` 1.46.0 → 1.47.0, divulgué.
+
+§5 s'élargit d'un cran ; §8 : RADICAL reste **« ni éliminée ni établie »**.
