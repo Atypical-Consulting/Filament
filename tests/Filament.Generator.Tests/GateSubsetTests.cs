@@ -622,6 +622,53 @@ public class NegativeControls
         Assert.Contains("OrderBy", stderr);
     }
 
+    /// <summary>
+    /// Decision 128: GroupBy over a List with a scalar key compiles. It reduces into a Map of groups (each an
+    /// array-with-.key); g.Key is g.key and g.Count() flows through the array path.
+    /// </summary>
+    [Fact]
+    public void Section5_GroupByScalarKey_CompilesClean()
+    {
+        var (exit, stderr, js) = CompileEmitting(
+            """
+            <p><span id="v">@v</span></p>
+            <button id="go" @onclick="Go">go</button>
+
+            @code {
+                private List<int> _nums = new List<int> { 3, 1, 2, 4 };
+                private int v = 0;
+                private void Go() { v = _nums.GroupBy(x => x % 2).First().Count(); }
+            }
+            """);
+        Assert.True(exit == 0, "GroupBy over a List with a scalar key is in the subset (decision 128):\n" + stderr);
+        Assert.Contains("__g.key = __k", js);   // the keyed-group reduce
+        Assert.Contains("].length", js);        // g.Count() -> .length
+    }
+
+    /// <summary>
+    /// Decision 128's boundary: a JS Map compares keys by value, so a RECORD key would group by reference and
+    /// silently split equal keys. Only a scalar key (int/string/bool) is admitted; a record key is refused.
+    /// </summary>
+    [Fact]
+    public void GroupByARecordKey_IsRefused()
+    {
+        var (exit, stderr, wrote) = Compile(
+            """
+            <p><span id="v">@v</span></p>
+            <button id="go" @onclick="Go">go</button>
+
+            @code {
+                record Pair(int A, int B);
+                private List<int> _nums = new List<int> { 1, 2, 3 };
+                private int v = 0;
+                private void Go() { v = _nums.GroupBy(x => new Pair(x, x)).Count(); }
+            }
+            """);
+        Assert.True(exit != 0 && !wrote, "GroupBy by a record key groups by reference and must be refused");
+        Assert.Contains("unsupported-call", stderr);
+        Assert.Contains("GroupBy", stderr);
+    }
+
     /// <summary>Section 5's Razor: @oninput, alongside @onclick.</summary>
     [Fact]
     public void Section5_OnInput_CompilesClean()

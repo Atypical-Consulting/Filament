@@ -1896,6 +1896,11 @@ public sealed class CSharpFrontEnd
     bool IsKeyValuePair(ExpressionSyntax e) =>
         _model.GetTypeInfo(e).Type?.OriginalDefinition.ToDisplayString() == "System.Collections.Generic.KeyValuePair<TKey, TValue>";
 
+    // An expression typed IGrouping<K,T> (decision 128): GroupBy yields these, modelled as a JS array of the group's
+    // elements with a `.key` property. `.Key` -> `.key` (MemberAccess); every sequence op flows through the array path.
+    bool IsGrouping(ExpressionSyntax e) =>
+        _model.GetTypeInfo(e).Type?.OriginalDefinition.ToDisplayString() == "System.Linq.IGrouping<TKey, TElement>";
+
     // The JS signal name of the Dictionary a @foreach loop variable `kvp` iterates, or null. The variable is
     // declared BY the ForEachStatement, so its declaring syntax gives back the foreach whose collection is the
     // Dict field. Used to compile `kvp.Value` to the reactive `d.value.get(kvp[0])` lookup (decision 125).
@@ -2494,6 +2499,12 @@ public sealed class CSharpFrontEnd
         if (ma.Name.Identifier.Text == "Count" && IsDictReceiver(ma.Expression))
             return $"{Expr(ma.Expression)}.size";
 
+        // g.Key on an IGrouping (decision 128): a group is modelled as a JS array of its elements with a `.key`
+        // property, so its Key is `.key`. The group's OWN sequence ops (g.Count() -> .length, g.Sum() -> reduce)
+        // need no special case -- a group IS an array, so they flow through the normal array/LINQ mappings.
+        if (ma.Name.Identifier.Text == "Key" && IsGrouping(ma.Expression))
+            return $"{Expr(ma.Expression)}.key";
+
         // kvp.Key / kvp.Value on a @foreach-over-Dictionary variable (decision 125). The Map-spread source gives
         // each row as a [k, v] pair, so .Key is kvp[0] -- the reconcile key, STATIC per row. But .Value must NOT be
         // the frozen kvp[1]: list() REUSES a persisting key's row (it never re-runs create), so a static value goes
@@ -2695,27 +2706,44 @@ public sealed class CSharpFrontEnd
             ("Take", 1) => $"{recv}.slice(0, {Expr(args[0].Expression)})",
             ("Reverse", 0) => $"[...{recv}].reverse()",
             ("ElementAt", 1) => $"{recv}[{Expr(args[0].Expression)}]",
+            // GroupBy (decision 128) -> an ARRAY of groups in first-key-appearance order (LINQ's order). Each
+            // IGrouping<K,T> is modelled as a JS array of its elements WITH a `.key` property -- so g.Key is g.key
+            // (see MemberAccess) and every sequence op on a group (g.Count(), g.Sum(), First()) already works because
+            // a group IS an array. The reduce builds a Map<K, group>, first-seen key inserts a fresh keyed array,
+            // and .values() yields the groups in insertion (= first-appearance) order. A scalar key (Map value
+            // equality: int/string/bool) is required -- a boxed key (decimal/record) would group by reference.
+            ("GroupBy", 1) when ScalarGroupKey(args[0]) =>
+                $"[...{recv}.reduce((__m, __x) => {{ const __k = ({Lambda(args[0])})(__x); let __g = __m.get(__k); " +
+                $"if (!__g) {{ __g = []; __g.key = __k; __m.set(__k, __g); }} __g.push(__x); return __m; }}, new Map()).values()]",
             _ => Refuse("unsupported-call",
                 $"the LINQ operator '{symbol.Name}' (arity {args.Count}) is not in the subset. Section 5 admits " +
                 "Where, Select, Count, Any, All, ToList/ToArray, the number aggregates Sum/Min/Max/Average/First/" +
-                "Last, and the ordering/paging operators OrderBy/OrderByDescending (numeric key)/Skip/Take/Reverse/" +
-                "ElementAt over a List. Refusing to emit.", inv.SpanStart),
+                "Last, the ordering/paging operators OrderBy/OrderByDescending (numeric key)/Skip/Take/Reverse/" +
+                "ElementAt, and GroupBy (scalar key) over a List. Refusing to emit.", inv.SpanStart),
         };
     }
 
+    // The expression body of a single-parameter LINQ key selector (`x => key`), or null (block-bodied -> refused).
+    ExpressionSyntax? KeySelectorBody(ArgumentSyntax arg) => arg.Expression switch
+    {
+        SimpleLambdaExpressionSyntax l => l.Body as ExpressionSyntax,
+        ParenthesizedLambdaExpressionSyntax l => l.Body as ExpressionSyntax,
+        _ => null,
+    };
+
     // OrderBy(x => key)'s comparator subtracts keys, so the key selector must return int or double (decision 126).
     // A string / other key is refused: `"a" - "b"` is NaN, a silent mis-sort. Block-bodied selectors are refused too.
-    bool NumericKeySelector(ArgumentSyntax arg)
-    {
-        var body = arg.Expression switch
-        {
-            SimpleLambdaExpressionSyntax l => l.Body as ExpressionSyntax,
-            ParenthesizedLambdaExpressionSyntax l => l.Body as ExpressionSyntax,
-            _ => null,
-        };
-        return body is not null &&
-            _model.GetTypeInfo(body).Type?.SpecialType is SpecialType.System_Int32 or SpecialType.System_Double;
-    }
+    bool NumericKeySelector(ArgumentSyntax arg) =>
+        KeySelectorBody(arg) is { } body &&
+        _model.GetTypeInfo(body).Type?.SpecialType is SpecialType.System_Int32 or SpecialType.System_Double;
+
+    // GroupBy(x => key) groups into a JS Map, which compares keys by SameValueZero (decision 128). A VALUE-equal
+    // scalar key -- int/string/bool -- groups correctly; a boxed key (decimal object, a record) would group by
+    // REFERENCE, silently splitting equal keys, so it is refused (deferred). Block-bodied selectors refused too.
+    bool ScalarGroupKey(ArgumentSyntax arg) =>
+        KeySelectorBody(arg) is { } body &&
+        _model.GetTypeInfo(body).Type?.SpecialType is
+            SpecialType.System_Int32 or SpecialType.System_String or SpecialType.System_Boolean;
 
     /// <summary>A single-parameter lambda argument to a LINQ operator (decision 116) -> a JS arrow. Its parameter
     /// is an ordinary local (Identifier resolves an IParameterSymbol to its name), and its body is translated by
