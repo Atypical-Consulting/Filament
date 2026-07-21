@@ -29,7 +29,7 @@ public class ReferenceAssembliesSeamTests
 #else
                 "Release",
 #endif
-                "net10.0", "Filament.Generator.dll");
+                "net8.0", "Filament.Generator.dll");
             foreach (var a in new[] { dll, input, outPath }) psi.ArgumentList.Add(a);
             psi.Environment["FILAMENT_DOTNET_ROOT"] = dotnetRoot;
             using var p = System.Diagnostics.Process.Start(psi)!;

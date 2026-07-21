@@ -6,7 +6,20 @@
          exe, NETSDK1150), selected via AdditionalProperties on its ProjectReference. One project, one
          pipeline, two outputs; never a second copy of the compiler. -->
     <OutputType Condition="'$(FilamentGeneratorAsLibrary)' != 'true'">Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <!-- net8.0 LTS, moved OFF net10 by a measured host defect (decision 144): the .NET 10 mono-wasm
+         runtime cannot host this compiler (a missing Volatile.ReadBarrier interp intrinsic, then
+         missing gsharedvt interp-transition wrappers under AOT; five pinned attempts in the log),
+         and the net8 runtime can. The compiler itself has NO net10 dependency: it reads the SDK's
+         net10 REF assemblies as metadata regardless of what runtime executes it, and the 480-test
+         suite pins the emissions byte-identical across the move. RollForward lets the CLI run on
+         any newer installed runtime, so consumers need no net8 install. -->
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>LatestMajor</RollForward>
+    <!-- The two output shapes must never share a bin/obj: the library flavor (no Program.cs, no
+         runtimeconfig) CLOBBERED the CLI's output and every shell-out consumer died with
+         "libhostpolicy not found". Measured, then separated. -->
+    <IntermediateOutputPath Condition="'$(FilamentGeneratorAsLibrary)' == 'true'">obj/lib-shape/</IntermediateOutputPath>
+    <OutputPath Condition="'$(FilamentGeneratorAsLibrary)' == 'true'">bin/lib-shape/</OutputPath>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <RootNamespace>Filament.Generator</RootNamespace>

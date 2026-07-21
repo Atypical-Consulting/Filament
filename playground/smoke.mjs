@@ -30,7 +30,7 @@ const FIXTURES = [
 ];
 
 function cliCompile(file) {
-  const dll = path.join(ROOT, 'src', 'Filament.Generator', 'bin', 'Release', 'net10.0', 'Filament.Generator.dll');
+  const dll = path.join(ROOT, 'src', 'Filament.Generator', 'bin', 'Release', 'net8.0', 'Filament.Generator.dll');
   const out = path.join(ROOT, 'samples', 'Counter', `.smoke-${Math.random().toString(36).slice(2)}.js`);
   try {
     execFileSync('dotnet', [dll, path.join(ROOT, file), out, '--runtime', RUNTIME_SPECIFIER], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -48,7 +48,7 @@ function cliCompile(file) {
 const browser = await chromium.launch({ headless: true, channel: 'chrome', ignoreDefaultArgs: ['--disable-field-trial-config'] });
 const page = await browser.newPage();
 page.on('pageerror', (e) => console.error('[page error]', e.message));
-page.on('console', (m) => console.error(`[console.${m.type()}]`, m.text().slice(0, 400)));
+page.on('console', (m) => { if (m.type() === 'error') console.error('[console.error]', m.text().slice(0, 300)); });
 await page.goto(`${url}?smoke=${Date.now()}`, { waitUntil: 'domcontentloaded' });
 await page.waitForFunction(() => !!window.filamentPlayground, null, { timeout: 240_000 });
 

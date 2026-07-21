@@ -40,7 +40,7 @@
     <RemoveDir Directories="$(GenPublishDir)" />
     <MSBuild Projects="$(GeneratorProject)"
              Targets="Publish"
-             Properties="Configuration=$(Configuration);TargetFramework=net10.0;PublishDir=$(GenPublishDir);SelfContained=false;UseAppHost=false" />
+             Properties="Configuration=$(Configuration);TargetFramework=net8.0;PublishDir=$(GenPublishDir);SelfContained=false;UseAppHost=false" />
   </Target>
 
   <!-- Add the generator publish output + runtime to the package. -->

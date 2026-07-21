@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <PropertyGroup>
-    <FilamentGeneratorDll>$(MSBuildProjectDirectory)/../../src/Filament.Generator/bin/$(Configuration)/net10.0/Filament.Generator.dll</FilamentGeneratorDll>
+    <FilamentGeneratorDll>$(MSBuildProjectDirectory)/../../src/Filament.Generator/bin/$(Configuration)/net8.0/Filament.Generator.dll</FilamentGeneratorDll>
     <FilamentRuntimeJs>$(MSBuildProjectDirectory)/../../src/filament-runtime/dist/filament.js</FilamentRuntimeJs>
     <FilamentAppRazor>$(MSBuildProjectDirectory)/App.razor</FilamentAppRazor>
     <FilamentAppJs>$(MSBuildProjectDirectory)/wwwroot/App.g.js</FilamentAppJs>

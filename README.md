@@ -110,6 +110,8 @@ Reactive lists compile to `list(parent, sourceFn, keyFn, bodyFn, anchor)` — a 
 Two apps — `Counter` and a 1,000-row `Rows` — compiled from **pure `.razor`** and benchmarked against the same apps built with Blazor WASM (interpreted and AOT). The project's grading criteria:
 
 > **The Duel (app-level, BENCH n°60).** One non-trivial app — a routed task board (`EditForm` add, keyed list with per-row toggle/remove, filters, LINQ stats, second page) — built from the **same `.razor` sources** by both compilers, measured only after a 10-step behavioural contract passed identically on both sides: wire weight **4,555 B vs 1,833,677 B** brotli (**~402×**, ~925× vs AOT), time-to-interactive **26.9 ms vs 180.3 ms** over localhost (**~6.7×**, a floor — a real network widens it), memory after interaction **0.88 MB vs 43.7 MB** (`measureUserAgentSpecificMemory`, WASM heap counted — **~50×**). Rendered from the committed artifacts on [the benchmark page](https://atypical-consulting.github.io/Filament/benchmark).
+>
+> **The Playground (BENCH n°61).** The *unchanged* generator, compiled to WebAssembly, running on [the playground page](https://atypical-consulting.github.io/Filament/playground): type Razor, get the emitted JavaScript (byte-identical to the CLI's — proven by `playground/smoke.mjs`) and the running component, or the compiler's verbatim FIL refusal. In-browser compile: **~63 ms** median; the engine costs about one Blazor AOT app on the wire (~4.4 MB brotli) — and its output is measured in hundreds of bytes.
 
 | # | Criterion | Result | Detail |
 |---|-----------|:------:|--------|

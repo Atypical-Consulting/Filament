@@ -5248,3 +5248,61 @@ recommitter des artefacts, jamais retaper des nombres.
 ---
 
 *Fin de l'entrée n°60. Ne pas modifier — ajouter une entrée n°61 pour toute rectification.*
+
+---
+
+## Entrée n°61 — 2026-07-21 — LE PLAYGROUND : le compilateur inchangé, dans le navigateur, parité octet prouvée
+
+**La revendication** : la page `/playground` du site fait tourner Filament.Generator — le même pipeline
+Roslyn-et-Razor que la suite gâte — compilé en WebAssembly. Pas un port, pas une réimplémentation. **La preuve
+est le smoke de parité** (`playground/smoke.mjs`) : les mêmes sources compilées par la CLI et par le moteur en
+navigateur (même spécificateur de runtime), émissions exigées OCTET-IDENTIQUES.
+
+### Verdict de parité (Chrome, `playground/smoke.mjs`)
+
+| Fixture | verdict | latence en navigateur |
+|---|---|---|
+| Counter (@onclick = chaîne tag-helper ; @code typé = modèle sémantique) | **octet-identique** (1 655 o) | 88 ms |
+| ForeachList (list() + LINQ + décision 140) | **octet-identique** (1 515 o) | 124 ms |
+| ForeachStatic (témoin de REFUS) | **refusé, libellé CLI intact** (`unsupported-foreach`) | 77 ms |
+
+La page elle-même (E2E sur le build Astro) : Counter auto-compilé à l'ouverture, la preview MONTE le module
+émis contre le vrai runtime 1,9 Ko et **le compteur s'incrémente au clic** ; l'exemple RowActions (décision
+141) ajoute deux lignes et le `.del` de la première retire CETTE ligne dans l'iframe ; l'exemple de refus
+affiche le diagnostic FIL0001 mot pour mot dans le panneau.
+
+### Le poids et la latence (serveur bench, négociation brotli, cache froid)
+
+| Mesure | valeur |
+|---|---|
+| Fil → moteur prêt (runtime .NET + Roslyn + Razor + générateur + refpack) | **4 394 816 o** (79 requêtes) |
+| Pack de références élagué (34 assemblies, prouvé par LES 480 TESTS) | 2 222 752 o bruts (~37× moins que les ~84 Mo du SDK) |
+| Compile en navigateur, médiane de 10 (Counter) | **63 ms** (56–89) |
+| Première compile (sonde d'amorçage) | 216 ms |
+
+**L'IRONIE EST LE PITCH, et elle est affichée EN DIRECT sur la page** (somme resource-timing, jamais un nombre
+codé en dur) : le moteur coûte sur le fil À PEU PRÈS UNE app Blazor AOT du Duel (4,39 Mo vs 4,21 Mo, entrée
+n°60) — et sa sortie se compte en centaines d'octets.
+
+### L'arbitrage d'hôte (décision 144, résumé)
+
+QUATRE défauts du runtime .NET 10 mono-wasm épinglés à la sonde (intrinsèque `Volatile.ReadBarrier` absent de
+l'interpréteur ; `Task.Wait` interdit → `concurrentBuild:false`, neutre sur desktop ; pile Emscripten ; wrappers
+gsharedvt de transition interp manquants sous AOT — incurables par dedup/LLVMOnly/interp-args, cinq builds).
+**Sortie : net8 LTS** — l'interpréteur y précède l'API fautive ; le générateur déménage
+(`RollForward=LatestMajor`), le playground tourne en PUR interpréteur, et les **480 tests** épinglent les
+émissions octet-identiques à travers le déménagement. Prix divulgué : les deux formes de sortie (CLI Exe /
+bibliothèque wasm) sont séparées par répertoire après qu'un écrasement mutuel a été MESURÉ (libhostpolicy).
+
+**RÉSERVES.** (1) Le 4,39 Mo est mesuré sur le serveur bench (brotli) ; GitHub Pages négocie autrement — le
+bandeau de la page affiche TOUJOURS le transfert réel du visiteur. (2) Les latences sont celles de cette
+machine (M-series) ; l'interpréteur est ~2–4× plus lent qu'un JIT desktop — 63 ms de médiane laisse la marge.
+(3) Le smoke vise le Chrome SYSTÈME : le chromium 150 épinglé du harnais de bench a d'abord été accusé À TORT
+(le crash dépendait de l'ENTRÉE, pas du navigateur) — l'erreur est consignée pour la prochaine fois.
+
+`git diff -- src/filament-runtime` vide. Suite : **480 tests** (402 générateur / 60 subset / 18 analyzer),
+runtime 214. Preuve refpack rejouée sous net8 : verte.
+
+---
+
+*Fin de l'entrée n°61. Ne pas modifier — ajouter une entrée n°62 pour toute rectification.*

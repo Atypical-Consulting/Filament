@@ -4980,9 +4980,14 @@ récursion infinie → `StackOverflowException` à N'IMPORTE quelle taille de pi
 l'identique — c'est ce qui a disqualifié l'hypothèse « profondeur »). Des sondes étagées (env → MEMFS → 34
 MetadataReference → Parse) ont épinglé le site dans la machinerie de compilation ; Roslyn 4.8.0 (netstandard2.0,
 antérieur à l'API) reproduit — l'appelant est corelib même ; rétrograder S.C.Immutable/S.R.Metadata ne déplace
-rien. **Remède : l'AOT** — son compilateur connaît l'intrinsèque, le corps piégé n'est jamais exécuté. L'AOT
-exige le trimming : mode `partial`, qui laisse ENTIER tout assembly non-IsTrimmable (Roslyn, le moteur Razor EOL,
-les projets du repo) ; le juge comportemental est la batterie de fixtures en navigateur.
+rien. **La route AOT a été essayée et ABANDONNÉE, mesures à l'appui** : l'AOT contourne l'intrinsèque (parité
+octet atteinte sur Counter !) mais expose le défaut n°4 ci-dessous, incurable par `WasmDedup=false`, par
+`AOTMode=LLVMOnly` ET par l'argument AOT `interp` — cinq builds épinglés. **La destination est net8** : le
+générateur passe sur net8.0 LTS (`RollForward=LatestMajor`, la CLI tourne sur tout runtime plus récent), dont
+l'interpréteur PRÉCÈDE l'API fautive — le playground tourne alors en PUR INTERPRÉTEUR, sans AOT, sans relink
+natif, et les 480 tests épinglent les émissions OCTET-IDENTIQUES à travers le déménagement. Le compilateur n'a
+aucune dépendance à net10 : il lit les ref assemblies net10 du SDK comme MÉTADONNÉES, quel que soit le runtime
+qui l'exécute.
 
 **2. « Cannot wait on monitors on this runtime »** : `concurrentBuild: true` (défaut Roslyn) parallélise derrière
 `Task.Wait`, c'est-à-dire `Monitor.Wait`, interdit sur un hôte mono-thread. `concurrentBuild: false` dans
@@ -4998,7 +5003,9 @@ méthode générique sur STRUCT) mourait sur « AOT NOT FOUND: gsharedvt_out_sig
 intptr) » → assertion interp.c:2737 — épinglée non par raisonnement mais par `MONO_LOG_MASK=aot` lu dans la
 console : Counter compilait (parité octet DÉJÀ verte), le premier `items.Add(…)` à résoudre tombait. Piège
 subtil : le crash ne dépend pas du navigateur mais de l'ENTRÉE (quel chemin de binder Roslyn s'exerce), ce qui a
-d'abord fait accuser Chromium. `<WasmDedup>false</WasmDedup>` : image plus grosse, compilateur qui marche.
+d'abord fait accuser Chromium. Ni `WasmDedup=false`, ni `AOTMode=LLVMOnly`, ni l'argument AOT `interp`
+n'ont fourni le wrapper — c'est ce troisième mur qui a tranché pour net8 (défaut n°1), où l'interpréteur
+exécute tout et n'a besoin d'aucune transition.
 
 **Au passage, la forme bibliothèque** : une app wasm self-contained ne peut pas référencer un exe
 framework-dependent (NETSDK1150) ; `OutputType` du générateur devient conditionnel et la forme bibliothèque

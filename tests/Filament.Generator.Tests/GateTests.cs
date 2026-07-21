@@ -407,7 +407,7 @@ public static class Run
     public static (int exit, string stdout, string stderr) Generator(string input, string output)
     {
         var dll = Path.Combine(RepoPaths.Root, "src", "Filament.Generator", "bin",
-            Configuration, "net10.0", "Filament.Generator.dll");
+            Configuration, "net8.0", "Filament.Generator.dll");
         Assert.True(File.Exists(dll), $"generator not built at {dll}");
         return Exec("dotnet", [dll, input, output]);
     }
@@ -416,7 +416,7 @@ public static class Run
     public static (int exit, string stdout, string stderr) Router(string routerOut, params string[] pages)
     {
         var dll = Path.Combine(RepoPaths.Root, "src", "Filament.Generator", "bin",
-            Configuration, "net10.0", "Filament.Generator.dll");
+            Configuration, "net8.0", "Filament.Generator.dll");
         Assert.True(File.Exists(dll), $"generator not built at {dll}");
         string[] args = [dll, "--router", routerOut, .. pages, "--runtime", "../../src/filament-runtime/src/index.ts"];
         return Exec("dotnet", args);

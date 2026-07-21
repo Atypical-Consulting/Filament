@@ -28,9 +28,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # The playground engine is an AOT wasm publish of the whole generator (Roslyn included) —
-    # minutes of mono-aot on a shared runner, not the seconds an Astro build takes.
-    timeout-minutes: 75
+    # The playground engine is a wasm publish of the whole generator (Roslyn included, pure
+    # interpreter -- decision 144); the workload install dominates, not the build.
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: website
@@ -52,17 +52,17 @@ jobs:
 
       # ---- the playground engine (decision 144) --------------------------------------------
       # The /playground page loads the UNCHANGED generator compiled to WebAssembly from
-      # playground-engine/. Building it needs dotnet + the wasm-tools workload (AOT: see the
-      # csproj for why AOT is load-bearing, not an optimisation), the curated ref-pack, and the
-      # signals runtime bundle the preview mounts against.
+      # playground-engine/. Building it needs dotnet + the wasm-tools-net8 workload (net8, and
+      # not by preference: decision 144 pins the .NET 10 host defects that forced the move), the
+      # curated ref-pack, and the signals runtime bundle the preview mounts against.
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
-      - name: Install wasm-tools workload
+      - name: Install wasm-tools-net8 workload
         working-directory: .
-        run: dotnet workload install wasm-tools
+        run: dotnet workload install wasm-tools-net8
 
       - name: Cache NuGet packages
         uses: actions/cache@v6
@@ -80,7 +80,7 @@ jobs:
         working-directory: .
         run: bash playground/make-refpack.sh playground/Filament.Playground/wwwroot/refpack --manifest
 
-      - name: Publish the playground engine (AOT)
+      - name: Publish the playground engine
         working-directory: .
         run: dotnet publish playground/Filament.Playground -c Release -o /tmp/playground-publish
 
