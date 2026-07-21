@@ -739,14 +739,28 @@ public sealed class TemplateCompiler
 
     void CollectDynamicAttributes(IntermediateNode node, TemplatePlan plan)
     {
-        if (node is MarkupElementIntermediateNode el && !LooksLikeComponent(el.TagName))
-            foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
-                if (IsDynamicStringAttribute(attr.AttributeName) && ComposableValue(attr) is { } parts)
-                    foreach (var e in parts.OfType<CSharpExpressionAttributeValueIntermediateNode>())
-                        plan.FreeSlots.Add(e);
-                else if (BooleanAttributes.Contains(attr.AttributeName) && DynamicValue(attr) is { } expr)
-                    plan.FreeSlots.Add(expr);
-        foreach (var child in node.Children) CollectDynamicAttributes(child, plan);
+        // A region's markup items already claimed their attribute-value slots (SlotsIn, decision
+        // 152) so those compile inside the region method, where the loop variable resolves.
+        // Free-slot them TOO and the same node is planted twice -- the class-scope copy cannot
+        // see `t` and the whole compilation dies on CS0103. One node, one scope.
+        var claimed = plan.Regions.SelectMany(r => r.Items).OfType<MarkupItem>()
+            .SelectMany(mi => mi.Slots).ToHashSet();
+        void Walk(IntermediateNode n)
+        {
+            if (n is MarkupElementIntermediateNode el && !LooksLikeComponent(el.TagName))
+                foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
+                    if (IsDynamicStringAttribute(attr.AttributeName) && ComposableValue(attr) is { } parts)
+                    {
+                        foreach (var e in parts.OfType<CSharpExpressionAttributeValueIntermediateNode>())
+                            if (!claimed.Contains(e)) plan.FreeSlots.Add(e);
+                    }
+                    else if (BooleanAttributes.Contains(attr.AttributeName) && DynamicValue(attr) is { } expr)
+                    {
+                        if (!claimed.Contains(expr)) plan.FreeSlots.Add(expr);
+                    }
+            foreach (var child in n.Children) Walk(child);
+        }
+        Walk(node);
     }
 
     /// <summary>
@@ -801,7 +815,7 @@ public sealed class TemplateCompiler
     /// </summary>
     (string js, bool reactive) ComposeAttributeValue(IReadOnlyList<IntermediateNode> parts)
     {
-        var terms = new List<string>();
+        var terms = new List<(string Js, bool IsExpr)>();
         var buf = new System.Text.StringBuilder();
         var reactive = false;
         foreach (var part in parts)
@@ -814,13 +828,22 @@ public sealed class TemplateCompiler
             else if (part is CSharpExpressionAttributeValueIntermediateNode c)
             {
                 buf.Append(c.Prefix);
-                if (buf.Length > 0) { terms.Add(JsString(buf.ToString())); buf.Clear(); }
-                terms.Add(_code.SlotJs(c));
+                if (buf.Length > 0) { terms.Add((JsString(buf.ToString()), false)); buf.Clear(); }
+                terms.Add((_code.SlotJs(c), true));
                 if (_code.SlotIsReactive(c)) reactive = true;
             }
         }
-        if (buf.Length > 0) terms.Add(JsString(buf.ToString()));
-        return (string.Join(" + ", terms), reactive);
+        if (buf.Length > 0) terms.Add((JsString(buf.ToString()), false));
+
+        // In a MULTI-term fold, a compound expression term must be parenthesised: `+` binds
+        // tighter than `?:`, so 'flex ' + t.done.value ? 'a' : 'b' is (truthy-string) ? 'a' : 'b'
+        // -- the prefix silently gone and one branch dead (decision 152). A bare dotted chain
+        // (`cls.value`, `t.done.value`) stays bare, which is what keeps the mixed-class answer key
+        // ('badge ' + statusClass.value + ' rounded') byte-identical.
+        var js = string.Join(" + ", terms.Select(t =>
+            t.IsExpr && terms.Count > 1 && !Regex.IsMatch(t.Js, @"^[\w$]+(\.[\w$]+)*$")
+                ? "(" + t.Js + ")" : t.Js));
+        return (js, reactive);
     }
 
     /// <summary>Every @expression and @key in a subtree, in document order.</summary>
@@ -845,6 +868,19 @@ public sealed class TemplateCompiler
         void Walk(IntermediateNode n)
         {
             if (n is CSharpExpressionIntermediateNode or SetKeyIntermediateNode) { slots.Add(n); return; }
+            // A dynamic ATTRIBUTE value on a row's element is a slot of THIS region (decision 152):
+            // `class="… @(t.Done ? … : …)"` reads the loop variable, so its expression must compile
+            // inside the region method's braces exactly like the row's text slots -- harvested here
+            // with the SAME two predicates CollectDynamicAttributes uses at mount level (which then
+            // skips anything a region already claimed, so each node is planted in exactly one scope).
+            if (n is HtmlAttributeIntermediateNode a)
+            {
+                if (IsDynamicStringAttribute(a.AttributeName) && ComposableValue(a) is { } parts)
+                    slots.AddRange(parts.OfType<CSharpExpressionAttributeValueIntermediateNode>());
+                else if (BooleanAttributes.Contains(a.AttributeName) && DynamicValue(a) is { } expr)
+                    slots.Add(expr);
+                return;
+            }
             // Stop at any node that is ITSELF a region container (decision 142) -- including the root,
             // when an outer region's markup item IS one: its slots belong to ITS region method -- the
             // scope its own C# declares (a loop variable, say) -- not to this one's, where they would be
@@ -2207,6 +2243,10 @@ public sealed class TemplateCompiler
             if (BooleanAttributes.Contains(name) && DynamicValue(attr) is { } boolNode)
             {
                 var js = _code.SlotJs(boolNode);
+                // A compound condition must be parenthesised before `? '' : null` -- the conditional
+                // is right-associative, so a bare ternary here would swallow the present/absent arm
+                // (decision 152's precedence rule; a dotted chain stays bare, snapshot-identical).
+                if (!Regex.IsMatch(js, @"^[\w$]+(\.[\w$]+)*$")) js = "(" + js + ")";
                 _used.Add("setAttr");
                 if (_code.SlotIsReactive(boolNode))
                 {

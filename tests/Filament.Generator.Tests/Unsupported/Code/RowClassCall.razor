@@ -1,0 +1,24 @@
+@* BOUNDARY for decision 152: the loop variable now reaches attribute expressions, but the
+   expression subset is unchanged -- a CALL in a class value (Trim) is as refused inside a row's
+   attribute as anywhere else, at its own span. *@
+
+<ul id="list">@foreach (Item t in visible)
+{
+    <li @key="t.Id" class="row @(t.Label.Trim())"><span>@t.Label</span></li>
+}</ul>
+
+@code {
+    record Item
+    {
+        public int Id { get; set; }
+        public string Label { get; set; } = "";
+    }
+
+    private List<Item> tasks = new List<Item>();
+    private List<Item> visible = new List<Item>();
+
+    void Touch()
+    {
+        visible = tasks.Where(x => true).ToList();
+    }
+}

@@ -63,4 +63,45 @@ public class TailwindTests
         Assert.Contains("'alpha beta'", js);
         Assert.DoesNotContain("w-1/2hover:", js);
     }
+
+    /// <summary>
+    /// WIDENING W1 (decision 152). A row's class reads the LOOP VARIABLE: the attribute-value
+    /// slot is claimed by the region (SlotsIn), so it compiles inside the loop's braces where `t`
+    /// resolves, and the fold lands in an effect INSIDE the row create function -- the attribute
+    /// analogue of the Duel's row-text effect. Persisting keyed rows re-run it when t.Done flips;
+    /// a create-time setAttr would freeze (the #125 stale trap). The ternary is PARENTHESISED:
+    /// `+` binds tighter than `?:`, so the unparenthesised fold is (truthy-string) ? a : b --
+    /// always the true branch, the literal prefix gone.
+    /// </summary>
+    [Fact]
+    public void RowClass_LoopVarTernary_CompilesToAnEffectInsideTheRowCreate()
+    {
+        var js = Emit("RowClass");
+        var create = js.Substring(js.IndexOf("function createT"));
+        create = create[..(create.IndexOf("\n  }") + 4)];
+        Assert.Contains("effect(() => setAttr(", create);
+        Assert.Contains("'flex gap-2 ' + (t.done.value ? 'line-through text-slate-400' : 'text-slate-900')", create);
+    }
+
+    /// <summary>
+    /// BOUNDARY for decision 152: the loop variable reaches attribute expressions, the expression
+    /// SUBSET is unchanged -- a call in a class value refuses at its own span, row or not.
+    /// </summary>
+    [Fact]
+    public void RowClassCall_RefusesAtItsSpan()
+    {
+        var outPath = Path.Combine(RepoPaths.Unsupported, "Code", $".rowclasscall-{Guid.NewGuid():N}.js");
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(
+                Path.Combine(RepoPaths.Unsupported, "Code", "RowClassCall.razor"), outPath);
+            Assert.True(exit != 0, "a call inside a row's class value was COMPILED, not refused.");
+            Assert.False(File.Exists(outPath), "refused AND wrote the module anyway");
+            Assert.Contains("Trim", stderr);
+        }
+        finally
+        {
+            if (File.Exists(outPath)) File.Delete(outPath);
+        }
+    }
 }
