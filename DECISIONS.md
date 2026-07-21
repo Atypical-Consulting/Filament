@@ -5171,3 +5171,27 @@ nuget.org GARDÉE sur le secret `NUGET_API_KEY` (l'unique étape humaine ; sans 
 quand même ses artefacts au lieu d'un demi-échec silencieux).
 
 Pas d'entrée BENCH : rien d'exécutable dans l'app ne change — c'est la chaîne de distribution.
+
+## 150. Le guide « vraies apps » — la carte de ce qui s'expédie, chaque limite avec sa raison
+
+**2026-07-21.** Le site est un site de PREUVES, le README une porte d'entrée ; il manquait le document
+qu'un développeur ouvre pour CONSTRUIRE : `docs/REAL-APPS.md`. Son contrat éditorial : ne rien affirmer
+qui ne soit mesuré (chaque section cite sa décision), et ne cacher aucune limite — une limite prévisible
+est une contrainte de conception, une limite découverte en production est un bug report.
+
+**Contenu** : le modèle mental (mapper fidèlement ou refuser localisé, jamais de JS silencieusement faux) ;
+l'I/O réel (horloge 145, aléa 146, réseau 147 avec la porte de forme JSON) ; **l'échappatoire JS comme
+frontière OFFICIELLE** (localStorage, la recette `document.title` — une AFFECTATION ne se `InvokeVoidAsync`
+pas, le helper d'une ligne est documenté —, ses propres fonctions/npm via `globalThis`) ; la boucle de dev
+(template, watch, analyzer) ; **tester ses composants** (le module émis est un ES module ordinaire —
+exemple vitest+happy-dom, pas de host de test, pas de shim de rendu) ; le débogage (la sortie LISIBLE est
+l'histoire de débogage, les refus n'atteignent jamais le navigateur) ; **le plancher navigateur nommé**
+(ES2023 : Array.prototype.with, .at(), BigInt) ; **l'enveloppe de perf** avec le trade-off assumé (COW
+O(n) par écriture d'élément — les listes d'UI oui, la grille 10 000 lignes éditée en boucle chaude non,
+et on préfère le dire ici que le laisser mesurer en production) ; les non-buts délibérés AVEC leurs
+raisons (SSR non revendiqué, CSS isolation inutile sans runtime à scoper, watch=reload, la frontière
+d'erreur EST le défaut JS, la validation refusée-pas-ignorée, pas de conteneur DI général).
+
+README aligné (149 décisions / 64 entrées / 506 tests, ligne « Real-world I/O » dans le tableau, la
+fermeture étroite de l'@inject actualisée à DEUX services) ; README du template dépoussiéré (le paquet
+`Filament.Templates` remplace l'install-depuis-dossier, versions non figées dans la prose).

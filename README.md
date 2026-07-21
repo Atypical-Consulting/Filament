@@ -136,7 +136,7 @@ Two apps — `Counter` and a 1,000-row `Rows` — compiled from **pure `.razor`*
 
 ## What compiles
 
-Across **139 recorded decisions** and **57 measured slices**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **466 tests** back it (388 generator · 60 subset · 18 analyzer, plus 214 runtime).
+Across **149 recorded decisions** and **64 measured bench entries**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **506 tests** back it (422 generator · 60 subset · 24 analyzer, plus 214 runtime).
 
 | Area | Covered |
 |------|---------|
@@ -147,13 +147,14 @@ Across **139 recorded decisions** and **57 measured slices**, the compilable C# 
 | **LINQ** | `Where`/`Select`/`Count`/`Any`/`All` · `Sum`/`Min`/`Max`/`Average`/`First`/`Last` · `OrderBy`/`Skip`/`Take`/`Reverse` · `GroupBy` |
 | **Reactivity** | `@bind` two-way (string/int/bool/checkbox), inline lambda handlers, reactive attributes, `async`/`await`→`Promise` |
 | **Composition** | static-leaf, bound-parameter (reactive), multi-parameter and nested; `EventCallback` (child→parent); `RenderFragment`/`ChildContent` |
-| **Framework** | `@ref` · `@inject IJSRuntime` + JS interop · `CascadingParameter` · generics (`@typeparam`) · `@inherits` — all compiled away, [zero runtime bytes](./docs/adr/0003-bucket-b-nongoals-closed.md) |
+| **Framework** | `@ref` · `@inject` (`IJSRuntime` + `HttpClient`) · JS interop · resolving `@using` · `CascadingParameter` · generics (`@typeparam`) · `@inherits` — all compiled away, [zero runtime bytes](./docs/adr/0003-bucket-b-nongoals-closed.md) |
 | **Forms** | `<EditForm>` · `<InputText>` · `@bind-Value` onto a model property (validation refused, not ignored) |
 | **Routing** | `@page` + a router **generated into the app** (425 B gzip; the shared runtime is untouched) |
+| **Real-world I/O** | `DateTime.UtcNow`/`Now`/`Today` (the wall clock) · `Random` (seeded = the **exact** BCL sequence) · `HttpClient`→`fetch` + JSON (shape-gated) · `localStorage` via JS interop |
 
 Anything outside the subset raises a **located diagnostic and writes no file** — Filament never emits silently-wrong JavaScript.
 
-**Developer experience:** `dotnet new filament` template · `Filament.Sdk` (auto-imports generator + runtime, `dotnet watch` hot-reload) · `Filament.Analyzer` (author-time FIL0001/FIL0002 in the IDE) · a runnable Rider example · a browser demo.
+**Developer experience:** `dotnet new filament` template · `Filament.Sdk` + `Filament.Templates` packages with a tag-driven release pipeline · `Filament.Analyzer` (author-time FIL0001/FIL0002 in the IDE — members, statements, expressions **and calls**) · a runnable Rider example · a browser demo · **[the real-apps guide](./docs/REAL-APPS.md)** (I/O, the JS escape hatch, testing, the browser floor, the perf envelope).
 
 ## Honest limits
 
@@ -178,8 +179,9 @@ not a lookup. So the router is **generated into the app, never added to the shar
 that does not route still pays nothing, and the routed app measures **1,641 B gzip**, 6.1× under C1.
 That number is reported *because* this is the one feature that could not be compiled away.
 
-**Two are closed narrowly, and say so:** `@inject` admits only `IJSRuntime` (a general container
-resolves at runtime, and a service of your own lives in a `.cs` file this compiler never reads);
+**Two are closed narrowly, and say so:** `@inject` admits exactly the services with a compile-time
+meaning — `IJSRuntime` (the host scope) and `HttpClient` (fetch) — because a general container
+resolves at runtime, and a service of your own lives in a `.cs` file this compiler never reads;
 `@inherits` admits only a sibling `.razor` base, for the same reason. **Form validation is refused, not
 ignored** — without validators every submit *is* valid, and silently accepting an invalid model would be
 the wrong answer dressed as the right one.

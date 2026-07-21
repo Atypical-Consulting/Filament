@@ -3,13 +3,21 @@
 Scaffolds a Filament app anywhere: a real .NET web project whose Build compiles `App.razor` → JS
 (via the `Filament.Sdk` package) and whose F5 serves it on Kestrel. No .NET ships to the browser.
 
-## One-time setup (local feed — not on NuGet.org)
+## One-time setup
+
+From published packages (a GitHub Release, or nuget.org once the key is configured — see
+`.github/workflows/release.yml`):
+
+    dotnet new install Filament.Templates
+
+Or from a local build of this repo:
 
     cd <this repo>
     (cd src/filament-runtime && npm ci && npm run build)   # builds filament.js
-    dotnet pack src/Filament.Sdk -c Release                # -> artifacts/nuget/Filament.Sdk.0.1.0.nupkg
+    dotnet pack src/Filament.Sdk -c Release                # -> artifacts/nuget/Filament.Sdk.<version>.nupkg
+    dotnet pack src/Filament.Templates -c Release          # -> artifacts/nuget/Filament.Templates.<version>.nupkg
     dotnet nuget add source "$PWD/artifacts/nuget" -n filament-local
-    dotnet new install ./templates/filament
+    dotnet new install Filament.Templates
 
 ## Use it (anywhere)
 
