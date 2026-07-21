@@ -1,0 +1,30 @@
+@* THE TYPE GATE of decision 147: a record with a `long` member. A JSON number deserializes to a JS
+   number, but the subset's long is a BigInt (decision 112) -- admitting this would be a silent
+   number/BigInt mismatch the first time the value crossed 2^53. Valid Blazor; refused with the reason. *@
+
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<ul id="list">
+    @foreach (Row r in rows)
+    {
+        <li @key="r.Id">@r.Id</li>
+    }
+</ul>
+
+<button id="load" @onclick="Load">load</button>
+
+@code {
+    private List<Row> rows = new List<Row>();
+
+    private async Task Load()
+    {
+        var data = await Http.GetFromJsonAsync<List<Row>>("data/rows.json");
+        if (data != null)
+        {
+            rows = data;
+        }
+    }
+
+    private record Row(long Id);
+}

@@ -1,0 +1,47 @@
+@* HttpClient -> fetch (BENCH n°64, decision 147): the network enters the subset. The honesty argument
+   mirrors decision 133's: Blazor WASM's HttpClient is implemented ON TOP of fetch -- the bridge exists
+   because .NET must marshal across a boundary, and Filament IS the other side, so the bridge erases:
+
+     await Http.GetFromJsonAsync<List<Item>>("data/items.json")  ->  await __getJson('data/items.json')
+
+   __getJson = fetch + throw on !ok (GetFromJsonAsync's EnsureSuccess semantics, catchable with #110's
+   try/catch) + JSON.parse + a key normalizer faithful to System.Text.Json's Web defaults (camelCase,
+   case-insensitive on the leading character). The type argument is GATED to JSON-faithful shapes:
+   int/double/bool/string, records of those, List<T>/T[] of those -- long (BigInt), decimal ({m,s}),
+   DateTime (ticks) and float (fround) members are REFUSED because a bare JSON number is not their
+   representation. Relative URLs are faithful: BaseAddress is the host, fetch resolves against the
+   document base.
+
+   DOM contract: #list starts empty, #status "idle". #load fetches data/items.json (a static file BOTH
+   shells serve -- deterministic) -> three <li> and "loaded 3", byte-identical vs Blazor. *@
+
+@using System.Net.Http.Json
+@inject HttpClient Http
+
+<ul id="list">
+    @foreach (Item it in items)
+    {
+        <li @key="it.Name">@it.Name: @it.Rank</li>
+    }
+</ul>
+
+<p><span id="status">@status</span></p>
+
+<button id="load" @onclick="Load">load</button>
+
+@code {
+    private List<Item> items = new List<Item>();
+    private string status = "idle";
+
+    private async Task Load()
+    {
+        var data = await Http.GetFromJsonAsync<List<Item>>("data/items.json");
+        if (data != null)
+        {
+            items = data;
+            status = "loaded " + items.Count;
+        }
+    }
+
+    private record Item(string Name, int Rank);
+}

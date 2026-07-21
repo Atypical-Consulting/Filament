@@ -1,0 +1,20 @@
+@* THE OTHER BOUNDARY of decision 147: the rest of HttpClient. DeleteAsync returns an
+   HttpResponseMessage whose handling (status inspection, headers) is deferred; only the shapes fetch
+   maps faithfully (GetFromJsonAsync/GetStringAsync/PostAsJsonAsync) are admitted. Valid Blazor;
+   deliberately refused with guidance. *@
+
+@inject HttpClient Http
+
+<p><span id="out">@status</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private string status = "idle";
+
+    private async Task Go()
+    {
+        await Http.DeleteAsync("api/items/1");
+        status = "deleted";
+    }
+}

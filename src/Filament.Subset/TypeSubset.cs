@@ -137,6 +137,50 @@ public static class TypeSubset
         n.ContainingNamespace?.ToDisplayString() == "Microsoft.JSInterop";
 
     /// <summary>
+    /// The JSON gate (decision 147): null = T's JSON shape IS its Filament shape, so
+    /// GetFromJsonAsync&lt;T&gt;/PostAsJsonAsync are faithful; non-null = a description of the offender for
+    /// the refusal. Faithful: int, double, bool, string (JSON numbers/booleans/strings ARE the JS values
+    /// the subset maps them to), records of faithful members, List&lt;T&gt;/T[] of faithful elements.
+    /// Unfaithful, each with its reason: long (a JSON number arrives as a JS number, not the BigInt long
+    /// maps to), float (not Math.fround'ed), decimal (not the boxed {m,s}), DateTime (JSON carries a
+    /// string, not BigInt ticks), Dictionary (a JSON object is a plain object, not the Map the subset
+    /// maps Dictionary to), and anything else.
+    /// </summary>
+    public static string? JsonUnfaithful(ITypeSymbol? type, IReadOnlyCollection<INamedTypeSymbol> componentRecords)
+    {
+        if (type is null) return "an unresolved type";
+        switch (type.SpecialType)
+        {
+            case SpecialType.System_Int32:
+            case SpecialType.System_Double:
+            case SpecialType.System_Boolean:
+            case SpecialType.System_String:
+                return null;
+            case SpecialType.System_Int64:
+                return "'long' (a JSON number deserializes to a JS number, not the BigInt `long` maps to -- decision 112)";
+            case SpecialType.System_Single:
+                return "'float' (a JSON number is not Math.fround'ed -- decision 113)";
+            case SpecialType.System_Decimal:
+                return "'decimal' (a JSON number is not the boxed { m, s } `decimal` maps to -- decision 114)";
+            case SpecialType.System_DateTime:
+                return "'DateTime' (JSON carries a string, not the BigInt ticks `DateTime` maps to -- decision 115)";
+        }
+        if ((ListElement(type) ?? ArrayElement(type)) is { } element)
+            return JsonUnfaithful(element, componentRecords);
+        if (IsComponentRecord(type, componentRecords))
+        {
+            foreach (var p in type.GetMembers().OfType<IPropertySymbol>())
+            {
+                if (p.IsStatic || p.DeclaredAccessibility != Accessibility.Public) continue;
+                if (p.Name == "EqualityContract") continue;   // the record's synthesized machinery, not data
+                if (JsonUnfaithful(p.Type, componentRecords) is { } offender) return offender;
+            }
+            return null;
+        }
+        return $"'{type.ToDisplayString()}'";
+    }
+
+    /// <summary>
     /// <c>System.Random</c> (decision 146) -- a stateful generator, admitted as a field/local value.
     /// SEEDED, it is the exact .NET Knuth-subtractive sequence (Net5CompatSeedImpl, stable by compat
     /// guarantee), reimplemented in the emitted <c>__rnd(seed)</c>; UNSEEDED (and <c>Random.Shared</c>),

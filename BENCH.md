@@ -5379,3 +5379,41 @@ runtime 214.
 ---
 
 *Fin de l'entrée n°63. Ne pas modifier — ajouter une entrée n°64 pour toute rectification.*
+
+---
+
+## Entrée n°64 — 2026-07-21 — Phase 4 : `HttpClient` mesuré contre Blazor — le réseau, déterministe par construction
+
+**`HttpClient` → fetch** (décision 147) rejoint le §5 : `@inject HttpClient` (deuxième service injectable,
+l'argument de la 133), `GetFromJsonAsync<T>`/`GetStringAsync`/`PostAsJsonAsync` érasés en `__getJson`/
+`__getText`/`__postJson` émis dans le module ; porte JSON single-sourcée (`TypeSubset.JsonUnfaithful`) ;
+`@using` résoluble admis comme pure résolution de noms. Runtime intact.
+
+**Le témoin** : `baseline/HttpJson.Blazor/App.razor` — `#load` fait
+`await Http.GetFromJsonAsync<List<Item>>("data/items.json")`, rendu par `@foreach` clété (décision 140).
+LE RÉSEAU EST DÉTERMINISTE PAR CONSTRUCTION : les deux shells servent le MÊME fichier statique — la
+discipline de mesure (égalité octet) est INCHANGÉE, aucun prédicat de tolérance nécessaire.
+
+**L'instrument** (HARNESS 1.57.0, divulgué) : le contrat `httpjson` clique `#load`, ATTEND la continuation
+async par sondage (comme `asyncclick` — un sleep fixe ferait la course avec le réseau d'un runner lent),
+puis exige les trois lignes et `#status`.
+
+```bash
+dotnet publish baseline/HttpJson.Blazor -c Release -o bench/publish/blazor-httpjson
+./bench/build-filament.sh filament-httpjson-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-httpjson/wwwroot --app httpjson --label blazor-httpjson       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-httpjson-gen   --app httpjson --label filament-httpjson-gen --headless --contract-only
+```
+
+| Camp | #status | #list après #load |
+|---|---|---|
+| **blazor-httpjson** (autorité) | `idle → loaded 3` | `alpha: 1 · beta: 2 · gamma: 3` |
+| **filament-httpjson-gen** (générateur) | `idle → loaded 3` | `alpha: 1 · beta: 2 · gamma: 3` |
+
+OCTET-IDENTIQUES. La preuve refpack (playground) est repassée verte après l'ajout DÉCOUVERT de
+`System.Net.Http.Json` (34 → 35 assemblies). `git diff -- src/filament-runtime` vide. Suite : **500
+tests** (422 générateur / 60 subset / 18 analyzer), runtime 214.
+
+---
+
+*Fin de l'entrée n°64. Ne pas modifier — ajouter une entrée n°65 pour toute rectification.*

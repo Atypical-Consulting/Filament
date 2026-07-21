@@ -23,6 +23,7 @@ System.Threading.Tasks
 System.Text.RegularExpressions
 System.Text.Encoding.Extensions
 System.Net.Http
+System.Net.Http.Json
 System.Net.Primitives
 System.Memory
 System.Runtime.Numerics

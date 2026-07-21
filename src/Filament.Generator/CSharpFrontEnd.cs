@@ -125,6 +125,23 @@ public sealed class CSharpFrontEnd
 
     string? _jsRuntime;
 
+    /// <summary>The name an `@inject HttpClient` bound, or null (decision 147). Like _jsRuntime it is not
+    /// a value: in a browser an HttpClient IS fetch (Blazor WASM implements it on top of fetch), so it only
+    /// ever appears as the receiver of a Get*/Post* call, which HttpInvocation turns into the fetch itself.</summary>
+    string? _httpClient;
+
+    /// <summary>The author's `@using` namespaces (decision 147), appended to the wrapped source so the
+    /// @code compiles under the same resolution Blazor gives it. Pure name resolution: every construct
+    /// still passes the subset gates. Validated (namespace exists) by TemplateCompiler before binding.</summary>
+    readonly List<string> _usings = [];
+
+    public void BindHttpClient(string name) => _httpClient = name;
+
+    public void BindUsings(IEnumerable<string> namespaces)
+    {
+        foreach (var ns in namespaces) _usings.Add(ns);
+    }
+
     public void BindJsRuntime(string name) => _jsRuntime = name;
 
     /// <summary>Every method body, TRANSLATED DURING Compile() and cached. See _sealed.</summary>
@@ -401,6 +418,12 @@ public sealed class CSharpFrontEnd
     /// interface), "rndShared" -> the ONE module-level unseeded instance backing Random.Shared.</summary>
     public readonly HashSet<string> RandomHelpers = [];
 
+    /// <summary>The HTTP machinery this module actually used (decision 147): "getJson" -> __getJson
+    /// (fetch + throw on !ok + JSON.parse + __camel), "getText" -> __getText, "postJson" -> __postJson.
+    /// "getJson" implies "camel", the key normalizer faithful to System.Text.Json's Web defaults for the
+    /// Pascal-to-camel leading character.</summary>
+    public readonly HashSet<string> HttpHelpers = [];
+
     // ---- the public surface the template compiler consumes ------------------
 
     public bool Declares(string name) => _fieldsByName.ContainsKey(name) || _methodsByName.ContainsKey(name);
@@ -558,6 +581,9 @@ public sealed class CSharpFrontEnd
         _src.Literal(
             "using System;using System.Collections.Generic;using System.Linq;" +
             "using System.Threading.Tasks;using Microsoft.AspNetCore.Components;using Microsoft.JSInterop;" +
+            // The author's @usings (decision 147), validated by TemplateCompiler to resolve. Same
+            // resolution Blazor's generated component gets from the directive.
+            string.Concat(_usings.Select(ns => $"using {ns};")) +
             $"partial class __FilamentComponent{TypeParamList} {{");
         foreach (var node in codeNodes) _src.Node(node, RawText(node));
         _src.Literal($"\n}}\npartial class __FilamentComponent{TypeParamList} {{\n");
@@ -568,6 +594,12 @@ public sealed class CSharpFrontEnd
         // is not the author's declaration and emits nothing: the service is erased.
         if (_jsRuntime is not null)
             _src.Literal($"Microsoft.JSInterop.IJSRuntime {_jsRuntime} = null!;\n");
+
+        // The @inject'd HttpClient, declared so the name BINDS (decision 147) -- same mechanics as the
+        // IJSRuntime above: a field in the second partial block, skipped by the member walk, emitting
+        // nothing (the service is erased into fetch at its call sites).
+        if (_httpClient is not null)
+            _src.Literal($"System.Net.Http.HttpClient {_httpClient} = null!;\n");
 
         void Slot(IntermediateNode n)
         {
@@ -3147,6 +3179,13 @@ public sealed class CSharpFrontEnd
                 "Microsoft.JSInterop.JSRuntimeExtensions" or "Microsoft.JSInterop.IJSRuntime")
             return JsInvocation(inv, symbol);
 
+        // HTTP (decision 147). Get*/Post* on the @inject'd HttpClient, whether reached through the class
+        // or through the System.Net.Http.Json extensions. This is where THAT bridge is erased: in a
+        // browser an HttpClient IS fetch, so the request becomes the fetch itself.
+        if (symbol is not null && symbol.ContainingType?.ToDisplayString() is
+                "System.Net.Http.Json.HttpClientJsonExtensions" or "System.Net.Http.HttpClient")
+            return HttpInvocation(inv, symbol);
+
         // FocusAsync() on an @ref'd element (decision 132). ElementReference's ONLY faithful surface: Blazor
         // needs the reference because it hands an id across the .NET/JS boundary, while the emitted module
         // already holds the node in a const, so this is just `.focus()`.
@@ -3417,6 +3456,64 @@ public sealed class CSharpFrontEnd
             return Refuse("unsupported-expression",
                 $"the DateTime {Trunc(oc.ToString())} is out of range. Refusing to emit.", oc.SpanStart);
         }
+    }
+
+    /// <summary>
+    /// `await Http.GetFromJsonAsync&lt;T&gt;(url)` -> `await __getJson(url)` (decision 147) -- and the
+    /// siblings GetStringAsync -> __getText, PostAsJsonAsync -> __postJson. THE BRIDGE IS ERASED, NOT
+    /// IMPLEMENTED, on decision 133's exact argument: Blazor WASM's HttpClient is implemented ON TOP of
+    /// fetch -- the bridge exists because .NET must marshal across a boundary this module does not have.
+    ///
+    /// THE TYPE GATE IS THE HONESTY CORE: GetFromJsonAsync&lt;T&gt; admits T only where the JSON shape and
+    /// the Filament shape COINCIDE -- int/double/bool/string, records of those, List&lt;T&gt;/T[] of those.
+    /// A `long` member would arrive as a JS number where the subset's long is a BigInt; `decimal` is not
+    /// the boxed {m,s}; `DateTime` arrives as a STRING, not ticks; `float` is not fround'ed. Each refuses
+    /// with the reason (TypeSubset.JsonUnfaithful). __getJson normalizes each key's FIRST character to
+    /// lower case -- faithful to System.Text.Json's Web defaults (camelCase + case-insensitive) for the
+    /// Pascal/camel case real APIs use; full case-insensitivity is NOT reproduced, and is disclosed.
+    /// </summary>
+    string HttpInvocation(InvocationExpressionSyntax inv, IMethodSymbol m)
+    {
+        if (_httpClient is null)
+            return Refuse("unsupported-call",
+                "an HTTP call needs an `@inject HttpClient` to name the client fetch stands in for. " +
+                "Refusing to emit.", inv.SpanStart);
+
+        var args = inv.ArgumentList.Arguments;
+        switch (m.Name)
+        {
+            case "GetFromJsonAsync" when m.TypeArguments.Length == 1 && args.Count == 1:
+            {
+                if (Filament.Subset.TypeSubset.JsonUnfaithful(m.TypeArguments[0], _recordsByName.Values.Select(r => r.Symbol).ToArray()) is { } offender)
+                    return Refuse("unsupported-type",
+                        $"GetFromJsonAsync<{m.TypeArguments[0].ToDisplayString()}> deserializes {offender}, whose JSON " +
+                        "shape is not its Filament shape (decision 147). JSON-faithful types are int, double, bool, " +
+                        "string, records of those, and List<T>/T[] of those. Refusing to emit.",
+                        inv.SpanStart);
+                HttpHelpers.Add("getJson");
+                return $"__getJson({Expr(args[0].Expression)})";
+            }
+            case "GetStringAsync" when args.Count == 1:
+                HttpHelpers.Add("getText");
+                return $"__getText({Expr(args[0].Expression)})";
+            case "PostAsJsonAsync" when m.TypeArguments.Length <= 1 && args.Count == 2:
+            {
+                var valueType = _model.GetTypeInfo(args[1].Expression).Type;
+                if (Filament.Subset.TypeSubset.JsonUnfaithful(valueType, _recordsByName.Values.Select(r => r.Symbol).ToArray()) is { } offender)
+                    return Refuse("unsupported-type",
+                        $"PostAsJsonAsync serializes {offender}, whose JSON shape is not its Filament shape " +
+                        "(decision 147). JSON-faithful types are int, double, bool, string, records of those, and " +
+                        "List<T>/T[] of those. Refusing to emit.",
+                        inv.SpanStart);
+                HttpHelpers.Add("postJson");
+                return $"__postJson({Expr(args[0].Expression)}, {Expr(args[1].Expression)})";
+            }
+        }
+        return Refuse("unsupported-call",
+            $"'{Trunc(inv.ToString())}' is not an HttpClient operation in the subset. Section 5 admits " +
+            "GetFromJsonAsync<T>(url), GetStringAsync(url) and PostAsJsonAsync(url, value) -- the shapes fetch " +
+            "maps faithfully (decision 147). Delete/Put/headers/HttpResponseMessage handling are deferred. " +
+            "Refusing to emit.", inv.SpanStart);
     }
 
     /// <summary>`new Random(seed)` / `new Random()` -> `__rnd(seed)` / `__rnd(null)` (decision 146). The seed

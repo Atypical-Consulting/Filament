@@ -134,7 +134,7 @@ public sealed class TemplateCompiler
     /// types this compiler happens to know) is what makes the gate complete: a
     /// directive nobody here has heard of is refused too.
     /// </summary>
-    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code", "inject", "typeparam", "inherits", "page" };
+    static readonly HashSet<string> AllowedDirectives = new(StringComparer.Ordinal) { "code", "inject", "typeparam", "inherits", "page", "using" };
 
     /// <summary>
     /// The base class Razor gives EVERY component whether or not @inherits was written.
@@ -220,6 +220,12 @@ public sealed class TemplateCompiler
     bool _needsFloatFormat;   // some @expr is float-typed -> Render emits the __f32 helper (decision 113)
     bool _needsDateTimeFormat;   // some @expr is DateTime-typed -> Render emits the __dtStr helper (decision 115)
 
+    /// <summary>The author's `@using` namespaces for the component being prepared (decision 147): a
+    /// NAME-RESOLUTION directive, harvested into the wrapped source's usings after resolving against the
+    /// reference assemblies -- an unresolvable one is refused at its span exactly as Blazor's build
+    /// (CS0246) would refuse it. Cleared per PrepareComponent.</summary>
+    readonly List<string> _authorUsings = [];
+
     /// <summary>
     /// Every event site the template names, RECORDED during the walk and emitted after
     /// it. The delay is load-bearing: whether a handler's body is INLINED depends on how
@@ -265,6 +271,9 @@ public sealed class TemplateCompiler
     (MethodDeclarationIntermediateNode method, HashSet<IntermediateNode> regions)
         PrepareComponent(ParseResult parse, CSharpFrontEnd code)
     {
+        // Per-component (decision 147): a child's @usings must not leak into a parent or sibling.
+        _authorUsings.Clear();
+
         // --- gate 1: the directives, from Razor's own table, with exact spans ----
         foreach (var d in parse.Directives)
         {
@@ -355,28 +364,36 @@ public sealed class TemplateCompiler
             var typeName = inject.TypeName.Trim();
             var member = inject.MemberName.Trim();
 
-            // ONE injectable service, and the narrowness is the whole honesty of this slice. IJSRuntime
-            // has a compile-time meaning -- the host global scope -- so injecting it erases to nothing.
-            // A general container resolves arbitrary implementations at RUNTIME, which a static module
-            // has no home for, and a user's own service type lives in a .cs file this compiler never
-            // sees. Both are separate questions; neither is quietly approximated here.
-            if (!typeName.EndsWith("IJSRuntime", StringComparison.Ordinal) || member.Length == 0)
+            // TWO injectable services, and the narrowness is still the honesty. Each is admitted because
+            // it has a COMPILE-TIME meaning that erases: IJSRuntime denotes the browser's global scope
+            // (decision 133), and HttpClient in a browser IS fetch -- Blazor WASM's HttpClient is
+            // implemented on top of it, the bridge existing only because .NET must marshal across a
+            // boundary this module does not have (decision 147). A general container resolves arbitrary
+            // implementations at RUNTIME, which a static module has no home for, and a user's own service
+            // type lives in a .cs file this compiler never sees. Both are separate questions; neither is
+            // quietly approximated here.
+            if (typeName.EndsWith("IJSRuntime", StringComparison.Ordinal) && member.Length > 0)
             {
-                Diag("unsupported-directive",
-                    $"@inject {typeName} is not in the subset. The ONLY injectable service is IJSRuntime, " +
-                    "which is admitted because it has a compile-time meaning -- it denotes the browser's " +
-                    "global scope, so the call it carries becomes a direct call and the service itself is " +
-                    "erased. A general DI container resolves an implementation at RUNTIME, and a Filament " +
-                    "module has no container to ask; a service type of your own lives in a .cs file this " +
-                    "compiler never reads. Refusing to emit rather than inject something that resolves to " +
-                    "nothing.",
-                    span);
+                code.BindJsRuntime(member);
                 continue;
             }
-
-            code.BindJsRuntime(member);
+            if (typeName.EndsWith("HttpClient", StringComparison.Ordinal) && member.Length > 0)
+            {
+                code.BindHttpClient(member);
+                continue;
+            }
+            Diag("unsupported-directive",
+                $"@inject {typeName} is not in the subset. The injectable services are IJSRuntime " +
+                "(decision 133: it denotes the browser's global scope, so the call it carries becomes a " +
+                "direct call) and HttpClient (decision 147: in a browser it IS fetch, so the request it " +
+                "carries becomes the fetch itself) -- each admitted because it ERASES at compile time. A " +
+                "general DI container resolves an implementation at RUNTIME, and a Filament module has no " +
+                "container to ask; a service type of your own lives in a .cs file this compiler never " +
+                "reads. Refusing to emit rather than inject something that resolves to nothing.",
+                span);
         }
 
+        code.BindUsings(_authorUsings);
         code.Compile(codeNodes, plan);
         _diagnostics.AddRange(code.Diagnostics);
 
@@ -447,6 +464,26 @@ public sealed class TemplateCompiler
         return Render(module, prologue, runtimeSpecifier, sourceName);
     }
 
+    /// <summary>Does `content` name a NAMESPACE in the reference assemblies? Walked segment by segment off
+    /// a refs-only compilation (cached: the references never change within a process). This is the gate an
+    /// author's @using passes (decision 147) -- resolution only; `@using static X` and `@using A = B` fail
+    /// the walk by construction, which is the refusal they deserve until they are their own slices.</summary>
+    static bool NamespaceResolves(string content)
+    {
+        Microsoft.CodeAnalysis.INamespaceSymbol ns = _refsProbe.Value.GlobalNamespace;
+        foreach (var segment in content.Trim().Split('.'))
+        {
+            var next = ns.GetNamespaceMembers().FirstOrDefault(m => m.Name == segment);
+            if (next is null) return false;
+            ns = next;
+        }
+        return true;
+    }
+
+    static readonly Lazy<Microsoft.CodeAnalysis.Compilation> _refsProbe = new(() =>
+        Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create(
+            "FilamentUsingProbe", references: ReferenceAssemblies.ForCode()));
+
     /// <summary>
     /// Walk the document/namespace/class levels and REFUSE anything not on the
     /// allowlist. This is the half that used to be missing: the emitter reached in for
@@ -474,17 +511,25 @@ public sealed class TemplateCompiler
                     cls = c;
                     break;
 
-                // Razor SYNTHESISES the default @usings (they have no file path). A
-                // @using the AUTHOR wrote carries this component's own path, and in a
-                // .razor file its job is to bring COMPONENTS into scope -- which is
-                // component composition, which is out of subset. Telling the two apart
-                // by the span's file is measured, not guessed: see the probe in
-                // DiagnosticTests.
+                // Razor SYNTHESISES the default @usings (they have no file path). A @using the AUTHOR
+                // wrote carries this component's own path -- telling the two apart by the span's file is
+                // measured, not guessed (see the probe in DiagnosticTests).
+                //
+                // An author's @using is a NAME-RESOLUTION directive (decision 147): it brings a namespace
+                // into scope for the @code compilation and NOTHING more -- every construct still passes
+                // the subset gates, so admitting resolution can never admit an unfaithful emission. It is
+                // harvested into the wrapped source's usings IF the namespace resolves against the
+                // reference assemblies; one that does not (a component library, a typo, `@using static`,
+                // an alias) is refused at its span -- exactly where Blazor's own build fails it (CS0246).
                 case UsingDirectiveIntermediateNode u when IsFromThisFile(u.Source):
-                    Diag("unsupported-directive",
-                        "@using in a component brings COMPONENTS into scope, and component composition is " +
-                        "not in Phase 2's subset. Refusing to emit rather than drop it silently.",
-                        u.Source);
+                    if (NamespaceResolves(u.Content)) _authorUsings.Add(u.Content);
+                    else
+                        Diag("unsupported-directive",
+                            $"@using {u.Content} does not name a namespace in the reference assemblies. A " +
+                            "resolving @using is admitted as pure name resolution (decision 147); this one " +
+                            "would fail Blazor's own build too (CS0246). `@using static` and aliases are not " +
+                            "in the subset. Refusing to emit rather than drop it silently.",
+                            u.Source);
                     break;
 
                 case UsingDirectiveIntermediateNode:
@@ -2460,6 +2505,49 @@ public sealed class TemplateCompiler
             {
                 // Random.Shared: ONE module-level unseeded instance -- the same static-singleton lifetime C# gives it.
                 sb.Append("const __rndShared = __rnd(null);\n\n");
+            }
+        }
+
+        if (_code.HttpHelpers.Count > 0)
+        {
+            // HttpClient erased to fetch (decision 147). __getJson carries GetFromJsonAsync's semantics:
+            // throw on a non-success status (EnsureSuccess -- catchable with #110's try/catch), parse the
+            // body, then __camel normalizes each key's FIRST character to lower case -- faithful to
+            // System.Text.Json's Web defaults (camelCase + case-insensitive) for the Pascal/camel case
+            // real APIs use. __postJson serializes with JSON.stringify, which IS Web-defaults output for
+            // the admitted shapes (the module's objects are already camelCase). Emitted (not runtime
+            // exports), so HTTP stays generator-only.
+            sb.Append("// -- HTTP: C# HttpClient erased to fetch (decision 147) --\n");
+            if (_code.HttpHelpers.Contains("getJson"))
+            {
+                sb.Append("function __camel(v) {\n");
+                sb.Append("  if (Array.isArray(v)) return v.map(__camel);\n");
+                sb.Append("  if (v && typeof v === 'object') {\n");
+                sb.Append("    const o = {};\n");
+                sb.Append("    for (const k of Object.keys(v)) o[k.charAt(0).toLowerCase() + k.slice(1)] = __camel(v[k]);\n");
+                sb.Append("    return o;\n");
+                sb.Append("  }\n");
+                sb.Append("  return v;\n");
+                sb.Append("}\n\n");
+                sb.Append("async function __getJson(u) {\n");
+                sb.Append("  const r = await fetch(u);\n");
+                sb.Append("  if (!r.ok) throw new Error('Response status code does not indicate success: ' + r.status);\n");
+                sb.Append("  return __camel(await r.json());\n");
+                sb.Append("}\n\n");
+            }
+            if (_code.HttpHelpers.Contains("getText"))
+            {
+                sb.Append("async function __getText(u) {\n");
+                sb.Append("  const r = await fetch(u);\n");
+                sb.Append("  if (!r.ok) throw new Error('Response status code does not indicate success: ' + r.status);\n");
+                sb.Append("  return r.text();\n");
+                sb.Append("}\n\n");
+            }
+            if (_code.HttpHelpers.Contains("postJson"))
+            {
+                sb.Append("function __postJson(u, v) {\n");
+                sb.Append("  return fetch(u, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(v) });\n");
+                sb.Append("}\n\n");
             }
         }
 

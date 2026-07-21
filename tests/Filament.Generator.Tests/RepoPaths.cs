@@ -306,6 +306,11 @@ public static class RepoPaths
 
     /// <summary>The Random-via-__rnd SPEC (decisions 51/146). Never edited to make a gate pass.</summary>
     public static string RandAnswerKey => Path.Combine(Root, "samples", "Rand", "rand.js");
+
+    public static string HttpJsonRazor => Path.Combine(Root, "baseline", "HttpJson.Blazor", "App.razor");
+
+    /// <summary>The HttpClient-erased-to-fetch SPEC (decisions 51/147). Never edited to make a gate pass.</summary>
+    public static string HttpJsonAnswerKey => Path.Combine(Root, "samples", "HttpJson", "httpjson.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

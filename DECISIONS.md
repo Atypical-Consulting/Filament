@@ -5079,3 +5079,42 @@ que la section 10 interdit. Admission du TYPE single-sourcée dans `TypeSubset.I
 `ConstructSubset.IsRandomCreation`), donc l'ANALYZER suit sans travail supplémentaire.
 
 Mesures : entrée n°63.
+
+## 147. Le réseau entre dans le sous-ensemble — HttpClient S'ÉRASE en fetch, et la porte JSON est le cœur d'honnêteté
+
+**2026-07-21.** L'argument est EXACTEMENT celui de la décision 133 : le HttpClient de Blazor WASM est
+implémenté PAR-DESSUS fetch — le pont existe parce que .NET doit marshaller à travers une frontière, et un
+module Filament EST l'autre côté. Donc le pont s'érase : `@inject HttpClient Http` devient le DEUXIÈME
+service injectable (la liste de la 133 passe de un à deux, même argument, même étroitesse), et
+`await Http.GetFromJsonAsync<List<Item>>("data/items.json")` devient `await __getJson('data/items.json')`.
+Les URL relatives sont fidèles par construction : BaseAddress est l'hôte, fetch résout contre la base du
+document — la même origine.
+
+**LES TROIS FORMES ADMISES.** `GetFromJsonAsync<T>(url)` → `__getJson` (fetch + THROW sur !ok — la
+sémantique EnsureSuccess de GetFromJsonAsync, rattrapable par le try/catch de la décision 110 — +
+JSON.parse + `__camel`) ; `GetStringAsync(url)` → `__getText` ; `PostAsJsonAsync(url, valeur)` →
+`__postJson` (JSON.stringify EST la sortie Web-defaults pour les formes admises : les objets du module
+sont déjà camelCase). Le reste (Delete/Put/en-têtes/HttpResponseMessage) refuse avec la liste de ce qui
+est admis.
+
+**LA PORTE JSON EST LE CŒUR (TypeSubset.JsonUnfaithful, single-sourcé).** `GetFromJsonAsync<T>` n'admet T
+que là où la forme JSON et la forme Filament COÏNCIDENT : int/double/bool/string, records de ceux-ci,
+List<T>/T[] de ceux-ci. Un membre `long` arriverait en number JS là où le sous-ensemble le représente en
+BigInt (décision 112) — refusé AVEC la raison ; pareil pour float (pas fround), decimal (pas {m,s}),
+DateTime (le JSON porte une CHAÎNE, pas des ticks), Dictionary (un objet JSON n'est pas une Map). Témoins :
+`HttpJsonLong.razor`, `HttpDelete.razor`. `__camel` abaisse la PREMIÈRE lettre de chaque clé — fidèle aux
+Web defaults (camelCase + insensible à la casse) pour le cas Pascal↔camel des vraies API ; l'insensibilité
+TOTALE n'est pas reproduite, et c'est divulgué.
+
+**LA SLICE A EXIGÉ `@using`, ET C'EST UNE FERMETURE EN SOI.** `@using System.Net.Http.Json` était refusé
+depuis la Phase 2 (« amène des COMPOSANTS dans la portée »). C'est une directive de RÉSOLUTION DE NOMS :
+elle ne peut rien admettre d'infidèle, chaque construct repasse par les portes du sous-ensemble. Un @using
+d'auteur est donc moissonné dans la source enveloppée SI son espace de noms résout contre les assemblies de
+référence (sonde refs-only en cache) ; un irrésoluble (bibliothèque de composants, faute de frappe,
+`@using static`, alias) refuse À SON SPAN — là même où le build Blazor échouerait (CS0246). Le témoin
+`Unsupported/Using.razor` reste un refus honnête, message actualisé, position inchangée.
+
+**Refpack playground : découvert, pas dessiné** — la preuve-par-la-suite-entière a exigé
+`System.Net.Http.Json` dans la liste (34 → 35 assemblies), et `prove-refpack.sh` est repassé vert.
+
+Mesures : entrée n°64.
