@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.53.0';   // 1.53.0: 'rowactions' contract (a PER-ROW handler, decision 141: `@onclick="() => Del(r.Id)"` captures the loop variable; two #add then first .del -> that row alone is removed). 1.52.0: 'foreachlist' contract (@foreach over a REASSIGNED, never-mutated List<T> -> list() with the collapsed source () => items.value, decision 140; one #add click removes key 2, inserts 4/5, moves 1/3). 1.51.0: 'routing' contract (@page + a GENERATED router: link clicks navigate without reloading, a page with state is remounted afresh on re-entry, and Back works). 1.50.0: 'forms' contract (<EditForm>/<InputText> + @bind-Value onto a record property: type -> #live follows while #out stays, submit -> #out holds it, and no navigation). 1.49.0: 'inherits' contract (@inherits merges a sibling base's members before state lifting; inherited field + method: #out 0->1->2). 1.48.0: 'generic' contract (@typeparam erased; a generic child's bound T stays a live binding: #out 1->2->3). 1.47.0: 'cascade' contract (<CascadingValue> + [CascadingParameter] matched by TYPE, erased to lexical scope: #depth 1->2->3). 1.46.0: 'jsinterop' contract (@inject IJSRuntime + InvokeVoidAsync/InvokeAsync<T> erased to direct calls: localStorage round trip, #out -> "hello"). 1.45.0: 'elemref' contract (@ref names the const the element is emitted into; FocusAsync() -> .focus(), observed via document.activeElement.id). 1.44.0: 'fragment' contract (RenderFragment/ChildContent: the parent's markup is spliced INSIDE the child's element after the child's own heading, and keeps the binding it was written with -- #body advances 0->1->2). 1.43.0: 'eventcb' contract (EventCallback child->parent: the callback is resolved to the parent's method at build time and ERASED, so the child's #bump runs the parent's Inc and #out advances 0->1->2). 1.42.0: 'groupby' contract (LINQ GroupBy -> reduce into Map<K,group>, each group a JS array-with-.key; g.Key -> g.key, first-appearance order). 1.41.0: 'elementwrite' contract (mutable arr[i]=v / d[k]=v as copy-on-write -> arr.with(i,v) / new Map(d).set(k,v), a new ref so the signal fires). 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.54.0';   // 1.54.0: 'duel' contract (THE DUEL, the app-level head-to-head: form add x2, per-row toggle on a PERSISTING row, the three filters, per-row remove, routed navigation with the mounted-afresh contract and Back -- one driver asserting the whole composed app against the same source's Blazor twin). 1.53.0: 'rowactions' contract (a PER-ROW handler, decision 141: `@onclick="() => Del(r.Id)"` captures the loop variable; two #add then first .del -> that row alone is removed). 1.52.0: 'foreachlist' contract (@foreach over a REASSIGNED, never-mutated List<T> -> list() with the collapsed source () => items.value, decision 140; one #add click removes key 2, inserts 4/5, moves 1/3). 1.51.0: 'routing' contract (@page + a GENERATED router: link clicks navigate without reloading, a page with state is remounted afresh on re-entry, and Back works). 1.50.0: 'forms' contract (<EditForm>/<InputText> + @bind-Value onto a record property: type -> #live follows while #out stays, submit -> #out holds it, and no navigation). 1.49.0: 'inherits' contract (@inherits merges a sibling base's members before state lifting; inherited field + method: #out 0->1->2). 1.48.0: 'generic' contract (@typeparam erased; a generic child's bound T stays a live binding: #out 1->2->3). 1.47.0: 'cascade' contract (<CascadingValue> + [CascadingParameter] matched by TYPE, erased to lexical scope: #depth 1->2->3). 1.46.0: 'jsinterop' contract (@inject IJSRuntime + InvokeVoidAsync/InvokeAsync<T> erased to direct calls: localStorage round trip, #out -> "hello"). 1.45.0: 'elemref' contract (@ref names the const the element is emitted into; FocusAsync() -> .focus(), observed via document.activeElement.id). 1.44.0: 'fragment' contract (RenderFragment/ChildContent: the parent's markup is spliced INSIDE the child's element after the child's own heading, and keeps the binding it was written with -- #body advances 0->1->2). 1.43.0: 'eventcb' contract (EventCallback child->parent: the callback is resolved to the parent's method at build time and ERASED, so the child's #bump runs the parent's Inc and #out advances 0->1->2). 1.42.0: 'groupby' contract (LINQ GroupBy -> reduce into Map<K,group>, each group a JS array-with-.key; g.Key -> g.key, first-appearance order). 1.41.0: 'elementwrite' contract (mutable arr[i]=v / d[k]=v as copy-on-write -> arr.with(i,v) / new Map(d).set(k,v), a new ref so the signal fires). 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -687,6 +687,15 @@ const APPS = {
   foreachlist: {
     readySelector: '#add',
     observeSelector: '#list',
+    scenarios: [],
+  },
+  // THE DUEL (decision 142): the app-level head-to-head. verifyContract drives the WHOLE composed app --
+  // EditForm add x2, a per-row toggle on a persisting row (the #125 stale-render class, held out), the three
+  // filters, a per-row remove, then routed navigation (#to-about, mounted-afresh on return, history.back()).
+  // Weight/timing/memory run on top via the generic instruments; the contract is what makes them comparable.
+  duel: {
+    readySelector: '#task-add',
+    observeSelector: '#board',
     scenarios: [],
   },
   // Correctness-only: verifyContract adds two rows then clicks the FIRST row's own .del button and asserts
@@ -2243,6 +2252,82 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
         out.observed.afterAdd = { text: text(), count: count() };
         if (text() !== '3415') out.problems.push(`#list text after #add is "${text()}", expected "3415"`);
         if (count() !== 4) out.problems.push(`#list <li> count after #add is ${count()}, expected 4`);
+        return out;
+      });
+    }
+
+    if (app === 'duel') {
+      return ctx.page.evaluate(async () => {
+        const out = { problems: [], observed: {} };
+        const need = ['#board', '#task-input', '#task-add', '#task-list', '#stats', '#filter-all', '#filter-active', '#filter-done', '#to-about'];
+        for (const sel of need) if (!document.querySelector(sel)) { out.problems.push(`missing required element: ${sel}`); return out; }
+        const settle = () => new Promise((r) => setTimeout(r, 60));
+        const rows = () => Array.from(document.querySelectorAll('#task-list li')).map((li) => ({
+          label: li.querySelector('.label')?.textContent.trim(),
+          state: li.querySelector('.state')?.textContent.trim(),
+        }));
+        const stats = () => `${document.querySelector('#active')?.textContent.trim()}/${document.querySelector('#total')?.textContent.trim()}`;
+        const empty = () => !!document.querySelector('#empty');
+        const add = (label) => {
+          const input = document.querySelector('#task-input');
+          input.value = label;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          document.querySelector('#task-add').click();
+        };
+        const eq = (step, got, want) => { if (JSON.stringify(got) !== JSON.stringify(want)) out.problems.push(`${step}: got ${JSON.stringify(got)}, expected ${JSON.stringify(want)}`); };
+
+        out.observed.initial = { rows: rows(), stats: stats(), empty: empty() };
+        eq('initial', out.observed.initial, { rows: [], stats: '0/0', empty: true });
+        if (out.problems.length) return out;
+
+        // ADD x2 through the form (the decision-137/138 bind + submit), input cleared by the model reset.
+        add('alpha'); add('beta');
+        out.observed.afterAdds = { rows: rows(), stats: stats(), empty: empty(), inputCleared: document.querySelector('#task-input').value === '' };
+        eq('after adds', out.observed.afterAdds, {
+          rows: [{ label: 'alpha', state: 'todo' }, { label: 'beta', state: 'todo' }],
+          stats: '2/2', empty: false, inputCleared: true,
+        });
+
+        // TOGGLE the second row -- a PERSISTING key whose content must re-render (the #125 class).
+        document.querySelectorAll('#task-list li .toggle')[1].click();
+        out.observed.afterToggle = { rows: rows(), stats: stats() };
+        eq('after toggle', out.observed.afterToggle, {
+          rows: [{ label: 'alpha', state: 'todo' }, { label: 'beta', state: 'done' }], stats: '1/2',
+        });
+
+        // THE THREE FILTERS recompute the visible list (the decision-140 reassigned-List signal).
+        document.querySelector('#filter-active').click();
+        eq('filter active', rows(), [{ label: 'alpha', state: 'todo' }]);
+        document.querySelector('#filter-done').click();
+        eq('filter done', rows(), [{ label: 'beta', state: 'done' }]);
+        document.querySelector('#filter-all').click();
+        eq('filter all', rows(), [{ label: 'alpha', state: 'todo' }, { label: 'beta', state: 'done' }]);
+
+        // REMOVE the first row via ITS OWN button (the decision-141 captured lambda).
+        document.querySelector('#task-list li .remove').click();
+        out.observed.afterRemove = { rows: rows(), stats: stats() };
+        eq('after remove', out.observed.afterRemove, { rows: [{ label: 'beta', state: 'done' }], stats: '0/1' });
+
+        // NAVIGATE (decision 139): no reload, About holds state, return mounts the Board AFRESH --
+        // Blazor's RouteView news the page component up on every match, so a fresh empty board is the
+        // SHARED contract, not a Filament quirk. Back must work.
+        window.__filamentNoReload = true;
+        document.querySelector('#to-about').click();
+        await settle();
+        out.observed.nav = { path: location.pathname, about: !!document.querySelector('#about'), noReload: window.__filamentNoReload === true };
+        eq('navigate', out.observed.nav, { path: '/about', about: true, noReload: true });
+        if (out.problems.length) return out;
+        document.querySelector('#about-count').click();
+        out.observed.aboutCount = document.querySelector('#about-count').textContent.trim();
+        eq('about counter', out.observed.aboutCount, 'clicked 1');
+        document.querySelector('#to-board').click();
+        await settle();
+        out.observed.remounted = { rows: rows(), stats: stats(), empty: empty() };
+        eq('remounted board', out.observed.remounted, { rows: [], stats: '0/0', empty: true });
+        history.back();
+        await settle();
+        out.observed.back = { path: location.pathname, about: !!document.querySelector('#about'), aboutFresh: document.querySelector('#about-count')?.textContent.trim() };
+        eq('history back', out.observed.back, { path: '/about', about: true, aboutFresh: 'clicked 0' });
         return out;
       });
     }

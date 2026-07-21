@@ -99,12 +99,15 @@ ALL_LABELS=(
   blazor-counter-aot
   blazor-rows-nojit
   blazor-rows-aot
+  blazor-duel-nojit
+  blazor-duel-aot
 )
 
 project_for() {
   case "$1" in
     blazor-counter-nojit|blazor-counter-aot) echo "baseline/Counter.Blazor" ;;
     blazor-rows-nojit|blazor-rows-aot)       echo "baseline/Rows.Blazor" ;;
+    blazor-duel-nojit|blazor-duel-aot)       echo "baseline/Duel.Blazor" ;;
     *) return 1 ;;
   esac
 }
