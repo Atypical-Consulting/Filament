@@ -316,6 +316,7 @@ public sealed class TemplateCompiler
         CollectDynamicAttributes(method, plan);
         CollectLambdaHandlers(method, plan);
         CollectFormBinds(method, plan);
+        CollectElementBinds(method, plan);
 
         // @inherits (decision 136). A derived component overrides BuildRenderTree, so the base contributes
         // its MEMBERS and not its markup -- exactly what Blazor renders. Merging those members into this
@@ -689,6 +690,32 @@ public sealed class TemplateCompiler
                     }
 
         foreach (var child in node.Children) CollectFormBinds(child, plan);
+    }
+
+    /// <summary>
+    /// Plain-element @bind targets, by name (decision 154). TryBind's own detection pair -- the
+    /// synthesised `value`/`checked` FormatValue attribute plus the CreateBinder `onchange` --
+    /// re-consulted at PLAN time, because the reactivity marking runs inside Compile() and a
+    /// pure-@bind field (nothing else reads or writes it) must already be marked read+assigned
+    /// there. BoundField yields a bare field name; anything else matches no field and changes
+    /// nothing, so the undeclared-field refusal is untouched.
+    /// </summary>
+    void CollectElementBinds(IntermediateNode node, TemplatePlan plan)
+    {
+        if (node is MarkupElementIntermediateNode el && !LooksLikeComponent(el.TagName))
+        {
+            var attrs = el.Children.OfType<HtmlAttributeIntermediateNode>().ToList();
+            var change = attrs.FirstOrDefault(a =>
+                string.Equals(a.AttributeName, "onchange", StringComparison.OrdinalIgnoreCase) &&
+                AttrCs(a).Contains("CreateBinder"));
+            var bound = attrs.FirstOrDefault(a =>
+                (string.Equals(a.AttributeName, "value", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(a.AttributeName, "checked", StringComparison.OrdinalIgnoreCase)) &&
+                AttrCs(a).Contains("BindConverter.FormatValue"));
+            if (change is not null && bound is not null && BoundField(bound) is { } field)
+                plan.ElementBindNames.Add(field);
+        }
+        foreach (var child in node.Children) CollectElementBinds(child, plan);
     }
 
     void CollectComponentBindings(IntermediateNode node, TemplatePlan plan)

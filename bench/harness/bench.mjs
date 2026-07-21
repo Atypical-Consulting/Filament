@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.57.0';   // 1.57.0: 'httpjson' contract (HttpClient erased to fetch, decision 147: #load runs `await Http.GetFromJsonAsync<List<Item>>` -> `await __getJson`; both shells serve the SAME static data/items.json so the network is deterministic and the fetched rows + "loaded 3" are asserted byte-identically, with an async settle wait like asyncclick's). 1.56.0: 'random' contract (System.Random, decision 146: the SEEDED side is asserted byte-for-byte -- Blazor renders the real BCL's Random(42) sequence and Filament must render the same digits, which IS the faithfulness proof of the emitted Knuth-subtractive __rnd; the UNSEEDED Random.Shared side gets the first RANGE predicate, [0, 10)). 1.55.0: 'datetimenow' contract (DateTime.UtcNow -> the emitted __dtUtcNow() reading Date.now(), decision 145; the FIRST TOLERANCE predicate -- a live clock cannot be byte-compared across two runs minutes apart, so each side's rendered ticks are compared to the harness's own wall clock at ITS assert time, 90 s tolerance, and a second snap must not go backwards). 1.54.0: 'duel' contract (THE DUEL, the app-level head-to-head: form add x2, per-row toggle on a PERSISTING row, the three filters, per-row remove, routed navigation with the mounted-afresh contract and Back -- one driver asserting the whole composed app against the same source's Blazor twin). 1.53.0: 'rowactions' contract (a PER-ROW handler, decision 141: `@onclick="() => Del(r.Id)"` captures the loop variable; two #add then first .del -> that row alone is removed). 1.52.0: 'foreachlist' contract (@foreach over a REASSIGNED, never-mutated List<T> -> list() with the collapsed source () => items.value, decision 140; one #add click removes key 2, inserts 4/5, moves 1/3). 1.51.0: 'routing' contract (@page + a GENERATED router: link clicks navigate without reloading, a page with state is remounted afresh on re-entry, and Back works). 1.50.0: 'forms' contract (<EditForm>/<InputText> + @bind-Value onto a record property: type -> #live follows while #out stays, submit -> #out holds it, and no navigation). 1.49.0: 'inherits' contract (@inherits merges a sibling base's members before state lifting; inherited field + method: #out 0->1->2). 1.48.0: 'generic' contract (@typeparam erased; a generic child's bound T stays a live binding: #out 1->2->3). 1.47.0: 'cascade' contract (<CascadingValue> + [CascadingParameter] matched by TYPE, erased to lexical scope: #depth 1->2->3). 1.46.0: 'jsinterop' contract (@inject IJSRuntime + InvokeVoidAsync/InvokeAsync<T> erased to direct calls: localStorage round trip, #out -> "hello"). 1.45.0: 'elemref' contract (@ref names the const the element is emitted into; FocusAsync() -> .focus(), observed via document.activeElement.id). 1.44.0: 'fragment' contract (RenderFragment/ChildContent: the parent's markup is spliced INSIDE the child's element after the child's own heading, and keeps the binding it was written with -- #body advances 0->1->2). 1.43.0: 'eventcb' contract (EventCallback child->parent: the callback is resolved to the parent's method at build time and ERASED, so the child's #bump runs the parent's Inc and #out advances 0->1->2). 1.42.0: 'groupby' contract (LINQ GroupBy -> reduce into Map<K,group>, each group a JS array-with-.key; g.Key -> g.key, first-appearance order). 1.41.0: 'elementwrite' contract (mutable arr[i]=v / d[k]=v as copy-on-write -> arr.with(i,v) / new Map(d).set(k,v), a new ref so the signal fires). 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.58.0';   // 1.58.0: 'todo' contract (THE TAILWIND TODO-LIST, decision 154: add x2 through a plain-@bind input -- the bind ALONE lifts newText to a signal, decision 154's widening -- then toggle a PERSISTING row whose reactive loop-variable class must flip to line-through, decision 152; clear-done through the child's EventCallback, decision 130; remove to empty. EVERY className is asserted byte-identical against Blazor, multi-token Tailwind values included -- variant colons, fraction slashes, arbitrary-value brackets, leading dashes -- which is the measurement of decision 151's whitespace fix). 1.57.0: 'httpjson' contract (HttpClient erased to fetch, decision 147: #load runs `await Http.GetFromJsonAsync<List<Item>>` -> `await __getJson`; both shells serve the SAME static data/items.json so the network is deterministic and the fetched rows + "loaded 3" are asserted byte-identically, with an async settle wait like asyncclick's). 1.56.0: 'random' contract (System.Random, decision 146: the SEEDED side is asserted byte-for-byte -- Blazor renders the real BCL's Random(42) sequence and Filament must render the same digits, which IS the faithfulness proof of the emitted Knuth-subtractive __rnd; the UNSEEDED Random.Shared side gets the first RANGE predicate, [0, 10)). 1.55.0: 'datetimenow' contract (DateTime.UtcNow -> the emitted __dtUtcNow() reading Date.now(), decision 145; the FIRST TOLERANCE predicate -- a live clock cannot be byte-compared across two runs minutes apart, so each side's rendered ticks are compared to the harness's own wall clock at ITS assert time, 90 s tolerance, and a second snap must not go backwards). 1.54.0: 'duel' contract (THE DUEL, the app-level head-to-head: form add x2, per-row toggle on a PERSISTING row, the three filters, per-row remove, routed navigation with the mounted-afresh contract and Back -- one driver asserting the whole composed app against the same source's Blazor twin). 1.53.0: 'rowactions' contract (a PER-ROW handler, decision 141: `@onclick="() => Del(r.Id)"` captures the loop variable; two #add then first .del -> that row alone is removed). 1.52.0: 'foreachlist' contract (@foreach over a REASSIGNED, never-mutated List<T> -> list() with the collapsed source () => items.value, decision 140; one #add click removes key 2, inserts 4/5, moves 1/3). 1.51.0: 'routing' contract (@page + a GENERATED router: link clicks navigate without reloading, a page with state is remounted afresh on re-entry, and Back works). 1.50.0: 'forms' contract (<EditForm>/<InputText> + @bind-Value onto a record property: type -> #live follows while #out stays, submit -> #out holds it, and no navigation). 1.49.0: 'inherits' contract (@inherits merges a sibling base's members before state lifting; inherited field + method: #out 0->1->2). 1.48.0: 'generic' contract (@typeparam erased; a generic child's bound T stays a live binding: #out 1->2->3). 1.47.0: 'cascade' contract (<CascadingValue> + [CascadingParameter] matched by TYPE, erased to lexical scope: #depth 1->2->3). 1.46.0: 'jsinterop' contract (@inject IJSRuntime + InvokeVoidAsync/InvokeAsync<T> erased to direct calls: localStorage round trip, #out -> "hello"). 1.45.0: 'elemref' contract (@ref names the const the element is emitted into; FocusAsync() -> .focus(), observed via document.activeElement.id). 1.44.0: 'fragment' contract (RenderFragment/ChildContent: the parent's markup is spliced INSIDE the child's element after the child's own heading, and keeps the binding it was written with -- #body advances 0->1->2). 1.43.0: 'eventcb' contract (EventCallback child->parent: the callback is resolved to the parent's method at build time and ERASED, so the child's #bump runs the parent's Inc and #out advances 0->1->2). 1.42.0: 'groupby' contract (LINQ GroupBy -> reduce into Map<K,group>, each group a JS array-with-.key; g.Key -> g.key, first-appearance order). 1.41.0: 'elementwrite' contract (mutable arr[i]=v / d[k]=v as copy-on-write -> arr.with(i,v) / new Map(d).set(k,v), a new ref so the signal fires). 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -741,6 +741,16 @@ const APPS = {
   // inside the row create function, the closure over the loop variable doing exactly what C#'s does.
   rowactions: {
     readySelector: '#add',
+    observeSelector: '#list',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract drives the Tailwind todo-list (decision 154) -- add x2 via the
+  // plain-@bind input, toggle a PERSISTING row (its reactive loop-variable class must gain
+  // line-through, decision 152), clear-done through the child's EventCallback, remove to empty --
+  // asserting EVERY className byte-identical against Blazor, multi-token Tailwind values included
+  // (decision 151). The measurement of the Tailwind program (BENCH n°65).
+  todo: {
+    readySelector: '#shell',
     observeSelector: '#list',
     scenarios: [],
   },
@@ -2755,6 +2765,82 @@ async function driveLoadedApp(ctx, app, opts, expectedLabels) {
         document.querySelector('#shared').click();
         out.observed.pick = v('#pick');
         if (!/^[0-9]$/.test(v('#pick'))) out.problems.push(`#pick after #shared is "${v('#pick')}", expected one digit in [0, 10)`);
+        return out;
+      });
+    }
+
+    if (app === 'todo') {
+      return ctx.page.evaluate(() => {
+        const out = { problems: [], observed: {} };
+        for (const sel of ['#shell', '#title', '#new', '#add', '#list', '#footer', '#left', '#clear']) {
+          if (!document.querySelector(sel)) { out.problems.push(`missing required element: ${sel}`); return out; }
+        }
+        // THE CLASS CONTRACT (decision 151): multi-token Tailwind values -- variant colons, fraction
+        // slashes, arbitrary-value brackets, leading dashes -- must render byte-identical. The old
+        // concat welded them into one garbage class, which THIS assert would catch on either side.
+        const classes = {
+          '#shell': 'mx-auto max-w-[42rem] rounded-xl bg-white/90 p-6 shadow-lg sm:px-4 md:px-8',
+          '#title': 'text-2xl font-bold -mt-2',
+          '#new': 'w-1/2 rounded border px-3 py-2 focus:ring-2',
+          '#add': 'rounded bg-amber-500 px-4 py-2 hover:bg-amber-400 disabled:opacity-50',
+          '#footer': 'flex justify-between border-t pt-2',
+          '#left': 'text-sm text-slate-500',
+          '#clear': 'text-sm hover:underline',
+        };
+        for (const [sel, expected] of Object.entries(classes)) {
+          const got = document.querySelector(sel).getAttribute('class');
+          if (got !== expected) out.problems.push(`${sel} class is "${got}", expected "${expected}"`);
+        }
+        if (out.problems.length) return out;
+
+        const input = document.querySelector('#new');
+        const left = () => document.querySelector('#left').textContent.trim();
+        const rows = () => Array.from(document.querySelectorAll('#list li'));
+        const labels = () => rows().map((li) => li.querySelector('span').textContent.trim());
+        const rowClasses = () => rows().map((li) => li.getAttribute('class'));
+        const add = (label) => {
+          input.value = label;
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          document.querySelector('#add').click();
+        };
+        const ACTIVE = 'flex gap-2 max-w-[42rem] text-slate-900';
+        const DONE = 'flex gap-2 max-w-[42rem] line-through text-slate-400';
+
+        out.observed.initial = { rows: rows().length, left: left() };
+        if (rows().length !== 0) { out.problems.push(`#list initially has ${rows().length} rows, expected 0`); return out; }
+        if (left() !== '0 left') { out.problems.push(`#left initially is "${left()}", expected "0 left"`); return out; }
+
+        // ADD x2 through the plain-@bind input (decision 154): the bind alone lifted newText to a
+        // signal, so Add() clearing it must flow BACK into the input's value.
+        add('alpha'); add('beta');
+        out.observed.afterAdd = { labels: labels(), classes: rowClasses(), left: left(), inputValue: input.value };
+        if (labels().join('|') !== 'alpha|beta') { out.problems.push(`labels after add x2 are [${labels().join(', ')}], expected [alpha, beta]`); return out; }
+        if (left() !== '2 left') out.problems.push(`#left after add x2 is "${left()}", expected "2 left"`);
+        if (input.value !== '') out.problems.push(`#new after add is "${input.value}", expected "" (Add's newText = "" did not flow back into the input)`);
+        if (rowClasses().join('|') !== `${ACTIVE}|${ACTIVE}`) out.problems.push(`row classes after add are [${rowClasses().join(', ')}], expected both "${ACTIVE}"`);
+        if (out.problems.length) return out;
+
+        // TOGGLE THE FIRST ROW -- a PERSISTING key (decision 152, the #125 stale trap on attributes):
+        // list() reuses the row, so only a live effect INSIDE the row create can restyle it.
+        rows()[0].querySelector('.toggle').click();
+        out.observed.afterToggle = { classes: rowClasses(), left: left() };
+        if (rowClasses()[0] !== DONE) out.problems.push(`row 1 class after toggle is "${rowClasses()[0]}", expected "${DONE}" (the reactive row class did not flip)`);
+        if (rowClasses()[1] !== ACTIVE) out.problems.push(`row 2 class after toggle is "${rowClasses()[1]}", expected untouched "${ACTIVE}"`);
+        if (left() !== '1 left') out.problems.push(`#left after toggle is "${left()}", expected "1 left"`);
+        if (out.problems.length) return out;
+
+        // CLEAR DONE through the CHILD's button (decision 130): TodoFooter's EventCallback runs the
+        // PARENT's ClearDone -- the update crosses the composition boundary upward.
+        document.querySelector('#clear').click();
+        out.observed.afterClear = { labels: labels(), left: left() };
+        if (labels().join('|') !== 'beta') { out.problems.push(`labels after #clear are [${labels().join(', ')}], expected [beta]`); return out; }
+        if (left() !== '1 left') out.problems.push(`#left after #clear is "${left()}", expected "1 left"`);
+
+        // REMOVE the last row -> the empty state.
+        rows()[0].querySelector('.remove').click();
+        out.observed.final = { rows: rows().length, left: left() };
+        if (rows().length !== 0) out.problems.push(`#list after remove has ${rows().length} rows, expected 0`);
+        if (left() !== '0 left') out.problems.push(`#left after remove is "${left()}", expected "0 left"`);
         return out;
       });
     }

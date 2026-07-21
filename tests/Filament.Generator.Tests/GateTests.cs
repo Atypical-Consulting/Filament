@@ -364,6 +364,8 @@ public static class Generate
 
     public static string HttpJsonToTemp() => ToTemp(RepoPaths.HttpJsonRazor, "HttpJson");
 
+    public static string TodoToTemp() => ToTemp(RepoPaths.TodoRazor, "Todo");
+
     public static string FormsToTemp() => ToTemp(RepoPaths.FormsRazor, "Forms");
 
     /// <summary>

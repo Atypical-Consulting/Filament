@@ -1,0 +1,84 @@
+@* THE TAILWIND TODO-LIST (decision 154) -- the program's measured witness. Every class is a real
+   Tailwind utility, exercising the whole attribute surface at once: multi-token static values
+   with variant colons / fraction slashes / arbitrary-value brackets (decision 151's fix, live on
+   #shell, #title, #new and the row buttons), and the REACTIVE row class whose ternary flips
+   line-through on a PERSISTING key (decision 152, the #125 stale trap under measurement).
+
+   Composition carries the app: TodoShell places everything through ChildContent (decision 131),
+   TodoFooter takes a reactive bound string (decision 90) and raises ClearDone back up through an
+   EventCallback (decision 130). State is the Duel idiom -- `tasks` mutated, `visible` and the
+   counts recomputed by reassignment (decision 153 refuses the mixed shape on ONE field).
+
+   Rendering rows sit on single lines: source whitespace between siblings becomes text nodes, and
+   the row internals must be byte-identical on both sides (Rows' contract note). *@
+
+<TodoShell Title="todos"><div id="editor" class="flex gap-2"><input id="new" aria-label="New todo" @bind="newText" class="w-1/2 rounded border px-3 py-2 focus:ring-2" /><button id="add" @onclick="Add" class="rounded bg-amber-500 px-4 py-2 hover:bg-amber-400 disabled:opacity-50">add</button></div>
+
+<ul id="list" class="mt-4">@foreach (Item t in visible)
+{
+    <li @key="t.Id" class="flex gap-2 max-w-[42rem] @(t.Done ? "line-through text-slate-400" : "text-slate-900")"><span class="grow">@t.Label</span><button class="toggle rounded px-2 hover:bg-slate-200" @onclick="() => Toggle(t.Id)">toggle</button><button class="remove rounded px-2 hover:bg-red-200" @onclick="() => Remove(t.Id)">remove</button></li>
+}</ul>
+
+<TodoFooter Left="@leftText" OnClear="@ClearDone" /></TodoShell>
+
+@code {
+    // Mutable record, Rows' Row shape: Toggle rewrites Done in place.
+    record Item
+    {
+        public int Id { get; set; }
+        public string Label { get; set; } = "";
+        public bool Done { get; set; }
+    }
+
+    private string newText = "";
+    private List<Item> tasks = new List<Item>();
+    private List<Item> visible = new List<Item>();
+    private string leftText = "0 left";
+    private int nextId = 1;
+
+    void Add()
+    {
+        if (newText == "") { return; }
+        Item t = new Item();
+        t.Id = nextId;
+        t.Label = newText;
+        t.Done = false;
+        nextId = nextId + 1;
+        tasks.Add(t);
+        newText = "";
+        Refresh();
+    }
+
+    void Toggle(int id)
+    {
+        for (int i = 0; i < tasks.Count; i++)
+        {
+            if (tasks[i].Id == id) { tasks[i].Done = !tasks[i].Done; }
+        }
+        Refresh();
+    }
+
+    void Remove(int id)
+    {
+        for (int i = tasks.Count - 1; i >= 0; i--)
+        {
+            if (tasks[i].Id == id) { tasks.RemoveAt(i); }
+        }
+        Refresh();
+    }
+
+    void ClearDone()
+    {
+        for (int i = tasks.Count - 1; i >= 0; i--)
+        {
+            if (tasks[i].Done) { tasks.RemoveAt(i); }
+        }
+        Refresh();
+    }
+
+    void Refresh()
+    {
+        visible = tasks.Where(x => true).ToList();
+        leftText = tasks.Where(x => !x.Done).Count() + " left";
+    }
+}

@@ -836,6 +836,17 @@ public sealed class CSharpFrontEnd
         // it the bound target is read-but-never-assigned, decision 67's conjunction leaves it a plain
         // binding, and the input would render once and then track nothing.
         MarkTemplateWrites(plan.FormBinds.Select(b => b.Value));
+        // A PLAIN @bind is a read AND a write BY ITSELF (decision 154, lifting #104's
+        // "pure @bind-only field" deferral with #138's argument): Razor's lowering reads the
+        // field into `value` and assigns it in the binder, so the input is the display and the
+        // writer at once. A name that matches no field marks nothing -- the undeclared-field
+        // refusal in TryBind is untouched.
+        foreach (var name in plan.ElementBindNames)
+            if (_fields.FirstOrDefault(f => f.Name == name) is { } bf)
+            {
+                bf.ReadByTemplate = true;
+                bf.AssignedOutsideConstruction = true;
+            }
         MarkConditionReads(classes[1], regionMethods);
 
         // 3. the call graph: who calls whom, for the inlining arbitrage AND for the emission

@@ -311,6 +311,11 @@ public static class RepoPaths
 
     /// <summary>The HttpClient-erased-to-fetch SPEC (decisions 51/147). Never edited to make a gate pass.</summary>
     public static string HttpJsonAnswerKey => Path.Combine(Root, "samples", "HttpJson", "httpjson.js");
+
+    public static string TodoRazor => Path.Combine(Root, "baseline", "Todo.Blazor", "App.razor");
+
+    /// <summary>The Tailwind todo-list SPEC (decisions 51/154). Never edited to make a gate pass.</summary>
+    public static string TodoAnswerKey => Path.Combine(Root, "samples", "Todo", "todo.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

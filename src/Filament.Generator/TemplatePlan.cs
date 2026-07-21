@@ -83,6 +83,15 @@ public sealed class TemplatePlan
     /// must be marked assigned, or the target never becomes a signal and the bind tracks nothing.
     /// </summary>
     public List<FormBind> FormBinds { get; } = [];
+
+    /// <summary>
+    /// Fields bound by a PLAIN-element @bind (`&lt;input @bind="newText" /&gt;`), by C# name
+    /// (decision 154, lifting #104's "pure @bind-only field" deferral with #138's argument):
+    /// Razor's own lowering READS the field (value=FormatValue(f)) and ASSIGNS it (CreateBinder),
+    /// so the bind alone makes its target reactive -- the input IS the display. Collected at plan
+    /// time because the marking runs inside Compile(), long before TryBind emits.
+    /// </summary>
+    public List<string> ElementBindNames { get; } = [];
 }
 
 /// <param name="Input">the resolved &lt;InputText&gt; component node</param>
