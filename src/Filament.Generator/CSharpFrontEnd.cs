@@ -145,12 +145,16 @@ public sealed class CSharpFrontEnd
     /// <summary>Whether the lambda handler writes more than once, so its arrow needs batch() (decision 68).</summary>
     public bool LambdaBatched(IntermediateNode attr) => _lambdaBatched.Contains(attr);
 
-    /// <summary>Whether target sits anywhere under root in the IR tree -- how a harvested lambda handler is
-    /// matched to the region markup item that carries its element, so it is planted in that region's scope
-    /// (decision 141) instead of at class scope.</summary>
+    /// <summary>Whether target sits under root in the IR tree WITHOUT crossing into a nested region
+    /// container -- how a harvested lambda handler is matched to the region markup item that carries its
+    /// element, so it is planted in that region's scope (decision 141) instead of at class scope. The
+    /// boundary is TemplateCompiler.SlotsIn's exactly (decision 142): a descendant that itself holds
+    /// template C# is another region's territory, and a lambda there belongs to THAT region's method --
+    /// the scope whose braces (a @foreach's, say) bind the names the lambda captures.</summary>
     static bool IsUnder(IntermediateNode root, IntermediateNode target)
     {
         if (ReferenceEquals(root, target)) return true;
+        if (root.Children.Any(c => c is CSharpCodeIntermediateNode)) return false;
         foreach (var c in root.Children)
             if (IsUnder(c, target)) return true;
         return false;

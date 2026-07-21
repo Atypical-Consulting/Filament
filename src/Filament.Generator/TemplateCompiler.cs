@@ -594,8 +594,16 @@ public sealed class TemplateCompiler
                     : new MarkupItem(kid, SlotsIn(kid)));
             plan.Regions.Add(new TemplateRegion { Container = node, Items = items });
 
+            // A markup item may ITSELF contain template C# further down -- a <ul> holding a @foreach
+            // beside a component-level @if is one component with TWO control-flow regions, not "a region
+            // inside a region" (decision 142): each container's C# is lexically independent, so each gets
+            // its OWN region method and its own scope, exactly as if the other did not exist. Only the
+            // DESCENDANT REGION CONTAINERS are collected here (SlotsIn stopped at exactly those, so no
+            // slot is claimed twice); plain markup under this region contributes nothing new. This is what
+            // used to be RefuseNestedCode; a genuinely scope-entangled shape (a branch-local @{ } read
+            // across regions) now fails LOUDLY in the C# compilation instead of being guessed at.
             foreach (var kid in kids)
-                if (kid is not CSharpCodeIntermediateNode) RefuseNestedCode(kid);
+                if (kid is not CSharpCodeIntermediateNode) CollectNestedRegions(kid, plan);
             return;
         }
 
@@ -771,13 +779,39 @@ public sealed class TemplateCompiler
     }
 
     /// <summary>Every @expression and @key in a subtree, in document order.</summary>
+    /// <summary>Find each nested REGION CONTAINER under a region's markup item and Collect it as its own
+    /// region (decision 142). Everything between this region and that one is plain markup whose slots the
+    /// outer region's MarkupItem already carries -- SlotsIn and this walk stop/fire on the SAME condition,
+    /// so nothing is collected twice and nothing is skipped.</summary>
+    void CollectNestedRegions(IntermediateNode node, TemplatePlan plan)
+    {
+        if (node.Children.Any(c => c is CSharpCodeIntermediateNode))
+        {
+            Collect(node, plan);
+            return;
+        }
+        foreach (var c in node.Children)
+            if (c is not HtmlAttributeIntermediateNode) CollectNestedRegions(c, plan);
+    }
+
     static List<IntermediateNode> SlotsIn(IntermediateNode node)
     {
         var slots = new List<IntermediateNode>();
         void Walk(IntermediateNode n)
         {
             if (n is CSharpExpressionIntermediateNode or SetKeyIntermediateNode) { slots.Add(n); return; }
-            foreach (var c in n.Children) Walk(c);
+            // Stop at any node that is ITSELF a region container (decision 142) -- including the root,
+            // when an outer region's markup item IS one: its slots belong to ITS region method -- the
+            // scope its own C# declares (a loop variable, say) -- not to this one's, where they would be
+            // planted outside the braces that bind them and CS0103.
+            if (n.Children.Any(c => c is CSharpCodeIntermediateNode)) return;
+            // A resolved form component's parameters are not ordinary slots inside a region either --
+            // the same decision-138 rule Collect() applies outside one: Razor's @bind-Value lowering
+            // (ValueChanged binder, ValueExpression accessor) is machinery this compiler REPLACES, and
+            // compiling it produces [unsupported-call]s about code the author never wrote.
+            var isForm = n is ComponentIntermediateNode { TagName: "InputText" or "EditForm" };
+            foreach (var c in n.Children)
+                if (!(isForm && c is ComponentAttributeIntermediateNode)) Walk(c);
         }
         Walk(node);
         return slots;
@@ -788,21 +822,6 @@ public sealed class TemplateCompiler
     /// the reassembly would have to splice a region into a region -- i.e. resolve an
     /// expression in two scopes at once. Refused with a location rather than approximated.
     /// </summary>
-    void RefuseNestedCode(IntermediateNode node)
-    {
-        foreach (var c in node.Children)
-        {
-            if (c is CSharpCodeIntermediateNode code)
-                Diag("nested-control-flow",
-                    $"C# ({Trunc(RawText(code))}) nested inside other C# in the template is not implemented. " +
-                    "The reassembly (decision 54) splices one region's spans back together and re-parses them; " +
-                    "a region inside a region would have to resolve its expressions in two scopes at once. " +
-                    "Neither answer key contains one, so nothing here would be measured. Refusing to emit.",
-                    code.Source);
-            RefuseNestedCode(c);
-        }
-    }
-
     /// <summary>
     /// THE INLINE-VS-REFERENCE ARBITRAGE, and it is decision 55's remaining divergence.
     ///
@@ -1048,6 +1067,12 @@ public sealed class TemplateCompiler
             // region, i.e. the two walks disagree about the file. Root control flow is a region
             // now (decision 89), emitted via EmitOps, so a code node arriving HERE -- walked
             // individually -- really is the two walks disagreeing about the file.
+            //
+            // UNLESS a diagnostic already explains it (decision 142): a refused region is deliberately
+            // not planned, so its C# reaching this walk is the refusal's expected shadow, and throwing
+            // FIL-WIRING here MASKED the real message ("tool broken" instead of the author's answer).
+            case CSharpCodeIntermediateNode when _diagnostics.Count > 0:
+                return null;
             case CSharpCodeIntermediateNode code:
                 throw new GeneratorException(
                     $"FIL-WIRING: raw template C# ({Trunc(RawText(code))}) reached the emitter. The collect " +

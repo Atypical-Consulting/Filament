@@ -4881,3 +4881,40 @@ guidance. Le §10 préfère un refus guidé à une émission plausible et morte.
 l'arrow est batchée.
 
 Générateur seul, firewall runtime vide. Mesuré : entrée n°59. Suite : 476 tests.
+
+## 142. Deux régions ne font pas une imbrication — le collect descend, et un refus ne se déguise plus en outil cassé
+
+**2026-07-21.** Troisième sonde du Duel : un `@if` au niveau du composant (l'état-vide) À CÔTÉ d'un `<ul>` portant
+son `@foreach` — deux morceaux de contrôle dans des CONTENEURS différents — mourait en
+`FIL-WIRING: raw template C# reached the emitter`. Deux défauts distincts, démêlés à la sonde minimale :
+
+**1. LE MASQUAGE (défaut).** `RefuseNestedCode` posait bien son diagnostic (`nested-control-flow`), mais la marche
+d'émission jetait ensuite un `FIL-WIRING` inconditionnel en rencontrant le C# brut de la région non planifiée — et
+l'exception AVALAIT le vrai message : l'auteur lisait « l'outil est cassé » là où le compilateur avait une réponse.
+Corrigé : du C# brut atteignant l'émetteur n'est un incident d'outillage QUE si aucun diagnostic ne l'explique
+déjà ; sinon c'est l'ombre attendue d'un refus, et on laisse le refus parler.
+
+**2. LA SUR-CONSERVATION (élargissement).** Le refus « a region inside a region would have to resolve its
+expressions in two scopes at once » confondait deux situations. La VRAIE imbrication (un `@foreach` DANS la branche
+d'un `@if` du même conteneur) passe déjà par la récursion de RegionOps (#100). Ce qui était refusé ici est un
+`<ul>`-région descendant d'un item de markup d'une AUTRE région — deux C# lexicalement INDÉPENDANTS. L'arbitrage :
+`Collect` descend dans les items de markup d'une région pour y trouver les CONTENEURS DE RÉGIONS imbriqués et les
+collecter comme régions À PART ENTIÈRE (méthode de région propre, portée propre). Trois frontières alignées sur la
+MÊME condition (« ce nœud a des enfants CSharpCode ») pour qu'aucun slot ni handler ne soit réclamé deux fois ni
+planté hors de ses accolades : `SlotsIn` s'arrête aux conteneurs de régions ; `CollectNestedRegions` ne collecte
+qu'eux ; `IsUnder` (le plantage des lambdas #141) ne traverse pas leur territoire. Une forme réellement enchevêtrée
+(un `@{ }` local de branche lu à travers deux régions) échoue désormais FORT dans la compilation C# (CS0103
+localisé) au lieu d'être devinée.
+
+**3. Au passage** : `SlotsIn` applique dans les régions le filtre décision-138 que `Collect` appliquait déjà hors
+d'elles — les paramètres d'un composant de formulaire résolu (le lowering de `@bind-Value`) ne sont pas des slots,
+dans une région comme ailleurs. Sans quoi un `<EditForm>` posé dans une région compilait la machinerie que ce
+compilateur REMPLACE et refusait du code que l'auteur n'a jamais écrit.
+
+**LE TÉMOIN est l'app elle-même** : `baseline/Duel.Blazor` (le task board routé du Duel) compile désormais —
+formulaire + stats + filtres + état-vide `@if` + liste keyée sur `List` réassignée + handlers par ligne + LINQ +
+routeur, en 5 922 o bruts pour la page Board. `DuelTests` épingle la composition ET la tenue du #125 (le span
+d'état d'une ligne persistante est un EFFET sur un signal par record, jamais un texte figé). Les 476 tests
+existants sont passés inchangés — l'élargissement n'a pas déplacé un octet des émissions en place ; suite à 478.
+
+Générateur seul, firewall runtime vide. La mesure de l'app est l'affaire du Duel (entrée n°60 à venir).
