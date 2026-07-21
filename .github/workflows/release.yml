@@ -1,0 +1,121 @@
+name: Release
+
+# Tag-driven shipping: `git tag v0.2.0 && git push origin v0.2.0` runs the FULL suite, packs
+# Filament.Sdk + Filament.Templates, proves the scaffold-from-pack loop, attaches the .nupkg files to
+# a GitHub Release, and pushes to nuget.org WHEN the NUGET_API_KEY secret is configured (the one human
+# step; without it the release still ships its artifacts, so nothing silently half-publishes).
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Test, pack, prove, publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      # Same non-optional wiring as ci.yml: the generator suite shells out to node + esbuild
+      # (canon.mjs), and the Sdk pack embeds the built runtime.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            src/filament-runtime/package-lock.json
+
+      - name: Install root tooling (esbuild, for canon.mjs)
+        run: npm ci
+
+      - name: Build the signals runtime
+        working-directory: src/filament-runtime
+        run: npm ci && npm run build
+
+      - name: Restore
+        run: dotnet restore Filament.sln
+
+      - name: Build
+        run: dotnet build Filament.sln --no-restore -c Release
+
+      # A release never ships from a red suite. Same invocation as CI's ubuntu leg.
+      - name: Test
+        env:
+          VSTEST_CONNECTION_TIMEOUT: 180
+        run: dotnet test Filament.sln --no-build -c Release -m:1
+
+      # The tag IS the version: refuse to ship a package whose csproj version disagrees with the
+      # tag, rather than publish a v0.3.0 release carrying 0.2.0 packages.
+      - name: Assert tag matches package versions
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          for proj in src/Filament.Sdk/Filament.Sdk.csproj src/Filament.Templates/Filament.Templates.csproj; do
+            V="$(grep -o '<Version>[^<]*</Version>' "$proj" | sed 's/<[^>]*>//g')"
+            if [[ "$V" != "$TAG" ]]; then
+              echo "::error::$proj declares <Version>$V</Version> but the tag is v$TAG"; exit 1
+            fi
+          done
+
+      - name: Pack
+        run: |
+          dotnet pack src/Filament.Sdk -c Release
+          dotnet pack src/Filament.Templates -c Release
+          ls -l artifacts/nuget
+
+      # The scaffold-from-pack loop, END TO END, on the very artifacts about to ship: install the
+      # template FROM the .nupkg, scaffold outside the repo, resolve Filament.Sdk from the local
+      # feed, build, and assert the compiled module + runtime landed in wwwroot.
+      - name: Prove the scaffold-from-pack loop
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          FEED="$PWD/artifacts/nuget"
+          WORK="$(mktemp -d)"
+          dotnet new install "$FEED/Filament.Templates.$TAG.nupkg"
+          dotnet new filament -n ProofApp -o "$WORK/ProofApp"
+          cat > "$WORK/ProofApp/nuget.config" <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <add key="filament-local" value="$FEED" />
+            </packageSources>
+          </configuration>
+          EOF
+          dotnet build "$WORK/ProofApp" -v q
+          test -f "$WORK/ProofApp/wwwroot/App.g.js"    || { echo "::error::no App.g.js";    exit 1; }
+          test -f "$WORK/ProofApp/wwwroot/filament.js" || { echo "::error::no filament.js"; exit 1; }
+
+      - name: Create GitHub Release with the packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" artifacts/nuget/*.nupkg \
+            --title "Filament $GITHUB_REF_NAME" \
+            --generate-notes
+
+      # The one human prerequisite: a NUGET_API_KEY repo secret. Guarded so a fork or a
+      # secretless run still produces a complete GitHub Release instead of a red X.
+      - name: Push to nuget.org
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [[ -z "$NUGET_API_KEY" ]]; then
+            echo "NUGET_API_KEY not configured -- packages are on the GitHub Release; add the secret and re-run to publish to nuget.org."
+            exit 0
+          fi
+          dotnet nuget push "artifacts/nuget/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate

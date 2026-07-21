@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <!-- A template package carries CONTENT only: the engine reads content/, nothing is compiled. -->
+    <PackageType>Template</PackageType>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IncludeContentInPack>true</IncludeContentInPack>
+    <ContentTargetFolders>content</ContentTargetFolders>
+    <IsPackable>true</IsPackable>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <!-- Keep .template.config in the pack: dotfiles are excluded by default and the template
+         engine cannot see a template without it. -->
+    <NoDefaultExcludes>true</NoDefaultExcludes>
+
+    <PackageId>Filament.Templates</PackageId>
+    <Version>0.2.0</Version>
+    <Authors>Filament</Authors>
+    <Description>dotnet new template for Filament apps: Blazor-authored .razor compiled to lean JS on a 2 KB signals runtime.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageOutputPath>$(MSBuildProjectDirectory)/../../artifacts/nuget</PackageOutputPath>
+    <!-- NU5128: no lib/ and no dependencies is the SHAPE of a template package. -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="../../templates/filament/**/*"
+             Exclude="../../templates/filament/**/bin/**;../../templates/filament/**/obj/**"
+             PackagePath="content/filament/" />
+  </ItemGroup>
+
+</Project>

@@ -5148,3 +5148,26 @@ Un lambda ailleurs (initialiseur d'un local Func) refuse toujours à SON guichet
 
 Suite analyzer : 18 → 24 tests. Pas d'entrée BENCH : rien d'exécutable n'a changé — c'est le contrat
 author-time qui s'aligne sur le contrat build-time.
+
+## 149. Le pipeline de release — le tag EST la version, la preuve tourne sur les artefacts qui s'expédient
+
+**2026-07-21.** `Filament.Sdk` était prouvé hors-dépôt (décisions #92/#93) mais rien ne l'EXPÉDIAIT : pas
+de paquet de template installable, pas de chaîne tag→publication. Fermé en trois pièces, versions alignées
+à 0.2.0 :
+
+**1. `Filament.Templates`** — le paquet de template standard (`PackageType=Template`,
+`NoDefaultExcludes` pour que `.template.config` survive au pack) qui embarque `templates/filament/`.
+`dotnet new install <nupkg>` remplace l'installation depuis le dossier du dépôt.
+
+**2. La preuve locale ET CI est la boucle ENTIÈRE sur les artefacts mêmes** : pack → install du template
+DEPUIS le .nupkg → scaffold HORS dépôt → build résolvant `Filament.Sdk` depuis le feed local →
+assertion que `wwwroot/App.g.js` (compilé par le générateur DU PAQUET) et `wwwroot/filament.js` (le
+runtime embarqué) existent. Mesuré vert localement (0 erreur, les deux fichiers produits).
+
+**3. `release.yml`** — sur tag `v*` : suite complète (une release ne part jamais d'une suite rouge) →
+garde « le tag EST la version » (un csproj en désaccord avec le tag FAIT ÉCHOUER la release au lieu de
+publier un mensonge) → pack → preuve scaffold-from-pack → GitHub Release avec les .nupkg → poussée
+nuget.org GARDÉE sur le secret `NUGET_API_KEY` (l'unique étape humaine ; sans secret, la release expédie
+quand même ses artefacts au lieu d'un demi-échec silencieux).
+
+Pas d'entrée BENCH : rien d'exécutable dans l'app ne change — c'est la chaîne de distribution.
