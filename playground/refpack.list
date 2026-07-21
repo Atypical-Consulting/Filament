@@ -24,6 +24,7 @@ System.Text.RegularExpressions
 System.Text.Encoding.Extensions
 System.Net.Http
 System.Net.Http.Json
+System.Text.Json
 System.Net.Primitives
 System.Memory
 System.Runtime.Numerics
