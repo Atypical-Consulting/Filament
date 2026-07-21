@@ -1,0 +1,9 @@
+@* Leaf-display child with the OTHER two composition directions: a reactive bound string coming
+   DOWN (decision 90 -- Left follows the parent's leftText) and an EventCallback going UP
+   (decision 130 -- #clear runs the parent's ClearDone). *@
+<footer id="footer" class="flex justify-between border-t pt-2"><span id="left" class="text-sm text-slate-500">@Left</span><button id="clear" class="text-sm hover:underline" @onclick="OnClear">clear done</button></footer>
+
+@code {
+    [Parameter] public string Left { get; set; } = "";
+    [Parameter] public EventCallback OnClear { get; set; }
+}

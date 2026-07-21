@@ -4,6 +4,8 @@
   "private": true,
   "description": "Repo-root tooling dependencies. tools/canon.mjs — the alpha-equivalence checker the generator test suite gates on — minifies through esbuild, resolved as `npx --no-install esbuild` from the repo root. Declaring it here is what makes that resolve on a clean clone; without it the call silently depends on a warm ~/.npm/_npx cache and the gate tests fail everywhere else. Pinned exactly: canon.mjs asserts this version (EXPECTED_ESBUILD) because the minified token stream is what alpha-equivalence is computed over, so a different esbuild is a different answer key.",
   "devDependencies": {
-    "esbuild": "0.28.1"
+    "@tailwindcss/cli": "4.3.3",
+    "esbuild": "0.28.1",
+    "tailwindcss": "4.3.3"
   }
 }

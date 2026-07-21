@@ -89,6 +89,12 @@ samples/filament-routing-gen/About.g.js
 examples/FilamentApp/wwwroot/App.g.js
 examples/FilamentApp/wwwroot/filament.js
 
+# examples/TodoTailwind: same rule -- App.g.js/filament.js emitted at build, app.css derived by
+# Tailwind from the .razor sources at build (decision 155).
+examples/TodoTailwind/wwwroot/App.g.js
+examples/TodoTailwind/wwwroot/filament.js
+examples/TodoTailwind/wwwroot/app.css
+
 # Approval-test output. `*.received.js` is what the generator ACTUALLY emitted when a
 # snapshot went red -- a debugging artifact written by the failing test itself, next to
 # the approved file it disagrees with. Committing one would put a REJECTED module in the

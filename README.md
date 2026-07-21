@@ -136,7 +136,7 @@ Two apps — `Counter` and a 1,000-row `Rows` — compiled from **pure `.razor`*
 
 ## What compiles
 
-Across **149 recorded decisions** and **64 measured bench entries**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **506 tests** back it (422 generator · 60 subset · 24 analyzer, plus 214 runtime).
+Across **155 recorded decisions** and **65 measured bench entries**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **516 tests** back it (432 generator · 60 subset · 24 analyzer, plus 214 runtime).
 
 | Area | Covered |
 |------|---------|
@@ -151,10 +151,11 @@ Across **149 recorded decisions** and **64 measured bench entries**, the compila
 | **Forms** | `<EditForm>` · `<InputText>` · `@bind-Value` onto a model property (validation refused, not ignored) |
 | **Routing** | `@page` + a router **generated into the app** (425 B gzip; the shared runtime is untouched) |
 | **Real-world I/O** | `DateTime.UtcNow`/`Now`/`Today` (the wall clock) · `Random` (seeded = the **exact** BCL sequence) · `HttpClient`→`fetch` + JSON (shape-gated) · `localStorage` via JS interop |
+| **Tailwind / CSS** | every utility shape byte-faithful (variant `:`, fraction `/`, `[arbitrary]`, `-neg`) · reactive row classes on the loop variable · a scanned-sources build with a coverage gate ([the todo example](./examples/TodoTailwind)) |
 
 Anything outside the subset raises a **located diagnostic and writes no file** — Filament never emits silently-wrong JavaScript.
 
-**Developer experience:** `dotnet new filament` template · `Filament.Sdk` + `Filament.Templates` packages with a tag-driven release pipeline · `Filament.Analyzer` (author-time FIL0001/FIL0002 in the IDE — members, statements, expressions **and calls**) · a runnable Rider example · a browser demo · **[the real-apps guide](./docs/REAL-APPS.md)** (I/O, the JS escape hatch, testing, the browser floor, the perf envelope).
+**Developer experience:** `dotnet new filament` template · `Filament.Sdk` + `Filament.Templates` packages with a tag-driven release pipeline · `Filament.Analyzer` (author-time FIL0001/FIL0002 in the IDE — members, statements, expressions **and calls**) · runnable Rider examples (counter + [Tailwind todo](./examples/TodoTailwind)) · a browser demo · **[the real-apps guide](./docs/REAL-APPS.md)** (I/O, the JS escape hatch, testing, the browser floor, the perf envelope).
 
 ## Honest limits
 

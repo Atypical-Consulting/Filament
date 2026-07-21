@@ -1,0 +1,92 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Filament compiles the .razor sources to JS. The Razor SDK must NOT compile them as
+         Blazor components: Filament owns .razor here, and its product is JS, not a
+         .NET component type. -->
+    <EnableDefaultRazorComponentItems>false</EnableDefaultRazorComponentItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Visible in Rider's tree, not compiled, not published as content. -->
+    <None Include="App.razor" />
+    <None Include="TodoShell.razor" />
+    <None Include="TodoFooter.razor" />
+    <!-- `dotnet watch` (no-hot-reload option) monitors every component and recompiles on change;
+         tailwind.css is watched too, so editing utilities re-derives the stylesheet. -->
+    <Watch Include="App.razor" />
+    <Watch Include="TodoShell.razor" />
+    <Watch Include="TodoFooter.razor" />
+    <Watch Include="tailwind.css" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <FilamentGeneratorDll>$(MSBuildProjectDirectory)/../../src/Filament.Generator/bin/$(Configuration)/net8.0/Filament.Generator.dll</FilamentGeneratorDll>
+    <FilamentRuntimeJs>$(MSBuildProjectDirectory)/../../src/filament-runtime/dist/filament.js</FilamentRuntimeJs>
+    <FilamentAppRazor>$(MSBuildProjectDirectory)/App.razor</FilamentAppRazor>
+    <FilamentAppJs>$(MSBuildProjectDirectory)/wwwroot/App.g.js</FilamentAppJs>
+    <FilamentWwwrootRuntimeJs>$(MSBuildProjectDirectory)/wwwroot/filament.js</FilamentWwwrootRuntimeJs>
+    <TailwindInputCss>$(MSBuildProjectDirectory)/tailwind.css</TailwindInputCss>
+    <TailwindOutputCss>$(MSBuildProjectDirectory)/wwwroot/app.css</TailwindOutputCss>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Build the generator first; we invoke its DLL (AfterTargets=Build), not link its assembly. -->
+    <ProjectReference Include="../../src/Filament.Generator/Filament.Generator.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+  <!-- Compile App.razor (+ sibling components, resolved by the generator) -> wwwroot/App.g.js.
+       Inputs list all three sources so editing a CHILD re-emits the module too. -->
+  <Target Name="CompileFilament"
+          AfterTargets="Build"
+          Inputs="$(FilamentAppRazor);$(MSBuildProjectDirectory)/TodoShell.razor;$(MSBuildProjectDirectory)/TodoFooter.razor"
+          Outputs="$(FilamentAppJs)">
+    <Error Condition="!Exists('$(FilamentGeneratorDll)')"
+           Text="Filament.Generator.dll not found at $(FilamentGeneratorDll). Build the solution so the generator is compiled first." />
+    <Message Importance="high" Text="Filament: App.razor -> wwwroot/App.g.js" />
+    <Exec Command="dotnet &quot;$(FilamentGeneratorDll)&quot; &quot;$(FilamentAppRazor)&quot; &quot;$(FilamentAppJs)&quot; --runtime ./filament.js" />
+  </Target>
+
+  <!-- Copy the prebuilt runtime next to the emitted module (native ES-module import). -->
+  <Target Name="CopyFilamentRuntime"
+          AfterTargets="Build"
+          Inputs="$(FilamentRuntimeJs)"
+          Outputs="$(FilamentWwwrootRuntimeJs)">
+    <Error Condition="!Exists('$(FilamentRuntimeJs)')"
+           Text="filament.js not found at $(FilamentRuntimeJs). Run 'npm ci &amp;&amp; npm run build' in src/filament-runtime first." />
+    <Copy SourceFiles="$(FilamentRuntimeJs)" DestinationFiles="$(FilamentWwwrootRuntimeJs)" />
+  </Target>
+
+  <!-- Tailwind v4 (decision 155): derive wwwroot/app.css by SCANNING the .razor sources
+       (tailwind.css declares `@source "./*.razor"`). The generator emits class strings verbatim
+       into App.g.js, so scanning the sources covers the emitted JS, and CheckTailwindCoverage
+       proves that instead of assuming it. Resolved via `npx` from the repo-root devDependency
+       (pinned exact in package.json, like esbuild): run `npm ci` at the repo root once. -->
+  <Target Name="BuildTailwind"
+          AfterTargets="CompileFilament"
+          Inputs="$(TailwindInputCss);$(FilamentAppRazor);$(MSBuildProjectDirectory)/TodoShell.razor;$(MSBuildProjectDirectory)/TodoFooter.razor"
+          Outputs="$(TailwindOutputCss)">
+    <Message Importance="high" Text="Tailwind: tailwind.css + *.razor -> wwwroot/app.css" />
+    <Exec Command="npx --no-install @tailwindcss/cli --input tailwind.css --output wwwroot/app.css --minify"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <!-- THE SCANNER-COVERAGE PROOF (decision 155): every class token the emitted module sets must
+       have a matching rule in the derived stylesheet. Holds because emission is verbatim and every
+       conditional utility is a FULL class name in the sources (Tailwind's own rule); this gate is
+       what turns that reasoning into a build failure the day it stops being true. -->
+  <Target Name="CheckTailwindCoverage"
+          AfterTargets="BuildTailwind"
+          Inputs="$(FilamentAppJs);$(TailwindOutputCss)"
+          Outputs="$(MSBuildProjectDirectory)/obj/tailwind-coverage.stamp">
+    <Exec Command="node tools/check-css-coverage.mjs wwwroot/App.g.js wwwroot/app.css"
+          WorkingDirectory="$(MSBuildProjectDirectory)" />
+    <Touch Files="$(MSBuildProjectDirectory)/obj/tailwind-coverage.stamp" AlwaysCreate="true" />
+  </Target>
+
+</Project>

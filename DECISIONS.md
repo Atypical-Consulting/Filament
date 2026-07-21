@@ -5195,3 +5195,83 @@ d'erreur EST le défaut JS, la validation refusée-pas-ignorée, pas de conteneu
 README aligné (149 décisions / 64 entrées / 506 tests, ligne « Real-world I/O » dans le tableau, la
 fermeture étroite de l'@inject actualisée à DEUX services) ; README du template dépoussiéré (le paquet
 `Filament.Templates` remplace l'install-depuis-dossier, versions non figées dans la prose).
+
+## 151. Les valeurs d'attribut statiques gardent leurs espaces — Razor éclate une valeur multi-token en nœuds PRÉFIXÉS
+
+**2026-07-21.** Le programme Tailwind commence par une sonde, et la sonde trouve un DÉFAUT expédié :
+`class="w-1/2 hover:bg-amber-400 focus:ring-2 max-w-[42rem] sm:px-4 -mt-2 md:grid-cols-[1fr_2fr]"`
+émettait `'w-1/2hover:bg-amber-400focus:ring-2…'` — UNE classe poubelle là où l'auteur en a écrit sept.
+La cause : Razor abaisse une valeur multi-token en PLUSIEURS `HtmlAttributeValue` dont l'espace de tête
+est le PRÉFIXE du nœud, pas un token ; deux concaténations (le chemin statique et le chemin de liaison
+de composition) ne lisaient que les tokens. Le fold mixte (`ComposeAttributeValue`, décision 96) était
+DÉJÀ prefix-aware — la règle existait, elle n'était pas partagée. Fix : les deux sites incluent
+`h.Prefix`, la chaîne émise EST la chaîne écrite, octet pour octet. Témoins :
+`Supported/Code/TailwindClasses.razor` (7 tokens au niveau racine, 2 tokens, multi-token DANS une ligne
+de liste) + `TwCompose/TwCard` (le même septuor lié à un paramètre string d'enfant). Les 424 tests
+existants passent inchangés : aucun témoin antérieur ne portait de valeur statique multi-token qui
+déclenche l'éclatement — c'est exactement pourquoi le défaut a survécu 150 décisions.
+
+## 152. La classe réactive d'une LIGNE lit la variable de boucle — le slot d'attribut appartient à sa région
+
+**2026-07-21.** `<li @key="t.Id" class="flex gap-2 @(t.Done ? "line-through …" : "…")">` refusait :
+la récolte (`CollectDynamicAttributes`) plantait TOUS les slots d'attribut en `FreeSlots` — le scope
+CLASSE — où `t` n'existe pas. Les slots TEXTE d'une ligne compilent depuis toujours DANS les accolades
+de la région (la variable de boucle résout, décision 141 pour les lambdas) ; l'attribut méritait la même
+règle. Fix en deux moitiés : (1) `SlotsIn` réclame les exprs d'attribut d'un item de région — mêmes deux
+prédicats que la récolte mount-level (décision 53 : UN prédicat, jamais deux descriptions) — et la
+récolte mount-level SAUTE ce qu'une région a réclamé (un nœud, UN scope ; planté deux fois, la copie
+classe meurt en CS0103) ; (2) l'effect du fold atterrit dans la fonction create de la ligne — l'analogue
+exact de l'effect texte que le Duel émet déjà — et re-court quand `t.done` (signal par-record) bascule
+sur une clé PERSISTANTE : le piège de la ligne réutilisée (leçon 125), appliqué aux attributs. EN CHEMIN,
+un défaut de PRÉCÉDENCE : `'flex ' + t.done.value ? 'a' : 'b'` — le `+` lie avant `?:`, la branche vraie
+toujours, le préfixe avalé. Règle : dans un fold multi-termes, un terme-expression non atomique se
+PARENTHÈSE ; une chaîne pointée nue reste nue (l'answer key mixte de la 96 reste octet-identique). Même
+garde sur le chemin booléen (`{js} ? '' : null`). Frontière tenue : un APPEL dans la valeur
+(`t.Label.Trim()`) refuse à son span (`Unsupported/Code/RowClassCall.razor`).
+
+## 153. UN champ, UN idiome — muter ET réassigner la même List émettait du JS qui JETTE
+
+**2026-07-21.** Sonde encore : un champ `items` à la fois muté (`items.Add(t)`) et réassigné
+(`items = items.Where(…).ToList()`) — du C# Blazor VALIDE, la baseline compile — émettait
+`const items = […]` PUIS `items = …` : TypeError au premier clic, à exit 0. Précisément ce que le §10
+interdit (ni fidèle, ni refusé). La collision est structurelle : muter+version déclare `const`
+(rows.js, décision 1), réassigner-comme-signal fait du CHAMP le signal (décision 140) — les deux
+modèles ne partagent pas une déclaration. Verdict : REFUS au site de la réassignation qui entre en
+collision (`ReassignSite` capturé au marquage), message nommant les deux idiomes et le fix — scinder en
+deux champs, le magasin muté et la vue réassignée (le split tasks/visible du Duel). Le mapping fidèle
+(`let` + bump de version sur réassignation) reste possible ; il attendra d'être MESURÉ, pas supposé.
+`Unsupported/Code/ListMutateReassign.razor` épingle exit≠0, aucun fichier écrit, le message.
+
+## 154. La todo-list Tailwind — l'app-témoin du programme, et le @bind nu suffit à faire un signal
+
+**2026-07-21.** `baseline/Todo.Blazor` : trois composants (App + TodoShell + TodoFooter), chaque classe
+un utilitaire Tailwind réel, TOUTE la surface d'attribut du programme vivante à la fois — les valeurs
+statiques multi-token exotiques (151), la classe de ligne réactive sur la variable de boucle (152,
+`line-through` au toggle), la composition ERASÉE (ChildContent 131 qui porte l'app entière, string lié
+réactif 90, EventCallback 130 pour clear-done), l'état à l'idiome du Duel (153 refuse le mixte). EN
+CHEMIN, une déférale de la 104 levée par l'argument de la 138 : `<input @bind="newText">` seul refusait
+(« a pure @bind-only field needs its reactivity marked from the template ») — or l'abaissement de Razor
+LIT le champ (`value=FormatValue(f)`) et l'ASSIGNE (CreateBinder) ; l'input EST l'affichage et
+l'écrivain. `CollectElementBinds` (les prédicats de TryBind, consultés au moment du PLAN) marque le
+champ lu+écrit ; un nom qui ne matche aucun champ ne marque rien — le refus champ-non-déclaré est
+intact. Gate canon vs `samples/Todo/todo.js` (clé écrite main, VERTE au premier essai), snapshot,
+épingles d'émission ; la mesure est le contrat `todo` (BENCH n°65). Leçon d'assertion : la classe d'une
+ligne au toggle est le piège 125 rendu MESURABLE — un setAttr de create-time laisserait
+`text-slate-900` pour toujours, et l'oracle le verrait.
+
+## 155. Tailwind v4 branché — le scan des sources .razor, et la couverture PROUVÉE au build
+
+**2026-07-21.** `examples/TodoTailwind` : la même app, exécutable en F5, avec le build Tailwind réel.
+`tailwindcss` + `@tailwindcss/cli` **4.3.3 épinglés exacts** à la racine (le précédent esbuild : un
+lockfile qui porte les binaires des trois OS, `npm ci` déjà dans le CI) ; `tailwind.css` déclare
+`@import "tailwindcss"` + `@source "./*.razor"` — le scan que ferait n'importe quel projet Blazor ;
+une cible MSBuild dérive `wwwroot/app.css` après `CompileFilament`. LE POINT D'HONNÊTETÉ : « scanner
+les sources couvre le JS émis » n'est pas une supposition — le générateur émet les chaînes de classe
+VERBATIM (151), chaque utilitaire conditionnel est un nom COMPLET dans la source (la règle de Tailwind
+lui-même), donc `tools/check-css-coverage.mjs` transforme le raisonnement en GATE de build : chaque
+token de classe que le module pose doit résoudre dans la feuille dérivée, sinon exit 1 (prouvé dans
+les deux sens — vert sur l'app, rouge sur un utilitaire injecté hors-scan). L'exemple entre dans
+`Filament.sln`, donc l'étape CI existante (build Release, 3 OS) exécute le CLI épinglé et le gate
+partout. `examples/FilamentApp` reste le miroir du template ; la todo est la vitrine. Doc :
+« Styling with Tailwind » dans REAL-APPS.md, README (155 décisions / 65 entrées / 516 tests, ligne
+Tailwind/CSS).

@@ -122,6 +122,40 @@ binding, your method names preserved. Read it; that is the debugging story, and 
 one than sourcemapping a megabyte of framework. Refusals never reach the browser: they stop
 the build, located in your `.razor`.
 
+## Styling with Tailwind
+
+Tailwind works the way it works in any Blazor project, because your markup is the markup you
+wrote (decision 155; `examples/TodoTailwind` is the runnable recipe, and the same sources are
+measured against Blazor as BENCH n°65). The input CSS scans the `.razor` sources:
+
+```css
+@import "tailwindcss";
+@source "./*.razor";
+```
+
+and an MSBuild target derives the stylesheet at build:
+
+```xml
+<Target Name="BuildTailwind" AfterTargets="CompileFilament">
+  <Exec Command="npx @tailwindcss/cli --input tailwind.css --output wwwroot/app.css --minify" />
+</Target>
+```
+
+Everything in Tailwind's surface syntax survives the compiler byte-for-byte — variant colons
+(`hover:bg-amber-400`), fraction slashes (`w-1/2`, `bg-white/90`), arbitrary values
+(`max-w-[42rem]`), leading dashes (`-mt-2`) — statically, in a reactive `class="@expr"`, in a
+mixed `class="badge @cls rounded"`, and in a list row whose class reads the loop variable:
+
+```razor
+<li @key="t.Id" class="flex gap-2 @(t.Done ? "line-through text-slate-400" : "text-slate-900")">
+```
+
+The one authoring rule is Tailwind's own: **write full class names**, even inside ternaries —
+both branches above are literals in the source, so the scanner sees them. Because the compiler
+emits class strings verbatim, scanning the `.razor` sources covers the emitted JS; the example
+turns that claim into a build gate (`tools/check-css-coverage.mjs`), so a dynamically-composed
+class name fails the build instead of rendering unstyled.
+
 ## The floor and the ceiling
 
 **Browser floor: ES2023.** The emitted code uses `Array.prototype.with`, `.at()`, spread,

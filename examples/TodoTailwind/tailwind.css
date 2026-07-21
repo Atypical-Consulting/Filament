@@ -1,0 +1,12 @@
+/* Tailwind v4 input (decision 155). Zero config: the import brings the whole framework, and
+   @source pins WHAT is scanned for utility candidates -- the .razor sources, exactly as a Blazor
+   project would scan them. The generator emits class strings verbatim into App.g.js, so scanning
+   the sources covers the emitted JS; tools/check-css-coverage.mjs proves it on every build.
+
+   The one authoring rule this implies (Tailwind's own): write FULL class names, even inside
+   ternaries -- `t.Done ? "line-through text-slate-400" : "text-slate-900"` is scannable,
+   string-built fragments are not. */
+@import "tailwindcss";
+@source "./*.razor";
+/* The host page carries a few utilities of its own (body background/padding). */
+@source "./wwwroot/index.html";

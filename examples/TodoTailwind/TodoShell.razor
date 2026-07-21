@@ -1,0 +1,9 @@
+@* Leaf-display child that PLACES the whole app (decision 131): a Title and the ChildContent
+   hole. Its own classes are the D1 witness set -- variant colon, fraction-opacity slash,
+   arbitrary-value bracket, leading dash -- authored as ONE multi-token value per element. *@
+<section id="shell" class="mx-auto max-w-[42rem] rounded-xl bg-white/90 p-6 shadow-lg sm:px-4 md:px-8"><h1 id="title" class="text-2xl font-bold -mt-2">@Title</h1>@ChildContent</section>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

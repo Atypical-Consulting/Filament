@@ -5417,3 +5417,42 @@ tests** (422 générateur / 60 subset / 18 analyzer), runtime 214.
 ---
 
 *Fin de l'entrée n°64. Ne pas modifier — ajouter une entrée n°65 pour toute rectification.*
+
+## Entrée n°65 — 2026-07-21 — Phase 4 : la todo-list Tailwind mesurée contre Blazor — chaque className à l'octet près
+
+**Ce qui est mesuré.** L'app-témoin du programme Tailwind (décision 154) : `baseline/Todo.Blazor`
+(App + TodoShell + TodoFooter, trois directions de composition ERASÉES) compilée par le générateur
+inchangé, conduite par le contrat `todo` (HARNESS **1.57.0 → 1.58.0**, changelog en tête du fichier).
+Le driver ajoute deux tâches par l'input `@bind` NU (la déférale de la 104 levée en 154 : le bind seul
+fait de `newText` un signal, et le `newText = ""` de Add doit REVENIR dans l'input), bascule la
+PREMIÈRE ligne — une clé persistante : list() réutilise la ligne, seule un effect vivant DANS le create
+de ligne peut la restyler (152 ; le piège 125 sur les attributs) —, vide les faites via le bouton de
+L'ENFANT (l'EventCallback 130 traverse la frontière vers le haut), retire la dernière ligne.
+
+**L'assertion de classes.** CHAQUE `className` est comparé à l'octet près des deux côtés — y compris
+les valeurs multi-token exotiques (deux-points de variante, slash de fraction/opacité, crochets de
+valeur arbitraire, tiret de tête : `mx-auto max-w-[42rem] rounded-xl bg-white/90 p-6 shadow-lg
+sm:px-4 md:px-8`) : c'est la mesure du fix 151 (l'ancienne concat soudait les sept utilitaires en une
+classe poubelle, que cet assert attraperait d'un côté comme de l'autre).
+
+**Résultat.** Blazor et Filament rendent un observé STRICTEMENT identique :
+`initial {0 rangée, "0 left"}` → `afterAdd {alpha|beta, 2× "flex gap-2 max-w-[42rem] text-slate-900",
+"2 left", input vidé}` → `afterToggle {ligne 1 = "… line-through text-slate-400", ligne 2 intacte,
+"1 left"}` → `afterClear {beta seule, "1 left"}` → `final {0 rangée, "0 left"}`. Contract met des deux
+côtés (`--contract-only` ; correctness-only, pas de poids/timing — les axes app-level restent au Duel).
+
+**En chemin (le programme, décisions 151–155).** DEUX défauts trouvés PAR SONDE avant toute ligne
+d'app : la perte d'espaces des valeurs statiques multi-token (151) et le champ muté+réassigné émis
+`const`+assignation — du JS qui jette, refusé désormais (153) ; un défaut de PRÉCÉDENCE dans le fold
+(un ternaire non parenthésé après `+` : branche vraie toujours, préfixe avalé) corrigé sous 152.
+L'exemple exécutable `examples/TodoTailwind` (155) dérive `app.css` en SCANNANT les .razor
+(Tailwind v4.3.3 épinglé) et GATE le build sur la couverture : chaque token de classe posé par le
+module résout dans la feuille, prouvé vert sur l'app et rouge sur un utilitaire hors-scan.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE (générateur seul). Suite : **516 tests**
+(432 générateur / 60 subset / 24 analyzer), runtime 214. Baseline `dotnet build` AVANT le générateur
+(153 en est né : le shape mixte est du Blazor valide). Snapshots antérieurs octet-identiques.
+
+---
+
+*Fin de l'entrée n°65. Ne pas modifier — ajouter une entrée n°66 pour toute rectification.*
