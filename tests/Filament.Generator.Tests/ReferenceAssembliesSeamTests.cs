@@ -63,13 +63,20 @@ public class ReferenceAssembliesSeamTests
                 Directory.CreateDirectory(Path.GetDirectoryName(dst)!);
                 try
                 {
-                    File.CreateSymbolicLink(dst, src);
+                    // Directory.CreateSymbolicLink, not File.*: a FILE symlink pointing at a directory
+                    // resolves on Unix but is BROKEN on Windows (the CI runner proved it -- the seam
+                    // reported the pack "not found" through a link that existed).
+                    Directory.CreateSymbolicLink(dst, src);
                 }
                 catch (IOException)
                 {
                     // Windows without symlink privilege (no Developer Mode, not elevated). Mirroring by
                     // COPY would move ~80 MB per run for a resolution-path test that the other two OSes
                     // already prove; the loud-failure half below runs everywhere regardless.
+                    return;
+                }
+                catch (UnauthorizedAccessException)
+                {
                     return;
                 }
             }
