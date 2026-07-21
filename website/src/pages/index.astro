@@ -67,18 +67,30 @@ const subset = [
     title: "Reactivity & events",
     items: "@bind two-way, lambda handlers, reactive attributes, async/await → Promise",
   },
+  {
+    title: "The framework layer",
+    items:
+      "@page routing, @inject, @inherits, RenderFragment / ChildContent, EventCallback, @ref, CascadingParameter, generics, JS interop, EditForm — all eleven closed and measured",
+  },
+  {
+    title: "Real-world I/O",
+    items:
+      "HttpClient → fetch, JSON under a shape gate, the wall clock, seeded Random proven against the BCL, OnInitialized(Async), computed properties",
+  },
 ];
 
+// THE HONEST LIST, and it is the current one. Nine framework features used to sit here; ADR 0003
+// closed and measured all eleven, and this page went on claiming they were missing. What belongs
+// here is what is refused TODAY -- including the two the post-ADR-0003 probe re-opened as real gaps.
 const nonGoals = [
-  "Routing (@page)",
-  "Dependency injection (@inject)",
-  "Inheritance (@inherits)",
-  "Multi-component parameter fan-out",
-  "RenderFragment / ChildContent",
-  "EventCallback",
-  "@ref, CascadingParameter",
-  "Forms & validation",
-  "Generics, JsInterop",
+  "SSR / prerendering",
+  "CSS isolation (.razor.css)",
+  "Error boundaries",
+  "Form validation — refused, not ignored",
+  "A general DI container",
+  "OnAfterRender / OnParametersSet / IDisposable",
+  "Templated components (RenderFragment<T>)",
+  'Route parameters (@page "/item/{id}")',
 ];
 ---
 
@@ -349,9 +361,9 @@ const nonGoals = [
           (speed) pass for both apps, including the full 1,000-row DOM work. These are
           <em>provisional research measurements</em> — coarse ratios are not cited to three
           significant figures, and every figure carries a disclosed reserve in
-          <code class="text-mist-300">BENCH.md</code>. Two demo apps over a deliberately narrow
-          subset show the architecture is <em>viable</em>; they do not, by themselves, prove it out
-          as a whole framework.
+          <code class="text-mist-300">BENCH.md</code>. Demo apps — plus a persisted todo app and a
+          head-to-head task board — show the architecture is <em>viable</em>; they do not, by
+          themselves, prove it out as a whole framework. What remains untested is scale, not surface.
         </div>
       </div>
     </section>
@@ -364,9 +376,9 @@ const nonGoals = [
           A wide C# subset — and a compiler that refuses the rest, loudly.
         </h2>
         <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
-          Across 128 recorded decisions and 47 measured slices, the compilable surface has grown to
-          cover most of everyday C#. Anything outside it raises a located diagnostic and writes no
-          file — Filament never emits silently-wrong JavaScript.
+          Across 161 recorded decisions and 67 measured entries, the compilable surface has grown to
+          cover most of everyday C# — and, since ADR 0003, the framework layer too. Anything outside
+          it raises a located diagnostic and writes no file.
         </p>
 
         <div class="mt-12 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
@@ -386,9 +398,9 @@ const nonGoals = [
         </div>
 
         <p class="mt-8 text-sm text-mist-500">
-          Backed by <span class="font-mono text-mist-300">411</span> passing tests — every slice
-          verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real
-          browser.
+          Backed by <span class="font-mono text-mist-300">528</span> .NET tests and
+          <span class="font-mono text-mist-300">214</span> runtime tests — every slice verified
+          byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser.
         </p>
       </div>
     </section>
@@ -403,9 +415,21 @@ const nonGoals = [
           The verdict, stated plainly: not eliminated, not established.
         </h2>
         <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
-          Filament is a thesis under test, not a shipping framework. The compiler handles a broad
-          slice of C#, but the <em>framework</em> layer — the features that make components a system
-          rather than a page — is deliberately out of scope for now.
+          Filament is a thesis under test, not a shipping framework. The <em>framework</em> layer is
+          no longer the caveat it was: routing, DI, inheritance, fragments, callbacks, refs,
+          cascades, generics and interop are implemented and measured, and ten of the eleven cost
+          <em>zero</em> runtime bytes because the compile-time model absorbed them rather than being
+          extended by them. What is honest to say now is narrower, and sharper.
+        </p>
+
+        <p class="mt-4 max-w-2xl text-lg leading-relaxed text-mist-300">
+          A ten-agent probe then went back into those eleven features and wrote its own witnesses.
+          It found the surface was closed at the centre and open at the edges: a form that navigates
+          away on submit, a fragment forwarded twice and dropped, a parameterised route that renders
+          a blank screen. Those defects are catalogued, each with the command that produced it, and
+          they are being closed one measured slice at a time. The register is in the repository,
+          because a limit you can read is a design constraint and a limit you discover in production
+          is a bug report.
         </p>
 
         <div class="mt-12 grid gap-8 lg:grid-cols-2">
