@@ -1,0 +1,25 @@
+@* DateTime.UtcNow -> the wall clock as BigInt ticks (BENCH n°62, decision 145): the FIRST admitted
+   non-deterministic value. The ticks model (decision 115) already represents every DateTime as a BigInt
+   of 100ns intervals since 0001-01-01; what was refused was the SOURCE. The clock is the same clock on
+   both sides: __dtUtcNow() = 621355968000000000n + BigInt(Date.now()) * 10000n, faithful to C#'s value
+   within clock resolution. `.Ticks` is the identity on that representation (a long, #112).
+
+   DOM contract: `stamp` starts default(DateTime) -> #out renders "0" (byte-equal both sides). Clicking
+   #snap stores DateTime.UtcNow -> #out becomes the current tick count. A live clock cannot be asserted
+   byte-for-byte across two runs, so the harness gains a TOLERANCE predicate (ticksNearNow): each side's
+   rendered ticks must sit within 90 s of the harness's own clock at ITS assert time. UtcNow is the
+   measured witness deliberately -- no timezone dependence; Now/Today ride the same helpers and are
+   pinned by unit tests. *@
+
+<p><span id="out">@stamp.Ticks</span></p>
+
+<button id="snap" @onclick="Snap">snap</button>
+
+@code {
+    private System.DateTime stamp;
+
+    private void Snap()
+    {
+        stamp = System.DateTime.UtcNow;
+    }
+}

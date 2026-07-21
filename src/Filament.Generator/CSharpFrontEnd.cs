@@ -390,6 +390,12 @@ public sealed class CSharpFrontEnd
     /// (decision 114). The template adds `decStr` when it formats a decimal display.</summary>
     public readonly HashSet<string> DecimalHelpers = [];
 
+    /// <summary>The wall-clock helpers this module actually used (decision 145). DateTime.UtcNow reads the
+    /// SAME clock on both sides -- __dtUtcNow() derives the BigInt tick count from Date.now(); __dtNow
+    /// subtracts the current local offset; __dtToday truncates Now to the local day. The template compiler
+    /// emits exactly these, in dependency order, when the set is non-empty.</summary>
+    public readonly HashSet<string> ClockHelpers = [];
+
     // ---- the public surface the template compiler consumes ------------------
 
     public bool Declares(string name) => _fieldsByName.ContainsKey(name) || _methodsByName.ContainsKey(name);
@@ -2954,6 +2960,42 @@ public sealed class CSharpFrontEnd
             var kvpJs = Expr(ma.Expression);
             if (ma.Name.Identifier.Text == "Key") return $"{kvpJs}[0]";
             if (DictOfForeachVar(ma.Expression) is { } dictJs) return $"{dictJs}.value.get({kvpJs}[0])";
+        }
+
+        // stamp.Ticks -- the IDENTITY on the ticks model (decision 145): a DateTime IS its BigInt tick
+        // count (decision 115), and .Ticks is that count typed long, whose JS home is the same BigInt
+        // (decision 112). Nothing to compute, nothing to wrap.
+        if (ma.Name.Identifier.Text == "Ticks" &&
+            _model.GetTypeInfo(ma.Expression).Type?.SpecialType == SpecialType.System_DateTime)
+            return Expr(ma.Expression);
+
+        // DateTime.UtcNow / Now / Today -- the wall clock (decision 145), the FIRST admitted
+        // non-deterministic value. The clock is the same clock on both sides: the helpers derive the
+        // tick count from Date.now() (+ the current local offset for Now, truncated to the local day
+        // for Today), faithful to C#'s value within clock resolution. Emitted per use, in dependency
+        // order. Everything else static on DateTime (Parse, MinValue, ...) stays refused below.
+        if (_model.GetSymbolInfo(ma).Symbol is IPropertySymbol { IsStatic: true } clock &&
+            clock.ContainingType.SpecialType == SpecialType.System_DateTime &&
+            clock.Name is "UtcNow" or "Now" or "Today")
+        {
+            ClockHelpers.Add("dtUtcNow");
+            if (clock.Name is "Now" or "Today") ClockHelpers.Add("dtNow");
+            if (clock.Name is "Today") ClockHelpers.Add("dtToday");
+            return $"__{(clock.Name switch { "UtcNow" => "dtUtcNow", "Now" => "dtNow", _ => "dtToday" })}()";
+        }
+
+        // A DateTime instance member OTHER than .Ticks -- most pointedly .Kind, which does not survive
+        // the ticks erasure: a tick count has no Kind (decision 145). Refused HERE so the message can
+        // name the erasure instead of the generic "no BCL" shrug.
+        if (_model.GetTypeInfo(ma.Expression).Type?.SpecialType == SpecialType.System_DateTime)
+        {
+            Refuse("unsupported-member",
+                $"'{Trunc(ma.ToString())}' is not a DateTime member in the subset. A DateTime is its BigInt " +
+                "tick count (decision 115): .Ticks is that value, comparison and AddDays are tick arithmetic, " +
+                "and the wall clock enters at DateTime.UtcNow/Now/Today (decision 145). .Kind in particular " +
+                "does not survive the erasure -- a tick count has no Kind. Refusing to emit.",
+                ma.SpanStart);
+            return "/*refused*/";
         }
 
         if (_model.GetSymbolInfo(ma).Symbol is IPropertySymbol ps && PropAnywhere(ps) is { } p)

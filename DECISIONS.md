@@ -5014,3 +5014,35 @@ est re-décrit dans PlaygroundApi et ÉPINGLÉ ÉGAL par le smoke de parité oct
 compile les mêmes sources par la CLI et par le moteur navigateur et exige l'identité octet.
 
 Mesures (payload, latence de compile en navigateur, verdict de parité) : entrée n°61.
+
+## 145. L'horloge murale entre dans le sous-ensemble — le non-déterminisme se mesure à la tolérance, pas à l'octet
+
+**2026-07-21.** `DateTime.Now` était refusé depuis la décision 115 avec la raison « non-déterministe, donc
+immesurable contre Blazor ». C'était une discipline de recherche, pas une impossibilité : **l'horloge est la
+MÊME horloge des deux côtés**. Le modèle ticks-BigInt représente déjà chaque DateTime ; seule la SOURCE
+manquait.
+
+**LE MAPPING.** `DateTime.UtcNow` → `__dtUtcNow()` émis dans le module (runtime intact) :
+`621355968000000000n + BigInt(Date.now()) * 10000n` — le décalage d'époque en ticks (1970-01-01) plus les
+millisecondes mises à l'échelle. `DateTime.Now` → `__dtNow()` soustrait le décalage local COURANT
+(`getTimezoneOffset()` est UTC−local en minutes ; une minute = 600 000 000 ticks). `DateTime.Today` →
+`__dtToday()` tronque Now au jour local (la division BigInt tronque ; les ticks sont positifs). Helpers émis
+À L'USAGE, en ordre de dépendance — un module sans horloge n'en paie pas un octet. `.Ticks` est
+**l'IDENTITÉ** sur la représentation : un DateTime EST son compte de ticks, et `.Ticks` est ce compte typé
+`long`, dont la maison JS est le même BigInt (décision 112). Rien à calculer, rien à envelopper.
+
+**LA FRONTIÈRE NOMMÉE.** `DateTimeKind` ne survit pas à l'érasure — un compte de ticks n'a pas de Kind.
+`.Kind` est refusé avec un message qui NOMME l'érasure (témoin `Unsupported/Code/DateTimeKind.razor`),
+`ToUniversalTime`/`ToLocalTime`/`Parse`/`MinValue` restent refusés à leur guichet. Le témoin MESURÉ est
+UtcNow, délibérément : aucun fuseau en jeu ; Now/Today sont épinglés au niveau émission
+(`Supported/Code/DateTimeNowToday.razor`) — la divergence possible entre la base TZ de .NET et celle du
+navigateur pour des dates HISTORIQUES n'est pas sur le chemin admis, qui ne lit que le décalage COURANT.
+
+**L'INSTRUMENT EST LA MOITIÉ DE LA DÉCISION.** Une horloge vivante ne se compare pas à l'octet entre deux
+passes à des minutes d'écart. Le harnais (1.55.0) gagne son premier prédicat de TOLÉRANCE (`ticksNearNow`) :
+chaque camp est comparé à l'horloge murale du harnais À SON PROPRE instant d'assertion, tolérance 90 s —
+généreuse pour l'ordonnanceur, dix ordres de grandeur trop étroite pour un décalage d'époque faux ou une
+échelle ms→ticks fausse — et un second `#snap` ne doit pas reculer. C'est le début assumé du « harnais à
+effets » : le déterminisme était une propriété de l'oracle, pas de la thèse.
+
+Mesures : entrée n°62.

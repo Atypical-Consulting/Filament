@@ -1,0 +1,16 @@
+@* THE BOUNDARY of decision 145: a DateTime is its BigInt tick count (decision 115), and a tick count
+   has no Kind -- DateTimeKind does not survive the erasure. Valid Blazor (an enum renders fine there);
+   deliberately refused here, with wording that names the erasure. *@
+
+<p><span id="out">@stamp.Kind</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private System.DateTime stamp;
+
+    private void Go()
+    {
+        stamp = System.DateTime.UtcNow;
+    }
+}

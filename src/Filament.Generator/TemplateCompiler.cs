@@ -2372,6 +2372,31 @@ public sealed class TemplateCompiler
             sb.Append("}\n\n");
         }
 
+        if (_code.ClockHelpers.Count > 0)
+        {
+            // The wall clock as BigInt ticks (decision 145): the SAME clock C# reads. __dtUtcNow is the
+            // Unix epoch offset in ticks + Date.now() scaled ms->ticks; Now subtracts the CURRENT local
+            // offset (getTimezoneOffset is UTC-local in minutes; one minute = 600,000,000 ticks); Today
+            // truncates Now to the local day (BigInt division truncates; ticks are positive). Emitted
+            // (not runtime exports) in dependency order, so the clock stays generator-only.
+            sb.Append("// -- wall clock: C# DateTime.UtcNow/Now/Today as BigInt ticks (decision 145) --\n");
+            sb.Append("function __dtUtcNow() {\n");
+            sb.Append("  return 621355968000000000n + BigInt(Date.now()) * 10000n;\n");
+            sb.Append("}\n\n");
+            if (_code.ClockHelpers.Contains("dtNow"))
+            {
+                sb.Append("function __dtNow() {\n");
+                sb.Append("  return __dtUtcNow() - BigInt(new Date().getTimezoneOffset()) * 600000000n;\n");
+                sb.Append("}\n\n");
+            }
+            if (_code.ClockHelpers.Contains("dtToday"))
+            {
+                sb.Append("function __dtToday() {\n");
+                sb.Append("  return (__dtNow() / 864000000000n) * 864000000000n;\n");
+                sb.Append("}\n\n");
+            }
+        }
+
         if (module.Count > 0)
         {
             // rows.js mapping decision (4): immutable literal lists are inert DATA, and hoisting

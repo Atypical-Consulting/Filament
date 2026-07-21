@@ -296,6 +296,11 @@ public static class RepoPaths
 
     /// <summary>The EventCb SPEC (decisions 51/130). Never edited to make a gate pass.</summary>
     public static string EventCbAnswerKey => Path.Combine(Root, "samples", "EventCb", "eventcb.js");
+
+    public static string DateTimeNowRazor => Path.Combine(Root, "baseline", "DateTimeNow.Blazor", "App.razor");
+
+    /// <summary>The DateTime.UtcNow-wall-clock SPEC (decisions 51/145). Never edited to make a gate pass.</summary>
+    public static string DateTimeNowAnswerKey => Path.Combine(Root, "samples", "DateTimeNow", "datetimenow.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

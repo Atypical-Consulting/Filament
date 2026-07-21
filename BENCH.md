@@ -5306,3 +5306,39 @@ runtime 214. Preuve refpack rejouée sous net8 : verte.
 ---
 
 *Fin de l'entrée n°61. Ne pas modifier — ajouter une entrée n°62 pour toute rectification.*
+
+---
+
+## Entrée n°62 — 2026-07-21 — Phase 4 : `DateTime.UtcNow` mesuré contre Blazor — la tolérance remplace l'octet
+
+**`DateTime.UtcNow` / `Now` / `Today` + `.Ticks`** (décision 145) rejoignent le §5 — la PREMIÈRE valeur
+non-déterministe admise. L'horloge est la même horloge des deux côtés : `__dtUtcNow()` (émis dans le module,
+runtime intact) dérive le compte de ticks BigInt de `Date.now()` ; `.Ticks` est l'identité sur la
+représentation (décision 115).
+
+**Le témoin** : `baseline/DateTimeNow.Blazor/App.razor` — `#out` rend `@stamp.Ticks` (défaut `0`, identique
+à l'octet des deux côtés), `#snap` fait `stamp = DateTime.UtcNow;`.
+
+**L'instrument** (HARNESS 1.55.0, divulgué) : première assertion de TOLÉRANCE de l'oracle (`ticksNearNow`) —
+une horloge vivante ne se compare pas à l'octet entre deux passes ; chaque camp est comparé à l'horloge du
+harnais à SON instant d'assertion (tolérance 90 s), et un second `#snap` ne doit pas reculer.
+
+```bash
+dotnet publish baseline/DateTimeNow.Blazor -c Release -o bench/publish/blazor-datetimenow
+./bench/build-filament.sh filament-datetimenow-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-datetimenow/wwwroot --app datetimenow --label blazor-datetimenow       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-datetimenow-gen   --app datetimenow --label filament-datetimenow-gen --headless --contract-only
+```
+
+| Camp | initial | après #snap | écart à l'horloge du harnais |
+|---|---|---|---|
+| **blazor-datetimenow** (autorité) | `0` | `639202428968170000` | **2 ms** |
+| **filament-datetimenow-gen** (générateur) | `0` | `639202429043080000` | **0 ms** |
+
+Les deux contrats passent ; l'écart des deux camps à l'horloge murale est de l'ordre de la milliseconde —
+l'époque, l'échelle et l'identité `.Ticks` sont justes. `git diff -- src/filament-runtime` vide. Suite :
+**486 tests** (408 générateur / 60 subset / 18 analyzer), runtime 214.
+
+---
+
+*Fin de l'entrée n°62. Ne pas modifier — ajouter une entrée n°63 pour toute rectification.*

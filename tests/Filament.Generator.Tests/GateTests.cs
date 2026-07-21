@@ -358,6 +358,8 @@ public static class Generate
 
     public static string InheritsToTemp() => ToTemp(RepoPaths.InheritsRazor, "Inherits");
 
+    public static string DateTimeNowToTemp() => ToTemp(RepoPaths.DateTimeNowRazor, "DateTimeNow");
+
     public static string FormsToTemp() => ToTemp(RepoPaths.FormsRazor, "Forms");
 
     /// <summary>

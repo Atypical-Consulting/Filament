@@ -1,0 +1,19 @@
+@* decision 145: Now and Today ride the same clock helpers as UtcNow. Now subtracts the CURRENT local
+   offset (getTimezoneOffset, minutes -> ticks); Today truncates Now to the local day. The MEASURED
+   witness is UtcNow (no timezone in play); these two are pinned at emission level by DateTimeNowTests. *@
+
+<p><span id="n">@when</span></p>
+<p><span id="t">@today</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private System.DateTime when;
+    private System.DateTime today;
+
+    private void Go()
+    {
+        when = System.DateTime.Now;
+        today = System.DateTime.Today;
+    }
+}
