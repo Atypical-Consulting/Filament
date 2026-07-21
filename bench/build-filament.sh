@@ -224,6 +224,7 @@ ALL_LABELS=(
   filament-generic-gen
   filament-inherits-gen
   filament-datetimenow-gen
+  filament-random-gen
   filament-forms-gen
   filament-routing-gen
   filament-counter-stats
@@ -289,6 +290,7 @@ project_for() {
     filament-generic-gen)                            echo "samples/filament-generic-gen" ;;
     filament-inherits-gen)                           echo "samples/filament-inherits-gen" ;;
     filament-datetimenow-gen)                        echo "samples/filament-datetimenow-gen" ;;
+    filament-random-gen)                             echo "samples/filament-random-gen" ;;
     filament-forms-gen)                              echo "samples/filament-forms-gen" ;;
     filament-routing-gen)                            echo "samples/filament-routing-gen" ;;
     *) return 1 ;;
@@ -300,7 +302,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachlist-gen|filament-rowactions-gen|filament-duel-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen|filament-inherits-gen|filament-forms-gen|filament-routing-gen|filament-datetimenow-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachlist-gen|filament-rowactions-gen|filament-duel-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen|filament-inherits-gen|filament-forms-gen|filament-routing-gen|filament-datetimenow-gen|filament-random-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -383,6 +385,7 @@ razor_for() {
     filament-generic-gen)                            echo "$REPO_ROOT/baseline/Generic.Blazor/App.razor" ;;
     filament-inherits-gen)                           echo "$REPO_ROOT/baseline/Inherits.Blazor/App.razor" ;;
     filament-datetimenow-gen)                        echo "$REPO_ROOT/baseline/DateTimeNow.Blazor/App.razor" ;;
+    filament-random-gen)                             echo "$REPO_ROOT/baseline/Rand.Blazor/App.razor" ;;
     filament-forms-gen)                              echo "$REPO_ROOT/baseline/Forms.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
@@ -449,6 +452,7 @@ generated_js_for() {
     filament-generic-gen)                            echo "App.g.js" ;;
     filament-inherits-gen)                           echo "App.g.js" ;;
     filament-datetimenow-gen)                        echo "App.g.js" ;;
+    filament-random-gen)                             echo "App.g.js" ;;
     filament-forms-gen)                              echo "App.g.js" ;;
     *) echo "" ;;
   esac
@@ -511,6 +515,7 @@ title_for() {
     filament-generic-gen)                            echo "Generic" ;;
     filament-inherits-gen)                           echo "Inherits" ;;
     filament-datetimenow-gen)                        echo "DateTimeNow" ;;
+    filament-random-gen)                             echo "Rand" ;;
     filament-forms-gen)                              echo "Forms" ;;
     filament-routing-gen)                            echo "Routing" ;;
     *) return 1 ;;
@@ -577,6 +582,7 @@ blazor_label_for() {
     filament-generic-gen)                            echo "blazor-generic" ;;
     filament-inherits-gen)                           echo "blazor-inherits" ;;
     filament-datetimenow-gen)                        echo "blazor-datetimenow" ;;
+    filament-random-gen)                             echo "blazor-random" ;;
     filament-forms-gen)                              echo "blazor-forms" ;;
     filament-routing-gen)                            echo "blazor-routing" ;;
     *) return 1 ;;
@@ -651,6 +657,7 @@ css_for() {
     filament-generic-gen)                            echo "$REPO_ROOT/baseline/Generic.Blazor/wwwroot/css/app.css" ;;
     filament-inherits-gen)                           echo "$REPO_ROOT/baseline/Inherits.Blazor/wwwroot/css/app.css" ;;
     filament-datetimenow-gen)                        echo "$REPO_ROOT/baseline/DateTimeNow.Blazor/wwwroot/css/app.css" ;;
+    filament-random-gen)                             echo "$REPO_ROOT/baseline/Rand.Blazor/wwwroot/css/app.css" ;;
     filament-forms-gen)                              echo "$REPO_ROOT/baseline/Forms.Blazor/wwwroot/css/app.css" ;;
     filament-routing-gen)                            echo "$REPO_ROOT/baseline/Routing.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;

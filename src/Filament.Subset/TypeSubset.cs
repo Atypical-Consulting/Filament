@@ -35,6 +35,11 @@ public static class TypeSubset
         if (Scalars.Contains(type.SpecialType)) return null;
         if (IsComponentRecord(type, componentRecords)) return null;
 
+        // System.Random (decision 146): a STATEFUL GENERATOR a component may hold in a field or local.
+        // Its surface is method dispatch (Next/NextDouble) in the generator; displaying one is refused
+        // at the slot (C# renders the type name, a JS object would render "[object Object]").
+        if (IsRandom(type)) return null;
+
         if (allowList && (ListElement(type) ?? ArrayElement(type)) is { } element)
         {
             if (Scalars.Contains(element.SpecialType)) return null;
@@ -130,6 +135,16 @@ public static class TypeSubset
         type is INamedTypeSymbol { TypeArguments.Length: 0 } n &&
         n.Name == "IJSRuntime" &&
         n.ContainingNamespace?.ToDisplayString() == "Microsoft.JSInterop";
+
+    /// <summary>
+    /// <c>System.Random</c> (decision 146) -- a stateful generator, admitted as a field/local value.
+    /// SEEDED, it is the exact .NET Knuth-subtractive sequence (Net5CompatSeedImpl, stable by compat
+    /// guarantee), reimplemented in the emitted <c>__rnd(seed)</c>; UNSEEDED (and <c>Random.Shared</c>),
+    /// both sides' sequences are arbitrary, so Math.random rides behind the same interface.
+    /// </summary>
+    public static bool IsRandom(ITypeSymbol? type) =>
+        type is INamedTypeSymbol { TypeArguments.Length: 0, Name: "Random" } r &&
+        r.ContainingNamespace?.ToDisplayString() == "System";
 
     /// <summary>Name + namespace rather than a display string, so a NULLABLE annotation cannot change the
     /// answer: `RenderFragment?` is the same type as `RenderFragment`, and the ONE declaration form Blazor

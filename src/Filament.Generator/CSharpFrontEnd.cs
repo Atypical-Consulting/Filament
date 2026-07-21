@@ -396,6 +396,11 @@ public sealed class CSharpFrontEnd
     /// emits exactly these, in dependency order, when the set is non-empty.</summary>
     public readonly HashSet<string> ClockHelpers = [];
 
+    /// <summary>The Random machinery this module actually used (decision 146): "rnd" -> the __rnd factory
+    /// (seeded = the exact .NET Knuth-subtractive sequence; unseeded = Math.random behind the same
+    /// interface), "rndShared" -> the ONE module-level unseeded instance backing Random.Shared.</summary>
+    public readonly HashSet<string> RandomHelpers = [];
+
     // ---- the public surface the template compiler consumes ------------------
 
     public bool Declares(string name) => _fieldsByName.ContainsKey(name) || _methodsByName.ContainsKey(name);
@@ -1978,6 +1983,18 @@ public sealed class CSharpFrontEnd
                 continue;
             }
 
+            // A Random-typed slot has no faithful display (decision 146): C# renders the type name
+            // ("System.Random"), a JS object would render "[object Object]" -- section 10's silent
+            // wrong render. Refused at the slot, where the author's fix (render a drawn number) is obvious.
+            if (Filament.Subset.TypeSubset.IsRandom(_model.GetTypeInfo(e).Type))
+            {
+                Refuse("unsupported-expression",
+                    $"'@{Trunc(e.ToString())}' displays a Random itself, which has no faithful display -- C# renders " +
+                    "the type name where JS would render \"[object Object]\". Render a number drawn from it instead. " +
+                    "Refusing to emit.", e.SpanStart);
+                continue;
+            }
+
             _slots[node] = new Slot
             {
                 Js = Expr(e),
@@ -2860,6 +2877,9 @@ public sealed class CSharpFrontEnd
                 // `new Dictionary<K,V>(){…}` -> a JS Map (decision 118).
                 return DictionaryLiteral(oc);
 
+            case ObjectCreationExpressionSyntax oc when Filament.Subset.ConstructSubset.IsRandomCreation(oc, _model):
+                return RandomConstruction(oc);
+
             case ObjectCreationExpressionSyntax oc when Filament.Subset.ConstructSubset.IsDateTimeCreation(oc, _model):
                 // `new DateTime(...)` -> a BigInt tick count (decision 115). Computed HERE, from constant args:
                 // a DateTime is not a compile-time constant in C#, but its constructor args are, so the exact
@@ -2982,6 +3002,17 @@ public sealed class CSharpFrontEnd
             if (clock.Name is "Now" or "Today") ClockHelpers.Add("dtNow");
             if (clock.Name is "Today") ClockHelpers.Add("dtToday");
             return $"__{(clock.Name switch { "UtcNow" => "dtUtcNow", "Now" => "dtNow", _ => "dtToday" })}()";
+        }
+
+        // Random.Shared (decision 146): the process-wide unseeded instance. ONE module-level __rndShared
+        // backs every use -- same lifetime C# gives it (a static singleton), same regime (unseeded ->
+        // Math.random; C#'s unseeded xoshiro is not reproducible across runs either).
+        if (_model.GetSymbolInfo(ma).Symbol is IPropertySymbol { IsStatic: true, Name: "Shared" } shared &&
+            Filament.Subset.TypeSubset.IsRandom(shared.ContainingType))
+        {
+            RandomHelpers.Add("rnd");
+            RandomHelpers.Add("rndShared");
+            return "__rndShared";
         }
 
         // A DateTime instance member OTHER than .Ticks -- most pointedly .Kind, which does not survive
@@ -3127,6 +3158,12 @@ public sealed class CSharpFrontEnd
         // DateTime API is deferred (refused in DateTimeMethod), so it can never slip through to a wrong emission.
         if (symbol is not null && symbol.ContainingType.SpecialType == SpecialType.System_DateTime)
             return DateTimeMethod(inv, symbol);
+
+        // A Random instance method (decision 146): Next()/Next(max)/Next(min,max)/NextDouble() map onto the
+        // emitted __rnd instance's interface. Everything else (NextBytes, NextInt64, ...) refuses in
+        // RandomMethod, so nothing unfaithful slips through.
+        if (symbol is not null && Filament.Subset.TypeSubset.IsRandom(symbol.ContainingType))
+            return RandomMethod(inv, symbol);
 
         // A LINQ operator (decision 116): the common ones over a List map to JS array methods -- Where -> filter,
         // Select -> map, Count -> length, Any -> some, All -> every, ToList -> the array. LINQ over a JS array is
@@ -3380,6 +3417,46 @@ public sealed class CSharpFrontEnd
             return Refuse("unsupported-expression",
                 $"the DateTime {Trunc(oc.ToString())} is out of range. Refusing to emit.", oc.SpanStart);
         }
+    }
+
+    /// <summary>`new Random(seed)` / `new Random()` -> `__rnd(seed)` / `__rnd(null)` (decision 146). The seed
+    /// may be any int EXPRESSION -- the Knuth-subtractive algorithm runs at runtime in the emitted factory, so
+    /// nothing needs to be constant. `null` selects the Math.random regime (both sides' unseeded sequences are
+    /// arbitrary; range and distribution are the observable contract).</summary>
+    string RandomConstruction(ObjectCreationExpressionSyntax oc)
+    {
+        var args = oc.ArgumentList?.Arguments ?? default;
+        RandomHelpers.Add("rnd");
+        if (args.Count == 0) return "__rnd(null)";
+        if (args.Count == 1 &&
+            _model.GetTypeInfo(args[0].Expression).ConvertedType?.SpecialType == SpecialType.System_Int32)
+            return $"__rnd({Expr(args[0].Expression)})";
+        return Refuse("unsupported-expression",
+            "only `new Random()` and `new Random(int seed)` are in the subset (decision 146). Refusing to emit.",
+            oc.SpanStart);
+    }
+
+    /// <summary>A Random instance method (decision 146): Next() -> .next(), Next(max) -> .nextTo(max),
+    /// Next(min, max) -> .nextIn(min, max), NextDouble() -> .nextDouble() -- the emitted __rnd instance's
+    /// interface, which reproduces the EXACT .NET seeded sequence. NextBytes fills a byte[] (not in the
+    /// subset); NextInt64/NextSingle are deferred. Refused here so nothing unfaithful slips through.</summary>
+    string RandomMethod(InvocationExpressionSyntax inv, IMethodSymbol symbol)
+    {
+        var args = inv.ArgumentList.Arguments;
+        if (inv.Expression is MemberAccessExpressionSyntax ma)
+            switch (symbol.Name, args.Count)
+            {
+                case ("Next", 0): return $"{Expr(ma.Expression)}.next()";
+                case ("Next", 1): return $"{Expr(ma.Expression)}.nextTo({Expr(args[0].Expression)})";
+                case ("Next", 2):
+                    return $"{Expr(ma.Expression)}.nextIn({Expr(args[0].Expression)}, {Expr(args[1].Expression)})";
+                case ("NextDouble", 0): return $"{Expr(ma.Expression)}.nextDouble()";
+            }
+        return Refuse("unsupported-call",
+            $"'{Trunc(inv.ToString())}' is not a Random operation in the subset. Section 5 admits Next(), " +
+            "Next(max), Next(min, max) and NextDouble() -- the exact .NET sequence when seeded (decision 146). " +
+            "NextBytes fills a byte[] (not in the subset); NextInt64/NextSingle are deferred. Refusing to emit.",
+            inv.SpanStart);
     }
 
     static string DecimalObject(decimal d)

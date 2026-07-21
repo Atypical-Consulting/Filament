@@ -5342,3 +5342,40 @@ l'époque, l'échelle et l'identité `.Ticks` sont justes. `git diff -- src/fila
 ---
 
 *Fin de l'entrée n°62. Ne pas modifier — ajouter une entrée n°63 pour toute rectification.*
+
+---
+
+## Entrée n°63 — 2026-07-21 — Phase 4 : `System.Random` mesuré contre Blazor — le BCL juge la séquence semée
+
+**`System.Random`** (décision 146) rejoint le §5 : semé = le générateur soustractif de Knuth de .NET
+réimplémenté exactement dans la factory `__rnd` émise ; non-semé (`new Random()`, `Random.Shared`) =
+`Math.random` derrière la même interface. Runtime intact.
+
+**Le témoin** : `baseline/Rand.Blazor/App.razor` — `#roll` fait `sum += rng.Next(1, 7)` sur
+`new Random(42)` ; `#shared` fait `last = Random.Shared.Next(10)`.
+
+**L'instrument** (HARNESS 1.56.0, divulgué) : le côté SEMÉ est asserté À L'OCTET — Blazor exécute le vrai
+System.Random, donc l'égalité DOM est la preuve de fidélité de l'algorithme émis, le BCL en juge — avec les
+tirages attendus (5, 1, 1 ; sommes 5 → 6 → 7) lus sur `dotnet run`, jamais calculés de tête. Le côté
+NON-SEMÉ reçoit le premier prédicat de PLAGE : un entier dans [0, 10).
+
+```bash
+dotnet publish baseline/Rand.Blazor -c Release -o bench/publish/blazor-random
+./bench/build-filament.sh filament-random-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-random/wwwroot --app random --label blazor-random       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-random-gen   --app random --label filament-random-gen --headless --contract-only
+```
+
+| Camp | #out (3 × #roll) | #pick (Random.Shared.Next(10)) |
+|---|---|---|
+| **blazor-random** (autorité, le VRAI BCL) | `0 → 5 → 6 → 7` | `5` (∈ [0, 10)) |
+| **filament-random-gen** (générateur) | `0 → 5 → 6 → 7` | `6` (∈ [0, 10)) |
+
+Les sommes semées sont OCTET-IDENTIQUES au BCL ; les tirages libres tombent dans la plage. En sus, un test
+de la suite rejoue la factory depuis les octets émis sous node et exige `5 1 1 1434747710`.
+`git diff -- src/filament-runtime` vide. Suite : **493 tests** (415 générateur / 60 subset / 18 analyzer),
+runtime 214.
+
+---
+
+*Fin de l'entrée n°63. Ne pas modifier — ajouter une entrée n°64 pour toute rectification.*

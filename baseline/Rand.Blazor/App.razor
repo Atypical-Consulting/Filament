@@ -1,0 +1,35 @@
+@* Random -> __rnd (BENCH n°63, decision 146): TWO regimes behind one emitted factory.
+
+   SEEDED `new Random(42)` is deterministic and PROVABLE: .NET's seeded Random is the Knuth
+   subtractive generator (Net5CompatSeedImpl, stable by compat guarantee), reimplemented exactly in
+   the emitted __rnd(seed) -- so Blazor renders the REAL BCL's sequence, Filament renders the JS
+   sequence, and the oracle's byte-equality on #out IS the faithfulness proof against the BCL itself.
+
+   UNSEEDED Random.Shared is arbitrary on BOTH sides (C#'s xoshiro is not reproducible across runs
+   either): Math.random behind the same interface, measured with a RANGE predicate on #pick.
+
+   DOM contract: #out starts "0"; each #roll adds rng.Next(1, 7) -- a die -- so three clicks render
+   the exact seeded sum on both sides. #pick starts "-1"; #shared stores Random.Shared.Next(10),
+   asserted in [0, 10). *@
+
+<p><span id="out">@sum</span></p>
+<p><span id="pick">@last</span></p>
+
+<button id="roll" @onclick="Roll">roll</button>
+<button id="shared" @onclick="Pick">pick</button>
+
+@code {
+    private System.Random rng = new System.Random(42);
+    private int sum = 0;
+    private int last = -1;
+
+    private void Roll()
+    {
+        sum += rng.Next(1, 7);
+    }
+
+    private void Pick()
+    {
+        last = System.Random.Shared.Next(10);
+    }
+}

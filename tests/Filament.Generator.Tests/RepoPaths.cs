@@ -301,6 +301,11 @@ public static class RepoPaths
 
     /// <summary>The DateTime.UtcNow-wall-clock SPEC (decisions 51/145). Never edited to make a gate pass.</summary>
     public static string DateTimeNowAnswerKey => Path.Combine(Root, "samples", "DateTimeNow", "datetimenow.js");
+
+    public static string RandRazor => Path.Combine(Root, "baseline", "Rand.Blazor", "App.razor");
+
+    /// <summary>The Random-via-__rnd SPEC (decisions 51/146). Never edited to make a gate pass.</summary>
+    public static string RandAnswerKey => Path.Combine(Root, "samples", "Rand", "rand.js");
     public static string Canon => Path.Combine(Root, "tools", "canon.mjs");
 
     /// <summary>

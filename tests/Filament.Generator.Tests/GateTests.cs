@@ -360,6 +360,8 @@ public static class Generate
 
     public static string DateTimeNowToTemp() => ToTemp(RepoPaths.DateTimeNowRazor, "DateTimeNow");
 
+    public static string RandToTemp() => ToTemp(RepoPaths.RandRazor, "Rand");
+
     public static string FormsToTemp() => ToTemp(RepoPaths.FormsRazor, "Forms");
 
     /// <summary>

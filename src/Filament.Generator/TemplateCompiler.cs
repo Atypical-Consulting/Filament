@@ -2397,6 +2397,72 @@ public sealed class TemplateCompiler
             }
         }
 
+        if (_code.RandomHelpers.Count > 0)
+        {
+            // System.Random (decision 146). SEEDED: the exact .NET Knuth-subtractive generator
+            // (Net5CompatSeedImpl -- MSEED 161803398, 55-slot table, 4 shuffle rounds, inext/inextp 0/21,
+            // the ==MaxValue decrement, Sample scale 1/int.MaxValue, the two-sample large-range path) --
+            // verified against the BCL: Random(42) draws 5,1,1 for Next(1,7) and 1434747710 for Next().
+            // UNSEEDED (`null`): Math.random behind the same interface -- C#'s unseeded xoshiro is not
+            // reproducible across runs either; range and distribution are the observable contract.
+            // Emitted (not a runtime export), so Random stays generator-only.
+            sb.Append("// -- Random: C# System.Random -- seeded = the exact .NET Knuth-subtractive sequence --\n");
+            sb.Append("function __rnd(seed) {\n");
+            sb.Append("  if (seed === null) {\n");
+            sb.Append("    return {\n");
+            sb.Append("      next: () => Math.floor(Math.random() * 2147483647),\n");
+            sb.Append("      nextTo: (max) => Math.floor(Math.random() * max),\n");
+            sb.Append("      nextIn: (min, max) => min + Math.floor(Math.random() * (max - min)),\n");
+            sb.Append("      nextDouble: () => Math.random(),\n");
+            sb.Append("    };\n");
+            sb.Append("  }\n");
+            sb.Append("  const arr = new Int32Array(56);\n");
+            sb.Append("  let mj = 161803398 - (seed === -2147483648 ? 2147483647 : Math.abs(seed));\n");
+            sb.Append("  arr[55] = mj;\n");
+            sb.Append("  let mk = 1;\n");
+            sb.Append("  for (let i = 1; i < 55; i++) {\n");
+            sb.Append("    const ii = (21 * i) % 55;\n");
+            sb.Append("    arr[ii] = mk;\n");
+            sb.Append("    mk = mj - mk;\n");
+            sb.Append("    if (mk < 0) mk += 2147483647;\n");
+            sb.Append("    mj = arr[ii];\n");
+            sb.Append("  }\n");
+            sb.Append("  for (let k = 1; k < 5; k++) {\n");
+            sb.Append("    for (let i = 1; i < 56; i++) {\n");
+            sb.Append("      arr[i] -= arr[1 + (i + 30) % 55];\n");
+            sb.Append("      if (arr[i] < 0) arr[i] += 2147483647;\n");
+            sb.Append("    }\n");
+            sb.Append("  }\n");
+            sb.Append("  let inext = 0, inextp = 21;\n");
+            sb.Append("  const sample = () => {\n");
+            sb.Append("    if (++inext >= 56) inext = 1;\n");
+            sb.Append("    if (++inextp >= 56) inextp = 1;\n");
+            sb.Append("    let ret = arr[inext] - arr[inextp];\n");
+            sb.Append("    if (ret === 2147483647) ret--;\n");
+            sb.Append("    if (ret < 0) ret += 2147483647;\n");
+            sb.Append("    arr[inext] = ret;\n");
+            sb.Append("    return ret;\n");
+            sb.Append("  };\n");
+            sb.Append("  return {\n");
+            sb.Append("    next: sample,\n");
+            sb.Append("    nextTo: (max) => Math.trunc(sample() * (1 / 2147483647) * max),\n");
+            sb.Append("    nextIn: (min, max) => {\n");
+            sb.Append("      const range = max - min;\n");
+            sb.Append("      if (range <= 2147483647) return min + Math.trunc(sample() * (1 / 2147483647) * range);\n");
+            sb.Append("      let result = sample();\n");
+            sb.Append("      if (sample() % 2 === 0) result = -result;\n");
+            sb.Append("      return min + Math.trunc(((result + 2147483646) / 4294967293) * range);\n");
+            sb.Append("    },\n");
+            sb.Append("    nextDouble: () => sample() * (1 / 2147483647),\n");
+            sb.Append("  };\n");
+            sb.Append("}\n\n");
+            if (_code.RandomHelpers.Contains("rndShared"))
+            {
+                // Random.Shared: ONE module-level unseeded instance -- the same static-singleton lifetime C# gives it.
+                sb.Append("const __rndShared = __rnd(null);\n\n");
+            }
+        }
+
         if (module.Count > 0)
         {
             // rows.js mapping decision (4): immutable literal lists are inert DATA, and hoisting

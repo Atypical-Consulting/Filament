@@ -1,0 +1,17 @@
+@* THE OTHER BOUNDARY of decision 146: displaying a Random itself. C# renders "System.Random" (the
+   type name); a JS object would render "[object Object]" -- a silent wrong render, section 10's
+   forbidden mode. Valid Blazor; deliberately refused at the SLOT. *@
+
+<p><span id="out">@rng</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private System.Random rng = new System.Random(7);
+    private int n = 0;
+
+    private void Go()
+    {
+        n = rng.Next(3);
+    }
+}

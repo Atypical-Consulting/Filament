@@ -1,0 +1,19 @@
+@* THE BOUNDARY of decision 146: NextBytes fills a byte[], and byte[] is not in the subset -- there is
+   no faithful home for a mutable byte buffer. The buffer is INLINE (a byte[] local would be refused at
+   its own declaration first, which is a different guichet); this pins the Random-method refusal. Valid
+   Blazor; deliberately refused here. *@
+
+<p><span id="out">@n</span></p>
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private System.Random rng = new System.Random(7);
+    private int n = 0;
+
+    private void Go()
+    {
+        rng.NextBytes(new byte[4]);
+        n = n + 1;
+    }
+}

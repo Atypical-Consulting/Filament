@@ -181,6 +181,12 @@ public static class ConstructSubset
     public static bool IsDateTimeCreation(ObjectCreationExpressionSyntax oc, SemanticModel model) =>
         model.GetTypeInfo(oc).Type?.SpecialType == SpecialType.System_DateTime;
 
+    /// <summary>`new Random(seed)` / `new Random()` (decision 146) -> the emitted `__rnd` factory. Seeded is the
+    /// exact .NET Knuth-subtractive sequence; unseeded is Math.random behind the same interface. The seed may be
+    /// any int EXPRESSION -- the algorithm runs at runtime, so nothing needs to be constant.</summary>
+    public static bool IsRandomCreation(ObjectCreationExpressionSyntax oc, SemanticModel model) =>
+        TypeSubset.IsRandom(model.GetTypeInfo(oc).Type);
+
     /// <summary>null = the expression FORM is in §5; non-null = the FIL0001 refusal — the decision
     /// behind Expr()'s default. Call-, member- and name-level refusals INSIDE a blessed form
     /// (invocation target, member access, identifier resolution) are separate concerns, not this.</summary>
@@ -218,7 +224,7 @@ public static class ConstructSubset
             CastExpressionSyntax c => IsIntFromDouble(c, model),
             ObjectCreationExpressionSyntax oc =>
                 IsExceptionCreation(oc, model) || IsLocalRecordCreation(oc, model) || IsDateTimeCreation(oc, model)
-                || IsDictionaryCreation(oc, model),
+                || IsDictionaryCreation(oc, model) || IsRandomCreation(oc, model),
             // A T[] creation of a scalar element, single-rank: a LITERAL `new int[]{…}` -> a JS array literal
             // (decision 117), OR a SIZED `new int[n]` -> new Array(n).fill(default) (decision 122). Multi-dim
             // (`new int[3,3]`) is refused (rank != 1).
