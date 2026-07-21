@@ -71,6 +71,10 @@
           AfterTargets="CompileFilament"
           Inputs="$(TailwindInputCss);$(FilamentAppRazor);$(MSBuildProjectDirectory)/TodoShell.razor;$(MSBuildProjectDirectory)/TodoFooter.razor"
           Outputs="$(TailwindOutputCss)">
+    <!-- Same actionable-guard pattern as the generator/runtime checks above: the raw npx failure
+         ("npx canceled due to missing packages") does not say WHAT to run or WHERE. -->
+    <Error Condition="!Exists('$(MSBuildProjectDirectory)/../../node_modules/@tailwindcss/cli/package.json')"
+           Text="@tailwindcss/cli not found in the repo-root node_modules. Run 'npm ci' at the REPO ROOT once (it installs the pinned Tailwind CLI, like esbuild), then rebuild." />
     <Message Importance="high" Text="Tailwind: tailwind.css + *.razor -> wwwroot/app.css" />
     <Exec Command="npx --no-install @tailwindcss/cli --input tailwind.css --output wwwroot/app.css --minify"
           WorkingDirectory="$(MSBuildProjectDirectory)" />
