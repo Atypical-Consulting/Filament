@@ -46,18 +46,33 @@ public sealed class ConstructSubsetAnalyzer : DiagnosticAnalyzer
             if (ConstructSubset.ClassifyMember(member) is { } refusal)
                 context.ReportDiagnostic(Diagnostic.Create(Fil0001, member.GetLocation(), refusal.Message));
             else if (member is MethodDeclarationSyntax { Body: { } body })
-                WalkBlock(body, context);
+                WalkBlock(body, context, symbol);
         }
+    }
+
+    /// <summary>
+    /// Should this invocation get the CALL check (decision 148)? The @code an author wrote is what the
+    /// generator will judge; Razor's generated SCAFFOLDING (BuildRenderTree bodies full of framework
+    /// calls) is not authored and must never light up. Author code inside a .razor-generated file is
+    /// #line-mapped back to the .razor; scaffolding is not — and a plain .cs file (tests, previews of
+    /// the class form) has no mapping and is authored by definition.
+    /// </summary>
+    static bool IsAuthorCode(SyntaxNode node)
+    {
+        var span = node.GetLocation().GetMappedLineSpan();
+        if (span.HasMappedPath) return true;
+        var file = node.SyntaxTree.FilePath;
+        return !(file.Contains(".razor") || file.Contains(".cshtml"));
     }
 
     // Mirror the generator's Statement()/Nest()/Body() traversal: recurse into supported
     // containers, report and STOP at an unsupported statement.
-    static void WalkBlock(BlockSyntax block, SyntaxNodeAnalysisContext context)
+    static void WalkBlock(BlockSyntax block, SyntaxNodeAnalysisContext context, INamedTypeSymbol component)
     {
-        foreach (var s in block.Statements) Walk(s, context);
+        foreach (var s in block.Statements) Walk(s, context, component);
     }
 
-    static void Walk(StatementSyntax s, SyntaxNodeAnalysisContext context)
+    static void Walk(StatementSyntax s, SyntaxNodeAnalysisContext context, INamedTypeSymbol component)
     {
         if (ConstructSubset.ClassifyStatement(s) is { } refusal)
         {
@@ -66,17 +81,17 @@ public sealed class ConstructSubsetAnalyzer : DiagnosticAnalyzer
         }
 
         // This supported statement's OWN expressions (not those in nested statements).
-        foreach (var expr in OwnExpressions(s)) WalkExpr(expr, context);
+        foreach (var expr in OwnExpressions(s)) WalkExpr(expr, context, component);
 
         switch (s)
         {
-            case BlockSyntax b: WalkBlock(b, context); break;
+            case BlockSyntax b: WalkBlock(b, context, component); break;
             case IfStatementSyntax i:
-                Walk(i.Statement, context);
-                if (i.Else is { } e) Walk(e.Statement, context);
+                Walk(i.Statement, context, component);
+                if (i.Else is { } e) Walk(e.Statement, context, component);
                 break;
-            case ForStatementSyntax f: Walk(f.Statement, context); break;
-            case ForEachStatementSyntax fe: Walk(fe.Statement, context); break;
+            case ForStatementSyntax f: Walk(f.Statement, context, component); break;
+            case ForEachStatementSyntax fe: Walk(fe.Statement, context, component); break;
         }
     }
 
@@ -105,14 +120,25 @@ public sealed class ConstructSubsetAnalyzer : DiagnosticAnalyzer
 
     // Report-and-stop over an expression tree, recursing only into VALUE sub-expressions (mirrors
     // Expr()'s recursion) — so a cast's Type or a member name is never misread as a value expression.
-    static void WalkExpr(ExpressionSyntax e, SyntaxNodeAnalysisContext context)
+    static void WalkExpr(ExpressionSyntax e, SyntaxNodeAnalysisContext context, INamedTypeSymbol component)
     {
         if (ConstructSubset.ClassifyExpression(e, context.SemanticModel) is { } refusal)
         {
             context.ReportDiagnostic(Diagnostic.Create(Fil0001, e.GetLocation(), refusal.Message));
             return;
         }
-        foreach (var sub in SubExpressions(e)) WalkExpr(sub, context);
+
+        // THE CALL CHECK (decision 148): the invocation FORM is admitted above; whether the CALLEE has a
+        // faithful mapping is CallSubset's single-sourced table. Only author code is judged -- Razor's
+        // generated scaffolding is full of framework calls the author never wrote (see IsAuthorCode).
+        if (e is InvocationExpressionSyntax call && IsAuthorCode(call) &&
+            CallSubset.ClassifyCall(call, context.SemanticModel, component) is { } callRefusal)
+        {
+            context.ReportDiagnostic(Diagnostic.Create(Fil0001, e.GetLocation(), callRefusal.Message));
+            return;
+        }
+
+        foreach (var sub in SubExpressions(e)) WalkExpr(sub, context, component);
     }
 
     static IEnumerable<ExpressionSyntax> SubExpressions(ExpressionSyntax e) => e switch
@@ -127,7 +153,16 @@ public sealed class ConstructSubsetAnalyzer : DiagnosticAnalyzer
         MemberAccessExpressionSyntax m => new[] { m.Expression },
         ElementAccessExpressionSyntax ea =>
             new[] { ea.Expression }.Concat(ea.ArgumentList.Arguments.Select(a => a.Expression)),
-        InvocationExpressionSyntax inv => inv.ArgumentList.Arguments.Select(a => a.Expression),
+        // A predicate/selector LAMBDA in call-argument position is how LINQ is written (decision 116);
+        // the generator translates its BODY through the same Expr the rest of @code uses, so the walk
+        // descends into the body rather than misflagging the lambda form itself. A lambda anywhere else
+        // (a Func local's initializer) still refuses at ITS guichet (the local's type, FIL0002).
+        InvocationExpressionSyntax inv => inv.ArgumentList.Arguments.Select(a => a.Expression switch
+        {
+            SimpleLambdaExpressionSyntax { Body: ExpressionSyntax lb } => lb,
+            ParenthesizedLambdaExpressionSyntax { Body: ExpressionSyntax plb } => plb,
+            var other => other,
+        }),
         InterpolatedStringExpressionSyntax s =>
             s.Contents.OfType<InterpolationSyntax>().Select(i => i.Expression),
         _ => Enumerable.Empty<ExpressionSyntax>(),

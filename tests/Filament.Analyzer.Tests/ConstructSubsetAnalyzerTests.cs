@@ -118,4 +118,55 @@ public class ConstructSubsetAnalyzerTests
     public async Task DoubleDivision_IsNotFlagged()
         // double / double is faithful in JS -> in §5 -> no diagnostic (single-sourced via ConstructSubset).
         => await Body("        double x = dbl / 2.0;").RunAsync();
+
+    // ---- the CALL check (decision 148: the last refusal kind to get a squiggle) ----
+
+    [Fact]
+    public async Task SameComponentCall_IsNotFlagged()
+        => await Component(
+            "    void Helper() { }\n" +
+            "    void M() { Helper(); }").RunAsync();
+
+    [Fact]
+    public async Task InheritedBaseCall_IsNotFlagged()
+        // @inherits (decision 136) merges a base's members; a call up the chain short of ComponentBase
+        // is a call to "a method declared in this component" in the merged model.
+        => await new Verify
+        {
+            TestCode = ComponentBase +
+                "class CounterBase : Microsoft.AspNetCore.Components.ComponentBase { protected void FromBase() { } }\n" +
+                "class App : CounterBase {\n    void M() { FromBase(); }\n}",
+        }.RunAsync();
+
+    [Fact]
+    public async Task MappedApiCalls_AreNotFlagged()
+        // One row per table family: LINQ (116), List mutation (rows), Random (146), Task.Delay (119).
+        => await Component(
+            "    private System.Collections.Generic.List<int> xs = null;\n" +
+            "    private System.Random rng = new System.Random(42);\n" +
+            "    async System.Threading.Tasks.Task M() {\n" +
+            "        int n = System.Linq.Enumerable.Count(xs);\n" +
+            "        xs.Add(rng.Next(1, 7));\n" +
+            "        await System.Threading.Tasks.Task.Delay(1);\n" +
+            "    }").RunAsync();
+
+    [Fact]
+    public async Task LinqPredicateLambda_IsNotFlagged_ItsBodyIsWalked()
+        // The lambda ARG of an admitted LINQ call is how LINQ is written; its BODY is what gets judged.
+        // (This was a measured false positive before decision 148: the lambda FORM was flagged.)
+        => await new Verify
+        {
+            TestCode = "using System.Linq;\n" + ComponentBase +
+                "class App : Microsoft.AspNetCore.Components.ComponentBase {\n" +
+                "    private System.Collections.Generic.List<int> xs = null;\n" +
+                "    void M() { int n = xs.Where(x => x > 0).Count(); }\n}",
+        }.RunAsync();
+
+    [Fact]
+    public async Task ConsoleWriteLine_IsFlagged()
+        => await Method("        {|FIL0001:System.Console.WriteLine(1)|};").RunAsync();
+
+    [Fact]
+    public async Task FileReadAllText_IsFlagged()
+        => await Method("        string s = {|FIL0001:System.IO.File.ReadAllText(\"x\")|};").RunAsync();
 }

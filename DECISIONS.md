@@ -5118,3 +5118,33 @@ référence (sonde refs-only en cache) ; un irrésoluble (bibliothèque de compo
 `System.Net.Http.Json` dans la liste (34 → 35 assemblies), et `prove-refpack.sh` est repassé vert.
 
 Mesures : entrée n°64.
+
+## 148. L'analyzer apprend les APPELS — plus aucun refus du générateur sans squiggle author-time
+
+**2026-07-21.** FIL0001 couvrait les statements, les membres et les formes d'expression ; les APPELS avaient
+été laissés « à faible valeur » quand l'analyzer est né. Pour une bibliothèque qui s'expédie, c'est faux :
+chaque refus du générateur doit avoir son squiggle À L'ÉCRITURE — `Console.WriteLine` qui passe l'IDE et
+casse au build est exactement la surprise qu'un author-time analyzer existe pour éliminer.
+
+**`Filament.Subset.CallSubset` : la table single-sourcée.** Un appel est admis s'il vise (a) une méthode du
+composant lui-même — ou d'un ancêtre en deçà de ComponentBase, le modèle fusionné de l'@inherits (136) —
+ou (b) une ligne de la table des API mappées, une ligne par décision : LINQ (116/121/126/128), List
+Add/RemoveAt/Clear, Dictionary.ContainsKey (118), DateTime.AddDays (115), Random.Next/NextDouble (146),
+Task.Delay (119), IJSRuntime Invoke*Async (133), HttpClient/extensions JSON (147), FocusAsync (132),
+EventCallback.InvokeAsync (130). Le générateur RESTE l'autorité d'émission (ses guichets fins — AddDays
+constant, clé OrderBy numérique — refusent toujours chez lui) ; la table est le contrat au niveau des NOMS.
+Un appel NON LIÉ ne reçoit rien : C# le signale déjà (CS0103), un squiggle par-dessus serait du bruit.
+
+**LE PIÈGE ÉVITÉ EST DOCUMENTÉ : le code généré par Razor.** L'analyzer analyse les fichiers générés
+(c'est là que vit le @code), mais BuildRenderTree y est un échafaudage plein d'appels framework que
+l'auteur n'a jamais écrits — le check d'appel naïf aurait repeint tout projet Blazor réel en rouge. La
+garde est le MAPPING `#line` : le @code de l'auteur est mappé vers le `.razor` (jugé), l'échafaudage non
+mappé d'un fichier `.razor`/`.cshtml` est exempté, et un `.cs` ordinaire est de l'auteur par définition.
+
+**Un faux positif MESURÉ corrigé au passage** : le lambda-prédicat d'un appel LINQ admis
+(`xs.Where(x => x > 0)`) était marqué comme FORME hors sous-ensemble alors que le générateur le traduit.
+La descente passe maintenant au CORPS du lambda en position d'argument — le corps est jugé, la forme non.
+Un lambda ailleurs (initialiseur d'un local Func) refuse toujours à SON guichet (FIL0002 sur le type).
+
+Suite analyzer : 18 → 24 tests. Pas d'entrée BENCH : rien d'exécutable n'a changé — c'est le contrat
+author-time qui s'aligne sur le contrat build-time.
