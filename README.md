@@ -136,7 +136,7 @@ Two apps — `Counter` and a 1,000-row `Rows` — compiled from **pure `.razor`*
 
 ## What compiles
 
-Across **161 recorded decisions** and **66 measured bench entries**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **528 tests** back it (444 generator · 60 subset · 24 analyzer, plus 214 runtime).
+Across **161 recorded decisions** and **67 measured bench entries**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **528 tests** back it (444 generator · 60 subset · 24 analyzer, plus 214 runtime).
 
 | Area | Covered |
 |------|---------|

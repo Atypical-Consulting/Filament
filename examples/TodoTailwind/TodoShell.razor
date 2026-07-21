@@ -1,7 +1,10 @@
 @* Leaf-display child that PLACES the whole app (decision 131): a Title and the ChildContent
-   hole. Its own classes are the D1 witness set -- variant colon, fraction-opacity slash,
-   arbitrary-value bracket, leading dash -- authored as ONE multi-token value per element. *@
-<section id="shell" class="mx-auto max-w-[42rem] rounded-xl bg-white/90 p-6 shadow-lg sm:px-4 md:px-8"><h1 id="title" class="text-2xl font-bold -mt-2">@Title</h1>@ChildContent</section>
+   hole. Its own classes carry the D1 witness set -- variant colon (sm:/md:), arbitrary-value
+   brackets (max-w-[42rem], text-[10px], tracking-[0.25em]), leading dash (-mt-1) -- authored
+   as ONE multi-token value per element. The eyebrow line is the app's one line of self-copy:
+   the runtime size is the project's headline number, and it is stable because the runtime is
+   frozen. *@
+<section id="shell" class="mx-auto max-w-[42rem] rounded-2xl border border-stone-800 bg-stone-900 p-6 shadow-lg sm:px-4 md:px-8"><p class="font-mono text-[10px] uppercase tracking-[0.25em] text-stone-500">filament · 1,943-byte runtime</p><h1 id="title" class="-mt-1 font-mono text-2xl font-semibold tracking-tight text-amber-50">@Title</h1>@ChildContent</section>
 
 @code {
     [Parameter] public string Title { get; set; } = "";

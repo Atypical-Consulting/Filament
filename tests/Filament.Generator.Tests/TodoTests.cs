@@ -43,17 +43,24 @@ public class TodoTests
     public void EmittedTodo_CarriesTheProgramsThreeAttributeBehaviours()
     {
         var js = File.ReadAllText(Generate.TodoToTemp());
-        Assert.Contains("'mx-auto max-w-[42rem] rounded-xl bg-white/90 p-6 shadow-lg sm:px-4 md:px-8'", js);
-        Assert.Contains("'w-1/2 rounded border px-3 py-2 focus:ring-2'", js);
-        Assert.Contains("'rounded bg-amber-500 px-4 py-2 hover:bg-amber-400 disabled:opacity-50'", js);
+        Assert.Contains("'mx-auto max-w-[42rem] rounded-2xl border border-stone-800 bg-stone-900 p-6 shadow-lg sm:px-4 md:px-8'", js);
+        Assert.Contains("'w-1/2 grow rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 text-amber-50 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/60'", js);
+        Assert.Contains("'rounded-lg bg-amber-400 px-4 py-2 font-mono text-sm font-semibold text-stone-950 hover:bg-amber-300 disabled:opacity-50'", js);
 
         var create = js.Substring(js.IndexOf("function createT"));
         create = create[..(create.IndexOf("\n  }") + 4)];
         Assert.Contains("effect(() => setAttr(", create);
-        Assert.Contains("'flex gap-2 max-w-[42rem] ' + (t.done.value ? 'line-through text-slate-400' : 'text-slate-900')", create);
+        Assert.Contains("'flex items-center gap-2 border-l-2 py-1.5 pl-4 transition-colors hover:bg-stone-800/50 ' + (t.done.value ? 'border-stone-700 text-stone-500' : 'border-amber-400 text-amber-50')", create);
+        // The strike lives on the LABEL span -- a SECOND class effect in the same row create
+        // (a li-level line-through would propagate into the flex items and strike the buttons).
+        Assert.Contains("'grow ' + (t.done.value ? 'line-through decoration-stone-600' : 'no-underline')", create);
+
+        // The restyle's one NEW behaviour: the toggle label is a reactive ternary in TEXT
+        // position -- the class fold's Expr machinery landing in setText (BENCH n°67).
+        Assert.Contains("effect(() => setText(_tx1, t.done.value ? 'undo' : 'done'));", js);
 
         Assert.Contains("const newText = signal('');", js);
-        Assert.Contains("listen(_el3, 'change', (e) => { newText.value = e.target.value; });", js);
+        Assert.Contains("listen(_el4, 'change', (e) => { newText.value = e.target.value; });", js);
     }
 
     /// <summary>

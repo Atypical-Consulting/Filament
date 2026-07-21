@@ -5497,3 +5497,43 @@ l'exemple a re-prouvé 45 tokens après l'évolution des sources.
 ---
 
 *Fin de l'entrée n°66. Ne pas modifier — ajouter une entrée n°67 pour toute rectification.*
+
+## Entrée n°67 — 2026-07-21 — La restylée : le design « filament » mesuré — zéro octet de compilateur
+
+**Ce qui est mesuré.** La MÊME app todo v2 (n°66), redessinée : panneau stone sombre, accent
+ambre — la signature est le fil que les lignes construisent elles-mêmes (chaque `li` porte un
+segment `border-l-2`, allumé ambre tant que la tâche est active, éteint stone une fois faite) ;
+mono pour ce que dit la machine (titre, boutons, compteur, eyebrow), sans pour ce que tape
+l'humain. Contrat `todo` inchangé dans ses interactions, HARNESS **1.59.0 → 1.60.0** : mêmes
+deux phases autour du vrai `page.reload()`, nouvelles chaînes de classes assertées à l'octet,
+et TROIS asserts neufs — le label du toggle est un **ternaire réactif en position TEXTE**
+(`done`/`undo`, asserté basculant après toggle ET après le reload), la rayure vit sur le SPAN
+du libellé (son propre ternaire, asserté sur les deux lignes), le placeholder statique est
+asserté verbatim.
+
+**Le miroir a attrapé un vrai défaut.** Première passe : `line-through` posé sur le `li` — la
+capture d'écran montre les boutons d'action de la ligne faite BARRÉS (la text-decoration d'un
+conteneur flex se propage dans ses items ; un enfant ne peut PAS l'annuler). Le fix est du
+design, pas du CSS défensif : la rayure appartient au LIBELLÉ — le span porte son propre
+ternaire (`line-through decoration-stone-600` / `no-underline`), et une ligne porte désormais
+DEUX effets de classe. Le générateur a admis le ternaire-texte et le second effet de ligne
+SANS AUCUN changement — la surface élargie par le programme todo-v2 couvrait déjà tout le
+restyle.
+
+**Résultat.** Blazor et Filament rendent un observé STRICTEMENT identique sur les deux phases,
+nouveaux asserts compris : `afterToggle {classes byte-identiques, toggleLabels [undo, done],
+spanClasses [grow line-through decoration-stone-600, grow no-underline], "1 left"}` → storage
+octet-identique → reload → restauration identique → vide. Contract met des deux côtés
+(`--contract-only`, `bench/publish/blazor-todo/wwwroot` vs `bench/publish/filament-todo-gen`).
+
+**Invariants.** `git diff -- src/` VIDE — ni le runtime NI le générateur n'ont bougé : cette
+entrée est la première où un changement d'app entier (design, copy, deux comportements réactifs
+de plus dans les lignes) coûte ZÉRO octet de compilateur. Suite : **528 tests** (444/60/24) +
+214 runtime. Baseline `dotnet build` AVANT le générateur. Snapshot Todo re-épinglé
+DÉLIBÉRÉMENT (v2.1) ; gate de couverture Tailwind re-prouvé à **70 tokens** (les hooks restent
+mono-token) ; les témoins D1 restent représentés (variante `:`, slash `stone-800/50`, crochets
+`tracking-[0.25em]`, tiret `-mt-1`).
+
+---
+
+*Fin de l'entrée n°67. Ne pas modifier — ajouter une entrée n°68 pour toute rectification.*

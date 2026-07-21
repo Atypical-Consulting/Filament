@@ -15,16 +15,25 @@
      leftText-recompute boilerplate is GONE.
 
    State stays the Duel idiom -- tasks mutated (+ version), visible reassigned (153 refuses
-   the mixed shape). Rendering rows sit on single lines (whitespace = text nodes). *@
+   the mixed shape). Rendering rows sit on single lines (whitespace = text nodes).
 
-<TodoShell Title="todos"><div id="editor" class="flex gap-2"><input id="new" aria-label="New todo" @bind="newText" @onkeydown="OnKey" class="w-1/2 rounded border px-3 py-2 focus:ring-2" /><button id="add" @onclick="Add" class="rounded bg-amber-500 px-4 py-2 hover:bg-amber-400 disabled:opacity-50">add</button></div>
+   THE FILAMENT RESTYLE (BENCH n°67): dark stone panel, amber filament accent -- the design
+   signature is the wire the rows themselves build: each li carries a border-l-2 segment, lit
+   amber while pending, extinguished to stone when done. Mono type for what the machine says
+   (title, buttons, count), sans for what the human types (labels, input). The toggle label is
+   a REACTIVE ternary (done/undo) -- same Expr machinery as the class fold, in text position.
+   The strike-through lives on the LABEL span (its own reactive ternary): text-decoration
+   propagates from a flex row into its items, so a li-level line-through would strike the
+   action buttons too -- the mirror caught it. *@
 
-<ul id="list" class="mt-4">@foreach (Item t in visible)
+<TodoShell Title="todos"><div id="editor" class="mt-5 flex gap-2"><input id="new" aria-label="New todo" placeholder="what needs doing?" @bind="newText" @onkeydown="OnKey" class="w-1/2 grow rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 text-amber-50 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/60" /><button id="add" @onclick="Add" class="rounded-lg bg-amber-400 px-4 py-2 font-mono text-sm font-semibold text-stone-950 hover:bg-amber-300 disabled:opacity-50">add</button></div>
+
+<ul id="list" class="mt-6">@foreach (Item t in visible)
 {
-    <li @key="t.Id" class="flex gap-2 max-w-[42rem] @(t.Done ? "line-through text-slate-400" : "text-slate-900")"><span class="grow">@t.Label</span>@if (t.Id == editingId)
+    <li @key="t.Id" class="flex items-center gap-2 border-l-2 py-1.5 pl-4 transition-colors hover:bg-stone-800/50 @(t.Done ? "border-stone-700 text-stone-500" : "border-amber-400 text-amber-50")"><span class="grow @(t.Done ? "line-through decoration-stone-600" : "no-underline")">@t.Label</span>@if (t.Id == editingId)
     {
-        <input class="editbox rounded border px-1" @bind="editText" /><button class="save rounded px-2 hover:bg-emerald-200" @onclick="() => SaveEdit()">ok</button>
-    }<button class="edit rounded px-2 hover:bg-amber-200" @onclick="() => StartEdit(t.Id)">edit</button><button class="toggle rounded px-2 hover:bg-slate-200" @onclick="() => Toggle(t.Id)">toggle</button><button class="remove rounded px-2 hover:bg-red-200" @onclick="() => Remove(t.Id)">remove</button></li>
+        <input class="editbox w-40 rounded border border-stone-700 bg-stone-950 px-2 py-0.5 text-sm text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-400/60" @bind="editText" /><button class="save rounded px-2 py-0.5 font-mono text-xs text-amber-300 hover:bg-stone-800" @onclick="() => SaveEdit()">save</button>
+    }<button class="edit rounded px-2 py-0.5 font-mono text-xs text-stone-500 hover:bg-stone-800 hover:text-amber-300" @onclick="() => StartEdit(t.Id)">edit</button><button class="toggle rounded px-2 py-0.5 font-mono text-xs text-stone-500 hover:bg-stone-800 hover:text-amber-300" @onclick="() => Toggle(t.Id)">@(t.Done ? "undo" : "done")</button><button class="remove rounded px-2 py-0.5 font-mono text-xs text-stone-500 hover:bg-stone-800 hover:text-red-400" @onclick="() => Remove(t.Id)">remove</button></li>
 }</ul>
 
 <TodoFooter Left="@Left" OnClear="@ClearDone" /></TodoShell>

@@ -115,115 +115,122 @@ export function mount(target) {
   // -- create(): the tree, built detached -------------------------------------
   const _el0 = document.createElement('section');
   _el0.id = 'shell';
-  setAttr(_el0, 'class', 'mx-auto max-w-[42rem] rounded-xl bg-white/90 p-6 shadow-lg sm:px-4 md:px-8');
-  const _el1 = document.createElement('h1');
-  _el1.id = 'title';
-  setAttr(_el1, 'class', 'text-2xl font-bold -mt-2');
-  insert(_el1, document.createTextNode('todos'));
+  setAttr(_el0, 'class', 'mx-auto max-w-[42rem] rounded-2xl border border-stone-800 bg-stone-900 p-6 shadow-lg sm:px-4 md:px-8');
+  const _el1 = document.createElement('p');
+  setAttr(_el1, 'class', 'font-mono text-[10px] uppercase tracking-[0.25em] text-stone-500');
+  insert(_el1, document.createTextNode('filament · 1,943-byte runtime'));
   insert(_el0, _el1);
-  const _el2 = document.createElement('div');
-  _el2.id = 'editor';
-  setAttr(_el2, 'class', 'flex gap-2');
-  const _el3 = document.createElement('input');
-  _el3.id = 'new';
-  setAttr(_el3, 'aria-label', 'New todo');
-  setAttr(_el3, 'class', 'w-1/2 rounded border px-3 py-2 focus:ring-2');
-  insert(_el2, _el3);
-  const _el4 = document.createElement('button');
-  _el4.id = 'add';
-  setAttr(_el4, 'class', 'rounded bg-amber-500 px-4 py-2 hover:bg-amber-400 disabled:opacity-50');
-  insert(_el4, document.createTextNode('add'));
-  insert(_el2, _el4);
+  const _el2 = document.createElement('h1');
+  _el2.id = 'title';
+  setAttr(_el2, 'class', '-mt-1 font-mono text-2xl font-semibold tracking-tight text-amber-50');
+  insert(_el2, document.createTextNode('todos'));
   insert(_el0, _el2);
+  const _el3 = document.createElement('div');
+  _el3.id = 'editor';
+  setAttr(_el3, 'class', 'mt-5 flex gap-2');
+  const _el4 = document.createElement('input');
+  _el4.id = 'new';
+  setAttr(_el4, 'aria-label', 'New todo');
+  setAttr(_el4, 'placeholder', 'what needs doing?');
+  setAttr(_el4, 'class', 'w-1/2 grow rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 text-amber-50 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/60');
+  insert(_el3, _el4);
+  const _el5 = document.createElement('button');
+  _el5.id = 'add';
+  setAttr(_el5, 'class', 'rounded-lg bg-amber-400 px-4 py-2 font-mono text-sm font-semibold text-stone-950 hover:bg-amber-300 disabled:opacity-50');
+  insert(_el5, document.createTextNode('add'));
+  insert(_el3, _el5);
+  insert(_el0, _el3);
   insert(_el0, document.createTextNode('\n\n'));
-  const _el5 = document.createElement('ul');
-  _el5.id = 'list';
-  setAttr(_el5, 'class', 'mt-4');
-  insert(_el0, _el5);
+  const _el6 = document.createElement('ul');
+  _el6.id = 'list';
+  setAttr(_el6, 'class', 'mt-6');
+  insert(_el0, _el6);
   insert(_el0, document.createTextNode('\n\n'));
-  const _el13 = document.createElement('footer');
-  _el13.id = 'footer';
-  setAttr(_el13, 'class', 'flex justify-between border-t pt-2');
-  const _el14 = document.createElement('span');
-  _el14.id = 'left';
-  setAttr(_el14, 'class', 'text-sm text-slate-500');
-  const _tx1 = document.createTextNode('');
-  insert(_el14, _tx1);
-  insert(_el13, _el14);
-  const _el15 = document.createElement('button');
-  _el15.id = 'clear';
-  setAttr(_el15, 'class', 'text-sm hover:underline');
-  insert(_el15, document.createTextNode('clear done'));
-  insert(_el13, _el15);
-  insert(_el0, _el13);
+  const _el14 = document.createElement('footer');
+  _el14.id = 'footer';
+  setAttr(_el14, 'class', 'mt-6 flex items-center justify-between border-t border-stone-800 pt-3');
+  const _el15 = document.createElement('span');
+  _el15.id = 'left';
+  setAttr(_el15, 'class', 'font-mono text-xs text-stone-400');
+  const _tx2 = document.createTextNode('');
+  insert(_el15, _tx2);
+  insert(_el14, _el15);
+  const _el16 = document.createElement('button');
+  _el16.id = 'clear';
+  setAttr(_el16, 'class', 'font-mono text-xs text-stone-500 hover:text-amber-300 hover:underline');
+  insert(_el16, document.createTextNode('clear done'));
+  insert(_el14, _el16);
+  insert(_el0, _el14);
 
   // -- bindings ---------------------------------------------------------------
-  effect(() => { _el3.value = newText.value; });
+  effect(() => { _el4.value = newText.value; });
   function createT(t) {
-    const _el6 = document.createElement('li');
-    const _el7 = document.createElement('span');
-    setAttr(_el7, 'class', 'grow');
+    const _el7 = document.createElement('li');
+    const _el8 = document.createElement('span');
     const _tx0 = document.createTextNode('');
-    insert(_el7, _tx0);
-    insert(_el6, _el7);
+    insert(_el8, _tx0);
+    insert(_el7, _el8);
     const _if0 = document.createComment('');
-    insert(_el6, _if0);
-    const _el10 = document.createElement('button');
-    setAttr(_el10, 'class', 'edit rounded px-2 hover:bg-amber-200');
-    insert(_el10, document.createTextNode('edit'));
-    insert(_el6, _el10);
+    insert(_el7, _if0);
     const _el11 = document.createElement('button');
-    setAttr(_el11, 'class', 'toggle rounded px-2 hover:bg-slate-200');
-    insert(_el11, document.createTextNode('toggle'));
-    insert(_el6, _el11);
+    setAttr(_el11, 'class', 'edit rounded px-2 py-0.5 font-mono text-xs text-stone-500 hover:bg-stone-800 hover:text-amber-300');
+    insert(_el11, document.createTextNode('edit'));
+    insert(_el7, _el11);
     const _el12 = document.createElement('button');
-    setAttr(_el12, 'class', 'remove rounded px-2 hover:bg-red-200');
-    insert(_el12, document.createTextNode('remove'));
-    insert(_el6, _el12);
-    effect(() => setAttr(_el6, 'class', 'flex gap-2 max-w-[42rem] ' + (t.done.value ? 'line-through text-slate-400' : 'text-slate-900')));
+    setAttr(_el12, 'class', 'toggle rounded px-2 py-0.5 font-mono text-xs text-stone-500 hover:bg-stone-800 hover:text-amber-300');
+    const _tx1 = document.createTextNode('');
+    insert(_el12, _tx1);
+    insert(_el7, _el12);
+    const _el13 = document.createElement('button');
+    setAttr(_el13, 'class', 'remove rounded px-2 py-0.5 font-mono text-xs text-stone-500 hover:bg-stone-800 hover:text-red-400');
+    insert(_el13, document.createTextNode('remove'));
+    insert(_el7, _el13);
+    effect(() => setAttr(_el7, 'class', 'flex items-center gap-2 border-l-2 py-1.5 pl-4 transition-colors hover:bg-stone-800/50 ' + (t.done.value ? 'border-stone-700 text-stone-500' : 'border-amber-400 text-amber-50')));
+    effect(() => setAttr(_el8, 'class', 'grow ' + (t.done.value ? 'line-through decoration-stone-600' : 'no-underline')));
     effect(() => setText(_tx0, t.label.value));
     function ifBody0_0() {
-    const _el8 = document.createElement('input');
-    setAttr(_el8, 'class', 'editbox rounded border px-1');
-    effect(() => { _el8.value = editText.value; });
-    listen(_el8, 'change', (e) => { editText.value = e.target.value; });
-    return _el8;
-  }
-    function ifBody0_1() {
-    const _el9 = document.createElement('button');
-    setAttr(_el9, 'class', 'save rounded px-2 hover:bg-emerald-200');
-    insert(_el9, document.createTextNode('ok'));
-    listen(_el9, 'click', () => batch(() => {
-    saveEdit();
-  }));
+    const _el9 = document.createElement('input');
+    setAttr(_el9, 'class', 'editbox w-40 rounded border border-stone-700 bg-stone-950 px-2 py-0.5 text-sm text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-400/60');
+    effect(() => { _el9.value = editText.value; });
+    listen(_el9, 'change', (e) => { editText.value = e.target.value; });
     return _el9;
   }
-    list(_el6, () => (t.id === editingId.value) ? [0, 1] : [], (i) => i, (i) => i === 0 ? ifBody0_0() : ifBody0_1(), _if0);
+    function ifBody0_1() {
+    const _el10 = document.createElement('button');
+    setAttr(_el10, 'class', 'save rounded px-2 py-0.5 font-mono text-xs text-amber-300 hover:bg-stone-800');
+    insert(_el10, document.createTextNode('save'));
     listen(_el10, 'click', () => batch(() => {
+    saveEdit();
+  }));
+    return _el10;
+  }
+    list(_el7, () => (t.id === editingId.value) ? [0, 1] : [], (i) => i, (i) => i === 0 ? ifBody0_0() : ifBody0_1(), _if0);
+    effect(() => setText(_tx1, t.done.value ? 'undo' : 'done'));
+    listen(_el11, 'click', () => batch(() => {
     startEdit(t.id);
   }));
-    listen(_el11, 'click', () => batch(() => {
+    listen(_el12, 'click', () => batch(() => {
     toggle(t.id);
   }));
-    listen(_el12, 'click', () => batch(() => {
+    listen(_el13, 'click', () => batch(() => {
     remove(t.id);
   }));
-    return _el6;
+    return _el7;
   }
-  list(_el5, () => visible.value, (t) => t.id, createT, null);
-  effect(() => setText(_tx1, left.value));
+  list(_el6, () => visible.value, (t) => t.id, createT, null);
+  effect(() => setText(_tx2, left.value));
 
   // -- events -----------------------------------------------------------------
-  listen(_el3, 'change', (e) => { newText.value = e.target.value; });
-  listen(_el3, 'keydown', (e) => {
+  listen(_el4, 'change', (e) => { newText.value = e.target.value; });
+  listen(_el4, 'keydown', (e) => {
     batch(() => {
       if (e.key === 'Enter') {
         add();
       }
     });
   });
-  listen(_el4, 'click', () => batch(add));
-  listen(_el15, 'click', () => batch(() => {
+  listen(_el5, 'click', () => batch(add));
+  listen(_el16, 'click', () => batch(() => {
     for (let i = tasks.length - 1; i >= 0; i--) {
       if (tasks[i].done.value) {
         tasks.splice(i, 1);

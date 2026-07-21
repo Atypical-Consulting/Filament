@@ -165,12 +165,13 @@ and an MSBuild target derives the stylesheet at build:
 ```
 
 Everything in Tailwind's surface syntax survives the compiler byte-for-byte — variant colons
-(`hover:bg-amber-400`), fraction slashes (`w-1/2`, `bg-white/90`), arbitrary values
-(`max-w-[42rem]`), leading dashes (`-mt-2`) — statically, in a reactive `class="@expr"`, in a
-mixed `class="badge @cls rounded"`, and in a list row whose class reads the loop variable:
+(`hover:bg-amber-300`), fraction slashes (`w-1/2`, `bg-stone-800/50`), arbitrary values
+(`max-w-[42rem]`, `tracking-[0.25em]`), leading dashes (`-mt-1`) — statically, in a reactive
+`class="@expr"`, in a mixed `class="badge @cls rounded"`, and in a list row whose class reads
+the loop variable:
 
 ```razor
-<li @key="t.Id" class="flex gap-2 @(t.Done ? "line-through text-slate-400" : "text-slate-900")">
+<span class="grow @(t.Done ? "line-through decoration-stone-600" : "no-underline")">@t.Label</span>
 ```
 
 The one authoring rule is Tailwind's own: **write full class names**, even inside ternaries —

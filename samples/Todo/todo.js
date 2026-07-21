@@ -12,18 +12,29 @@
  *     asserts exactly that.
  *   - ENTER ADDS (159): the keydown listener's arrow BINDS the event; `e.key` IS the DOM's key.
  *   - IN-PLACE EDIT (158+152): the row's @if is a row-anchored list() over
- *     `t.id === editingId.value`; its two-node branch (input + ok) mounts INSIDE the reused row,
- *     and the input's @bind works there because effect+listen land in the branch create.
+ *     `t.id === editingId.value`; its two-node branch (input + save) mounts INSIDE the reused
+ *     row, and the input's @bind works there because effect+listen land in the branch create.
  *   - THE COUNT IS COMPUTED (160): `left` derives from `visible` AND each row's `done` signal —
  *     the first generator use of the runtime's computed export.
+ *
+ * v2.1 — THE FILAMENT RESTYLE (BENCH n°67): dark stone panel, amber accent; the rows themselves
+ * build the design signature — each li carries a border-l-2 wire segment, lit amber while
+ * pending, extinguished to stone when done. The strike-through is the LABEL span's OWN reactive
+ * ternary (a li-level line-through propagates into the flex items and strikes the action
+ * buttons — the mirror caught it), so a row now carries TWO class effects. The toggle label is
+ * a REACTIVE TERNARY in text position (`done`/`undo`): the same Expr fold the row class uses,
+ * landing in setText — a per-row text effect after the branch list(). Static additions: the
+ * shell's eyebrow line and the input's placeholder (static attrs emit verbatim, whatever their
+ * name).
  *
  * State stays the Duel idiom — `tasks` mutated (version signal), `visible` reassigned (a signal
  * itself); decision 153 refuses the mixed shape on one field.
  *
- * The measurement (BENCH n°66): add via click + add via ENTER → toggle a persisting row (class
- * flips to line-through, computed count moves) → in-place edit commits a new label → the stored
- * JSON is asserted BYTE-EQUAL vs Blazor → the page RELOADS and the app restores identically →
- * clear-done (the child's EventCallback) → remove → empty, storage "[]".
+ * The measurement (BENCH n°66/67): add via click + add via ENTER → toggle a persisting row (the
+ * wire segment extinguishes, the label flips to undo, the computed count moves) → in-place edit
+ * commits a new label → the stored JSON is asserted BYTE-EQUAL vs Blazor → the page RELOADS and
+ * the app restores identically → clear-done (the child's EventCallback) → remove → empty,
+ * storage "[]".
  */
 
 import { signal, computed, effect, batch, setText, setAttr, listen, insert, list } from '../../src/filament-runtime/src/index.ts';
@@ -133,44 +144,49 @@ export function mount(target) {
 
   const shell = document.createElement('section');
   shell.id = 'shell';
-  setAttr(shell, 'class', 'mx-auto max-w-[42rem] rounded-xl bg-white/90 p-6 shadow-lg sm:px-4 md:px-8');
+  setAttr(shell, 'class', 'mx-auto max-w-[42rem] rounded-2xl border border-stone-800 bg-stone-900 p-6 shadow-lg sm:px-4 md:px-8');
+  const eyebrow = document.createElement('p');
+  setAttr(eyebrow, 'class', 'font-mono text-[10px] uppercase tracking-[0.25em] text-stone-500');
+  insert(eyebrow, document.createTextNode('filament · 1,943-byte runtime'));
+  insert(shell, eyebrow);
   const title = document.createElement('h1');
   title.id = 'title';
-  setAttr(title, 'class', 'text-2xl font-bold -mt-2');
+  setAttr(title, 'class', '-mt-1 font-mono text-2xl font-semibold tracking-tight text-amber-50');
   insert(title, document.createTextNode('todos'));
   insert(shell, title);
   const editor = document.createElement('div');
   editor.id = 'editor';
-  setAttr(editor, 'class', 'flex gap-2');
+  setAttr(editor, 'class', 'mt-5 flex gap-2');
   const input = document.createElement('input');
   input.id = 'new';
   setAttr(input, 'aria-label', 'New todo');
-  setAttr(input, 'class', 'w-1/2 rounded border px-3 py-2 focus:ring-2');
+  setAttr(input, 'placeholder', 'what needs doing?');
+  setAttr(input, 'class', 'w-1/2 grow rounded-lg border border-stone-700 bg-stone-950 px-3 py-2 text-amber-50 placeholder:text-stone-500 focus:outline-none focus:ring-2 focus:ring-amber-400/60');
   insert(editor, input);
   const addButton = document.createElement('button');
   addButton.id = 'add';
-  setAttr(addButton, 'class', 'rounded bg-amber-500 px-4 py-2 hover:bg-amber-400 disabled:opacity-50');
+  setAttr(addButton, 'class', 'rounded-lg bg-amber-400 px-4 py-2 font-mono text-sm font-semibold text-stone-950 hover:bg-amber-300 disabled:opacity-50');
   insert(addButton, document.createTextNode('add'));
   insert(editor, addButton);
   insert(shell, editor);
   insert(shell, document.createTextNode('\n\n'));
   const listEl = document.createElement('ul');
   listEl.id = 'list';
-  setAttr(listEl, 'class', 'mt-4');
+  setAttr(listEl, 'class', 'mt-6');
   insert(shell, listEl);
   insert(shell, document.createTextNode('\n\n'));
   const footer = document.createElement('footer');
   footer.id = 'footer';
-  setAttr(footer, 'class', 'flex justify-between border-t pt-2');
+  setAttr(footer, 'class', 'mt-6 flex items-center justify-between border-t border-stone-800 pt-3');
   const leftSpan = document.createElement('span');
   leftSpan.id = 'left';
-  setAttr(leftSpan, 'class', 'text-sm text-slate-500');
+  setAttr(leftSpan, 'class', 'font-mono text-xs text-stone-400');
   const leftTx = document.createTextNode('');
   insert(leftSpan, leftTx);
   insert(footer, leftSpan);
   const clearButton = document.createElement('button');
   clearButton.id = 'clear';
-  setAttr(clearButton, 'class', 'text-sm hover:underline');
+  setAttr(clearButton, 'class', 'font-mono text-xs text-stone-500 hover:text-amber-300 hover:underline');
   insert(clearButton, document.createTextNode('clear done'));
   insert(footer, clearButton);
   insert(shell, footer);
@@ -179,43 +195,45 @@ export function mount(target) {
   function createRow(t) {
     const row = document.createElement('li');
     const label = document.createElement('span');
-    setAttr(label, 'class', 'grow');
     const labelTx = document.createTextNode('');
     insert(label, labelTx);
     insert(row, label);
     const editAnchor = document.createComment('');
     insert(row, editAnchor);
     const editButton = document.createElement('button');
-    setAttr(editButton, 'class', 'edit rounded px-2 hover:bg-amber-200');
+    setAttr(editButton, 'class', 'edit rounded px-2 py-0.5 font-mono text-xs text-stone-500 hover:bg-stone-800 hover:text-amber-300');
     insert(editButton, document.createTextNode('edit'));
     insert(row, editButton);
     const toggleButton = document.createElement('button');
-    setAttr(toggleButton, 'class', 'toggle rounded px-2 hover:bg-slate-200');
-    insert(toggleButton, document.createTextNode('toggle'));
+    setAttr(toggleButton, 'class', 'toggle rounded px-2 py-0.5 font-mono text-xs text-stone-500 hover:bg-stone-800 hover:text-amber-300');
+    const toggleTx = document.createTextNode('');
+    insert(toggleButton, toggleTx);
     insert(row, toggleButton);
     const removeButton = document.createElement('button');
-    setAttr(removeButton, 'class', 'remove rounded px-2 hover:bg-red-200');
+    setAttr(removeButton, 'class', 'remove rounded px-2 py-0.5 font-mono text-xs text-stone-500 hover:bg-stone-800 hover:text-red-400');
     insert(removeButton, document.createTextNode('remove'));
     insert(row, removeButton);
-    effect(() => setAttr(row, 'class', 'flex gap-2 max-w-[42rem] ' + (t.done.value ? 'line-through text-slate-400' : 'text-slate-900')));
+    effect(() => setAttr(row, 'class', 'flex items-center gap-2 border-l-2 py-1.5 pl-4 transition-colors hover:bg-stone-800/50 ' + (t.done.value ? 'border-stone-700 text-stone-500' : 'border-amber-400 text-amber-50')));
+    effect(() => setAttr(label, 'class', 'grow ' + (t.done.value ? 'line-through decoration-stone-600' : 'no-underline')));
     effect(() => setText(labelTx, t.label.value));
     function editInputBranch() {
       const editInput = document.createElement('input');
-      setAttr(editInput, 'class', 'editbox rounded border px-1');
+      setAttr(editInput, 'class', 'editbox w-40 rounded border border-stone-700 bg-stone-950 px-2 py-0.5 text-sm text-amber-50 focus:outline-none focus:ring-2 focus:ring-amber-400/60');
       effect(() => { editInput.value = editText.value; });
       listen(editInput, 'change', (e) => { editText.value = e.target.value; });
       return editInput;
     }
-    function okButtonBranch() {
-      const okButton = document.createElement('button');
-      setAttr(okButton, 'class', 'save rounded px-2 hover:bg-emerald-200');
-      insert(okButton, document.createTextNode('ok'));
-      listen(okButton, 'click', () => batch(() => {
+    function saveButtonBranch() {
+      const saveButton = document.createElement('button');
+      setAttr(saveButton, 'class', 'save rounded px-2 py-0.5 font-mono text-xs text-amber-300 hover:bg-stone-800');
+      insert(saveButton, document.createTextNode('save'));
+      listen(saveButton, 'click', () => batch(() => {
         saveEdit();
       }));
-      return okButton;
+      return saveButton;
     }
-    list(row, () => (t.id === editingId.value) ? [0, 1] : [], (i) => i, (i) => i === 0 ? editInputBranch() : okButtonBranch(), editAnchor);
+    list(row, () => (t.id === editingId.value) ? [0, 1] : [], (i) => i, (i) => i === 0 ? editInputBranch() : saveButtonBranch(), editAnchor);
+    effect(() => setText(toggleTx, t.done.value ? 'undo' : 'done'));
     listen(editButton, 'click', () => batch(() => {
       startEdit(t.id);
     }));
