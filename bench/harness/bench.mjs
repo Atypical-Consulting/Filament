@@ -1900,6 +1900,16 @@ async function idleBeat(page, opts) {
 async function verifyContract(browser, url, app, opts, expectedLabels) {
   return withFreshPage(browser, opts, async (ctx) => {
     await loadAndSettleStrict(ctx, url, app, opts);
+    return driveLoadedApp(ctx, app, opts, expectedLabels);
+  });
+}
+
+/**
+ * The per-app contract drive on an ALREADY-LOADED page. Split out of verifyContract so the
+ * --memory pass (decision 143) can run the SAME drive as its interaction burst, bracketed by
+ * measurements, on its own page -- one description of "what this app must do", two consumers.
+ */
+async function driveLoadedApp(ctx, app, opts, expectedLabels) {
     const obs = APPS[app].observeSelector;
     const T = opts.actionTimeoutMs;
 
@@ -3468,7 +3478,6 @@ async function verifyContract(browser, url, app, opts, expectedLabels) {
           secondRunFirstId: expectedLabels.secondRunFirstId,
         },
         UPDATE_PREDICATE, ' !!!', UPDATE_INDICES, UPDATE_NOT_INDICES]);
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -4567,6 +4576,7 @@ function parseArgs(argv) {
       case '--quiet-ms': o.quietMs = asInt(next(), '--quiet-ms'); break;
       case '--max-settle-ms': o.maxSettleMs = asInt(next(), '--max-settle-ms'); break;
       case '--idle-beat-ms': o.idleBeatMs = asInt(next(), '--idle-beat-ms'); break;
+      case '--memory': o.memory = true; break;
       case '--c3': o.c3 = true; break;
       case '--c3-alloc': o.c3 = true; o.c3Alloc = true; break;
       case '--c3-increments': o.c3Increments = asInt(next(), '--c3-increments'); break;
@@ -4656,6 +4666,59 @@ C3 (--app counter only; ignored otherwise):
   --c3-alloc-n-low <n> / --c3-alloc-n-high <n> / --c3-alloc-repeats <n>
                       slope endpoints and repeat count, default 200 / 1000 / 3
 `;
+
+// ---------------------------------------------------------------------------
+// Memory (decision 143)
+// ---------------------------------------------------------------------------
+const MEMORY_REPS = 5;
+
+async function measureMemory(browser, url, app, opts, expectedLabels) {
+  const reps = [];
+  for (let i = 0; i < MEMORY_REPS; i++) {
+    // A fresh context per repetition: memory is measured from a cold page, never from a page another
+    // repetition warmed. Sequential, like everything in this harness.
+    // eslint-disable-next-line no-await-in-loop
+    const rep = await withFreshPage(browser, opts, async (ctx) => {
+      await loadAndSettleStrict(ctx, url, app, opts);
+      const support = await ctx.page.evaluate(() => ({
+        isolated: globalThis.crossOriginIsolated === true,
+        api: typeof performance.measureUserAgentSpecificMemory === 'function',
+      }));
+      if (!support.isolated || !support.api) {
+        // FAIL LOUD (the spec's rule): a JS-heap-only fallback would silently exclude Blazor's WASM
+        // linear memory and flatter exactly the side with a runtime to hide. There is no fallback.
+        throw new Error(
+          `--memory refused: crossOriginIsolated=${support.isolated}, measureUserAgentSpecificMemory=` +
+          `${support.api}. COOP/COEP must reach the page and the browser must implement the API.`,
+        );
+      }
+      const afterLoad = await ctx.page.evaluate(() => performance.measureUserAgentSpecificMemory());
+      const burst = await driveLoadedApp(ctx, app, opts, expectedLabels);
+      if (burst.problems && burst.problems.length) {
+        throw new Error(`--memory burst broke the contract: ${burst.problems.join('; ')}`);
+      }
+      // Let the burst's aftermath settle before the second measurement; the API itself may also wait
+      // for GC quiescence (the spec allows it), which is fine -- nothing here is being timed.
+      await ctx.page.evaluate(() => new Promise((r) => setTimeout(r, 250)));
+      const afterBurst = await ctx.page.evaluate(() => performance.measureUserAgentSpecificMemory());
+      return { afterLoad, afterBurst };
+    });
+    reps.push(rep);
+  }
+  const median = (xs) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+  return {
+    api: 'performance.measureUserAgentSpecificMemory',
+    repsCount: MEMORY_REPS,
+    // The FULL per-repetition results (with the wasm-vs-js attribution breakdowns the API returns)
+    // are retained verbatim, so the headline can never be accused of hiding where the bytes live.
+    reps,
+    medianBytes: {
+      afterLoad: median(reps.map((r) => r.afterLoad.bytes)),
+      afterBurst: median(reps.map((r) => r.afterBurst.bytes)),
+    },
+    burst: 'driveLoadedApp -- the same interactions verifyContract asserts, on the same contract',
+  };
+}
 
 export async function main(argv) {
   const opts = parseArgs(argv);
@@ -4778,6 +4841,39 @@ export async function main(argv) {
     // asserts 7 -> 3.5). No weight/timing runs -- a trivial app's C1/C4 carry no signal.
     if (opts.contractOnly) {
       process.stderr.write('[bench] --contract-only: contract met, skipping weight/timing.\n');
+      return 0;
+    }
+
+    // --memory: its OWN mode, on its OWN pages (decision 143), never inside a weight/timing run --
+    // the measurement waits on GC-ish quiescence that would otherwise sit inside a timed window.
+    if (opts.memory) {
+      const memory = await measureMemory(browser, url, opts.app, opts, expectedLabels);
+      const outPath = opts.out
+        ? path.resolve(opts.out)
+        : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'results',
+            `${String(opts.label).replace(/[^a-zA-Z0-9._-]+/g, '-')}.json`);
+      result = {
+        schemaVersion: SCHEMA_VERSION,
+        mode: 'memory',
+        label: opts.label,
+        app: opts.app,
+        url,
+        servedDir: dir,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        ok: true,
+        contractCheck: contract,
+        memory,
+        environment,
+      };
+      await fsp.mkdir(path.dirname(outPath), { recursive: true });
+      await fsp.writeFile(outPath, JSON.stringify(result, null, 2) + '\n', 'utf8');
+      process.stderr.write(
+        `\n[bench] wrote ${outPath}\n` +
+        `[bench] memory (median of ${memory.repsCount}, ${memory.api}):\n` +
+        `[bench]   after load : ${memory.medianBytes.afterLoad} bytes\n` +
+        `[bench]   after burst: ${memory.medianBytes.afterBurst} bytes\n`,
+      );
       return 0;
     }
 

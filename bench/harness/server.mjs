@@ -397,6 +397,12 @@ export async function startServer({ dir, port = 0, host = '127.0.0.1', quiet = f
         'Cache-Control': 'no-store',
         'Vary': 'Accept-Encoding',
         'X-Bench-Encoding-Source': variant.source,
+        // Cross-origin isolation (decision 143): performance.measureUserAgentSpecificMemory -- the one
+        // memory instrument that attributes WASM linear memory to the page -- only exists on a
+        // crossOriginIsolated page. Everything this server serves is same-origin, so COEP's
+        // require-corp constrains nothing else about the benchmark.
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'require-corp',
       };
       if (variant.encoding) headers['Content-Encoding'] = variant.encoding;
 
