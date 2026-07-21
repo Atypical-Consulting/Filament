@@ -1005,6 +1005,24 @@ public sealed class TemplateCompiler
             return "(e) => {\n  e.preventDefault();\n" + inner + "\n}";
         }
 
+        // A KEYBOARD handler (decision 159): the other arrow that takes the event -- the DOM
+        // provides it, the method declared it. The arrow binds the METHOD's own parameter name so
+        // an inlined body reads it unchanged, and batch wraps INSIDE so the event stays in scope
+        // (the preventDefault branch above is the same shape for the same reason).
+        if (_code.HandlerTakesEvent(handler))
+        {
+            var p = _code.HandlerEventParamJs(handler);
+            var inner = inlined.Contains(handler)
+                ? string.Join("\n", _code.InlineBody(handler).Select(l => "  " + l))
+                : $"  {_code.MethodJs(handler)}({p});";
+            if (batched)
+            {
+                _used.Add("batch");
+                inner = "  batch(() => {\n" + string.Join("\n", inner.Split('\n').Select(l => "  " + l)) + "\n  });";
+            }
+            return $"({p}) => {{\n" + inner + "\n}";
+        }
+
         string body;
         if (inlined.Contains(handler))
         {
@@ -2230,6 +2248,19 @@ public sealed class TemplateCompiler
                     handler = aliased;
                 else if (!NamedByTemplate(handler, $"the handler for '{name}' on <{el.TagName}>", authored,
                         mustBeCallable: true)) return;
+
+                // A handler that DECLARED the event may only be wired where the DOM provides that
+                // event's shape (decision 159): keydown/keyup carry key/code/modifiers; a click
+                // handed to it would read `undefined` where the author wrote e.Key -- rendering
+                // fine and comparing against nothing, the silent kind. Refused with the fix.
+                if (_code.HandlerTakesEvent(handler) && domEvent is not ("keydown" or "keyup"))
+                {
+                    Diag("unsupported-handler",
+                        $"'{handler}' takes KeyboardEventArgs, but '{name}' is not a keyboard event -- only " +
+                        "@onkeydown and @onkeyup provide one. Refusing to emit.",
+                        attr.Source ?? el.Source);
+                    return;
+                }
 
                 _used.Add("listen");
 

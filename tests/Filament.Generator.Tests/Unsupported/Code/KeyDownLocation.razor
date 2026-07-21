@@ -1,0 +1,14 @@
+@* BOUNDARY for decision 159: only the members with a direct DOM twin are mapped --
+   Key/Code/CtrlKey/ShiftKey/AltKey/MetaKey. `Location` is Blazor-side machinery. *@
+
+<input id="new" @onkeydown="OnKey" />
+<p id="out">@msg</p>
+
+@code {
+    private string msg = "";
+
+    void OnKey(KeyboardEventArgs e)
+    {
+        msg = "" + e.Location;
+    }
+}

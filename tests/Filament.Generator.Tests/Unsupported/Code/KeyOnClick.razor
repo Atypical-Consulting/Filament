@@ -1,0 +1,14 @@
+@* BOUNDARY for decision 159: a handler that declared KeyboardEventArgs may only be wired where
+   the DOM provides that shape -- a click event has no .key, and e.Key would read undefined. *@
+
+<button id="b" @onclick="OnKey">go</button>
+<p id="out">@msg</p>
+
+@code {
+    private string msg = "";
+
+    void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { msg = "enter"; }
+    }
+}

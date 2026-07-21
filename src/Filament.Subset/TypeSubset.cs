@@ -104,6 +104,15 @@ public static class TypeSubset
     public static bool IsEventCallback(ITypeSymbol? type) => IsComponentsType(type, "EventCallback");
 
     /// <summary>
+    /// <c>Microsoft.AspNetCore.Components.Web.KeyboardEventArgs</c> (decision 159) -- admitted as a
+    /// HANDLER PARAMETER type only, on <c>@onkeydown</c>/<c>@onkeyup</c>, never as state: its mapped
+    /// members (Key, Code, the modifier flags) are direct projections of the DOM event the listener
+    /// already receives, so the bridge erases like every other one.
+    /// </summary>
+    public static bool IsKeyboardEventArgs(ITypeSymbol? type) =>
+        type?.ToDisplayString() == "Microsoft.AspNetCore.Components.Web.KeyboardEventArgs";
+
+    /// <summary>
     /// A non-generic <c>RenderFragment</c> (decision 131). Like EventCallback, deliberately NOT admitted
     /// by Classify -- it is not a value the subset can hold or display -- and admitted in ONE position
     /// only: a <c>[Parameter]</c>, where it names the HOLE a composing parent's markup drops into. There

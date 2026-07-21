@@ -112,4 +112,37 @@ public class TodoV2Tests
         Assert.Contains("version signal", stderr);
         Assert.Contains("REASSIGNED", stderr);
     }
+
+    // ---- W4: keyboard events (decision 159) ---------------------------------
+
+    /// <summary>
+    /// The handler declared the event, the listener provides it: the arrow binds the METHOD's own
+    /// parameter name and `e.Key` is the DOM event's `.key` — no wrapper, no marshalling.
+    /// </summary>
+    [Fact]
+    public void KeyDownHandler_TakesTheDomEvent_KeyIsKey()
+    {
+        var js = Emit("KeyDown");
+        Assert.Contains("listen(_el0, 'keydown', (e) => {", js);
+        Assert.Contains("e.key === 'Enter'", js);
+        Assert.DoesNotContain("KeyboardEventArgs", js);
+    }
+
+    /// <summary>BOUNDARY: only members with a direct DOM twin map; Location is Blazor machinery.</summary>
+    [Fact]
+    public void KeyboardEventArgsLocation_IsRefused_NamingTheMappedSet()
+    {
+        var stderr = Refused("KeyDownLocation");
+        Assert.Contains("KeyboardEventArgs.Location is not mapped", stderr);
+        Assert.Contains("MetaKey", stderr);
+    }
+
+    /// <summary>BOUNDARY: a KeyboardEventArgs handler on @onclick refuses — a click has no .key.</summary>
+    [Fact]
+    public void KeyboardHandlerOnClick_IsRefused()
+    {
+        var stderr = Refused("KeyOnClick");
+        Assert.Contains("[unsupported-handler]", stderr);
+        Assert.Contains("@onkeydown", stderr);
+    }
 }

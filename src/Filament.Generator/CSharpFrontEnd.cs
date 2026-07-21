@@ -257,6 +257,13 @@ public sealed class CSharpFrontEnd
     public IReadOnlyList<string> InitCalls =>
         _methods.Where(m => m.IsInit).OrderBy(m => m.IsAsync ? 1 : 0).Select(m => $"{m.Js}();").ToList();
 
+    /// <summary>Does this handler take the DOM event (a single KeyboardEventArgs, decision 159)?</summary>
+    public bool HandlerTakesEvent(string name) => _methodsByName.TryGetValue(name, out var m) && m.EventArg;
+
+    /// <summary>The JS name of that handler's event parameter -- the arrow must bind the SAME name
+    /// the inlined body reads.</summary>
+    public string HandlerEventParamJs(string name) => _methodsByName[name].Parameters[0];
+
     /// <summary>The name of the first STATICALLY-FOLDED parameter whose declared type is not `string`,
     /// or null. A static fold splices a JS STRING literal into the child, so a numeric/bool param would
     /// fold a string where a number is meant (refused, deferred). A REACTIVELY bound param carries its
@@ -383,6 +390,7 @@ public sealed class CSharpFrontEnd
         public List<MethodInfo> Callees = [];
         public bool IsAsync;   // `async Task` method -> emitted `async function` (decision 119)
         public bool IsInit;    // OnInitialized/OnInitializedAsync (decision 156) -> called before create()
+        public bool EventArg;  // single KeyboardEventArgs parameter (decision 159) -> the arrow takes `e`
     }
 
     /// <summary>A computed property (decision 160): `private int Active => expr;` becomes
@@ -609,7 +617,10 @@ public sealed class CSharpFrontEnd
         _src = new WrappedSource();
         _src.Literal(
             "using System;using System.Collections.Generic;using System.Linq;" +
-            "using System.Threading.Tasks;using Microsoft.AspNetCore.Components;using Microsoft.JSInterop;" +
+            "using System.Threading.Tasks;using Microsoft.AspNetCore.Components;" +
+            // The Web namespace is what every Blazor template's _Imports.razor brings in -- it is
+            // where KeyboardEventArgs lives (decision 159), and authors write it bare.
+            "using Microsoft.AspNetCore.Components.Web;using Microsoft.JSInterop;" +
             // The author's @usings (decision 147), validated by TemplateCompiler to resolve. Same
             // resolution Blazor's generated component gets from the directive.
             string.Concat(_usings.Select(ns => $"using {ns};")) +
@@ -1925,7 +1936,26 @@ public sealed class CSharpFrontEnd
 
         foreach (var p in method.ParameterList.Parameters)
         {
-            if (!CheckType(_model.GetTypeInfo(p.Type!).Type, p.SpanStart)) return;
+            var pt = _model.GetTypeInfo(p.Type!).Type;
+            // KeyboardEventArgs is a PARAMETER-ONLY admission (decision 159): the DOM listener
+            // receives the event, the method declares it, the bridge erases. One parameter total --
+            // the listener has exactly one argument to give.
+            if (Filament.Subset.TypeSubset.IsKeyboardEventArgs(pt))
+            {
+                if (method.ParameterList.Parameters.Count != 1)
+                {
+                    Refuse("unsupported-type",
+                        $"'{method.Identifier.Text}' mixes KeyboardEventArgs with other parameters. A keyboard " +
+                        "handler takes exactly the event -- the DOM listener has exactly one argument to give. " +
+                        "Refusing to emit.",
+                        p.SpanStart);
+                    return;
+                }
+                info.EventArg = true;
+                info.Parameters.Add(JsName(p.Identifier.Text));
+                continue;
+            }
+            if (!CheckType(pt, p.SpanStart)) return;
             info.Parameters.Add(JsName(p.Identifier.Text));
         }
 
@@ -3182,6 +3212,25 @@ public sealed class CSharpFrontEnd
     /// <summary>`row.Label` -> `row.label.value`; `_rows.Count` -> `_rows.length`. Nothing else.</summary>
     string MemberAccess(MemberAccessExpressionSyntax ma)
     {
+        // KeyboardEventArgs members (decision 159): direct projections of the DOM event the
+        // listener received -- `e.Key` IS `e.key`. Allowlisted; anything else names Blazor-side
+        // machinery with no DOM twin and refuses with the list.
+        if (_model.GetSymbolInfo(ma.Expression).Symbol is IParameterSymbol kp &&
+            Filament.Subset.TypeSubset.IsKeyboardEventArgs(kp.Type))
+        {
+            var mapped = ma.Name.Identifier.Text switch
+            {
+                "Key" => "key", "Code" => "code", "CtrlKey" => "ctrlKey", "ShiftKey" => "shiftKey",
+                "AltKey" => "altKey", "MetaKey" => "metaKey", _ => null,
+            };
+            return mapped is not null
+                ? $"{Expr(ma.Expression)}.{mapped}"
+                : Refuse("unsupported-expression",
+                    $"KeyboardEventArgs.{ma.Name.Identifier.Text} is not mapped. Key, Code, CtrlKey, ShiftKey, " +
+                    "AltKey and MetaKey are -- each a direct DOM event property. Refusing to emit.",
+                    ma.SpanStart);
+        }
+
         // `_rows.Count` -- the List's length. A JS array's own property, so no call and no
         // wrapper: the mapping IS the array (rows.js decision 1).
         if (ma.Name.Identifier.Text == "Count" && ListReceiver(ma.Expression) is not null)

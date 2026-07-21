@@ -1,0 +1,14 @@
+@* KeyboardEventArgs (decision 159): the handler declared the event, @onkeydown provides it,
+   and e.Key IS the DOM event's own .key -- the bridge erases like every other one. *@
+
+<input id="new" @onkeydown="OnKey" />
+<p id="out">@msg</p>
+
+@code {
+    private string msg = "";
+
+    void OnKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") { msg = "enter"; }
+    }
+}
