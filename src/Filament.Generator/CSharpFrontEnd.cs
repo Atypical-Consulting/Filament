@@ -2626,6 +2626,12 @@ public sealed class CSharpFrontEnd
     FieldInfo? ListReceiver(ExpressionSyntax e) =>
         _model.GetSymbolInfo(e).Symbol is IFieldSymbol fs && Field(fs) is { List: not null } f ? f : null;
 
+    /// <summary>A LOCAL whose type is List&lt;T&gt; or T[] (decision 161): the same JS array as a
+    /// field's -- Deserialize's result is the witness. Locality was never the mapping's argument.</summary>
+    bool IsLocalList(ExpressionSyntax e) =>
+        _model.GetSymbolInfo(e).Symbol is ILocalSymbol { Type: { } lt } &&
+        (Filament.Subset.TypeSubset.ListElement(lt) ?? Filament.Subset.TypeSubset.ArrayElement(lt)) is not null;
+
     // A field whose type is a single-rank array (decision 117). Its indexer and .Length are the JS array's own.
     bool IsArrayReceiver(ExpressionSyntax e) =>
         _model.GetSymbolInfo(e).Symbol is IFieldSymbol { Type: IArrayTypeSymbol { Rank: 1 } };
@@ -3123,6 +3129,14 @@ public sealed class CSharpFrontEnd
                                                        ea.ArgumentList.Arguments.Count == 1:
                 return $"{Expr(ea.Expression)}[{Expr(ea.ArgumentList.Arguments[0].Expression)}]";
 
+            // A LOCAL List/array indexes through the same JS indexer (decision 161 lifts the field-only
+            // restriction: Deserialize's `data[i]` is the witness; receiver locality was never part of
+            // the mapping's faithfulness argument).
+            case ElementAccessExpressionSyntax ea when ea.ArgumentList.Arguments.Count == 1 &&
+                    _model.GetSymbolInfo(ea.Expression).Symbol is ILocalSymbol { Type: { } lt } &&
+                    (Filament.Subset.TypeSubset.ListElement(lt) ?? Filament.Subset.TypeSubset.ArrayElement(lt)) is not null:
+                return $"{Expr(ea.Expression)}[{Expr(ea.ArgumentList.Arguments[0].Expression)}]";
+
             // d[key] -- a Dictionary is a JS Map, so its indexer is `.get(key)` (decision 118).
             case ElementAccessExpressionSyntax ea when IsDictReceiver(ea.Expression) && ea.ArgumentList.Arguments.Count == 1:
                 return $"{Expr(ea.Expression)}.get({Expr(ea.ArgumentList.Arguments[0].Expression)})";
@@ -3277,8 +3291,10 @@ public sealed class CSharpFrontEnd
         }
 
         // `_rows.Count` -- the List's length. A JS array's own property, so no call and no
-        // wrapper: the mapping IS the array (rows.js decision 1).
-        if (ma.Name.Identifier.Text == "Count" && ListReceiver(ma.Expression) is not null)
+        // wrapper: the mapping IS the array (rows.js decision 1). A LOCAL List counts the same
+        // way (decision 161: Deserialize's `data.Count` -- locality was never the argument).
+        if (ma.Name.Identifier.Text == "Count" &&
+            (ListReceiver(ma.Expression) is not null || IsLocalList(ma.Expression)))
             return $"{Expr(ma.Expression)}.length";
 
         // arr.Length -- a JS array's own property, so no call and no wrapper (decision 117, the array sibling

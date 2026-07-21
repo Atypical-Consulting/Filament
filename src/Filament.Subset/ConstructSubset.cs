@@ -250,12 +250,19 @@ public static class ConstructSubset
             "`new Record(...)` for a local record. Refusing to emit.");
     }
 
-    // Indexing a field whose type is List<T> OR a single-rank array (one argument). Both are JS arrays, so the
-    // indexer is the array's own (decision 117 generalises the List-only rule of rows.js decision 1).
+    // Indexing a field OR LOCAL whose type is List<T> or a single-rank array (one argument). Both are
+    // JS arrays, so the indexer is the array's own (decision 117 generalises the List-only rule of
+    // rows.js decision 1; decision 161 lifts the field-only restriction -- a local such as
+    // Deserialize's result indexes through the SAME JS indexer, and receiver locality was never
+    // part of the mapping's faithfulness argument).
     static bool IsIndexableFieldIndex(ElementAccessExpressionSyntax ea, SemanticModel model) =>
         ea.ArgumentList.Arguments.Count == 1 &&
-        model.GetSymbolInfo(ea.Expression).Symbol is IFieldSymbol f &&
-        (TypeSubset.ListElement(f.Type) ?? TypeSubset.ArrayElement(f.Type)) is not null;
+        model.GetSymbolInfo(ea.Expression).Symbol switch
+        {
+            IFieldSymbol f => (TypeSubset.ListElement(f.Type) ?? TypeSubset.ArrayElement(f.Type)) is not null,
+            ILocalSymbol l => (TypeSubset.ListElement(l.Type) ?? TypeSubset.ArrayElement(l.Type)) is not null,
+            _ => false,
+        };
 
     // Indexing a field whose type is a Dictionary<K,V> (decision 118). The generator emits `d.get(key)`.
     static bool IsDictionaryFieldIndex(ElementAccessExpressionSyntax ea, SemanticModel model) =>

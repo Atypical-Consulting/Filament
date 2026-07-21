@@ -4,7 +4,15 @@
 // State is lifted -- a private field the template reads and something assigns
 // becomes a Signal -- and no user text is spliced anywhere in this file.
 
-import { signal, effect, batch, setText, setAttr, listen, insert, list } from '../../src/filament-runtime/src/index.ts';
+import { signal, computed, effect, batch, setText, setAttr, listen, insert, list } from '../../src/filament-runtime/src/index.ts';
+
+// -- JSON: per-record converters to/from the declared wire shape (decision 157)
+function __desItem(o) {
+  return { id: o.Id, label: signal(o.Label), done: signal(o.Done) };
+}
+function __serItem(v) {
+  return { Id: v.id, Label: v.label.value, Done: v.done.value };
+}
 
 export function mount(target) {
   // -- @code: state and behaviour, compiled from C# ---------------------------
@@ -17,24 +25,60 @@ export function mount(target) {
   }
 
   const visible = signal([]);
-  const leftText = signal('0 left');
+  const editingId = signal(0);
+  const editText = signal('');
   let nextId = 1;
+  const left = computed(() => visible.value.filter(x => !x.done.value).length + ' left');
 
   function refresh() {
     visible.value = tasks.filter(x => true);
-    leftText.value = tasks.filter(x => !x.done.value).length + ' left';
   }
 
-  function toggle(id) {
+  async function onInitializedAsync() {
+    const raw = await localStorage.getItem('todos');
+    if (raw !== null) {
+      const data = JSON.parse(raw).map(__desItem);
+      if (data !== null) {
+        for (let i = 0; i < data.length; i++) {
+          tasks.push(data[i]);
+          tasksChanged();
+          if (data[i].id >= nextId) {
+            nextId = data[i].id + 1;
+          }
+        }
+        refresh();
+      }
+    }
+  }
+
+  async function save() {
+    await localStorage.setItem('todos', JSON.stringify(tasks.map(__serItem)));
+  }
+
+  async function add() {
+    if (newText.value === '') {
+      return;
+    }
+    const t = { id: nextId, label: signal(newText.value), done: signal(false) };
+    nextId = nextId + 1;
+    tasks.push(t);
+    tasksChanged();
+    newText.value = '';
+    refresh();
+    await save();
+  }
+
+  async function toggle(id) {
     for (let i = 0; i < tasks.length; i++) {
       if (tasks[i].id === id) {
         tasks[i].done.value = !tasks[i].done.value;
       }
     }
     refresh();
+    await save();
   }
 
-  function remove(id) {
+  async function remove(id) {
     for (let i = tasks.length - 1; i >= 0; i--) {
       if (tasks[i].id === id) {
         tasks.splice(i, 1);
@@ -42,7 +86,31 @@ export function mount(target) {
       }
     }
     refresh();
+    await save();
   }
+
+  function startEdit(id) {
+    editingId.value = id;
+    for (let i = 0; i < tasks.length; i++) {
+      if (tasks[i].id === id) {
+        editText.value = tasks[i].label.value;
+      }
+    }
+  }
+
+  async function saveEdit() {
+    for (let i = 0; i < tasks.length; i++) {
+      if (tasks[i].id === editingId.value) {
+        tasks[i].label.value = editText.value;
+      }
+    }
+    editingId.value = 0;
+    refresh();
+    await save();
+  }
+
+  // -- init: OnInitialized(Async), once, before the first paint ----------------
+  onInitializedAsync();
 
   // -- create(): the tree, built detached -------------------------------------
   const _el0 = document.createElement('section');
@@ -73,21 +141,21 @@ export function mount(target) {
   setAttr(_el5, 'class', 'mt-4');
   insert(_el0, _el5);
   insert(_el0, document.createTextNode('\n\n'));
-  const _el10 = document.createElement('footer');
-  _el10.id = 'footer';
-  setAttr(_el10, 'class', 'flex justify-between border-t pt-2');
-  const _el11 = document.createElement('span');
-  _el11.id = 'left';
-  setAttr(_el11, 'class', 'text-sm text-slate-500');
-  const _tx0 = document.createTextNode('');
-  insert(_el11, _tx0);
-  insert(_el10, _el11);
-  const _el12 = document.createElement('button');
-  _el12.id = 'clear';
-  setAttr(_el12, 'class', 'text-sm hover:underline');
-  insert(_el12, document.createTextNode('clear done'));
-  insert(_el10, _el12);
-  insert(_el0, _el10);
+  const _el13 = document.createElement('footer');
+  _el13.id = 'footer';
+  setAttr(_el13, 'class', 'flex justify-between border-t pt-2');
+  const _el14 = document.createElement('span');
+  _el14.id = 'left';
+  setAttr(_el14, 'class', 'text-sm text-slate-500');
+  const _tx1 = document.createTextNode('');
+  insert(_el14, _tx1);
+  insert(_el13, _el14);
+  const _el15 = document.createElement('button');
+  _el15.id = 'clear';
+  setAttr(_el15, 'class', 'text-sm hover:underline');
+  insert(_el15, document.createTextNode('clear done'));
+  insert(_el13, _el15);
+  insert(_el0, _el13);
 
   // -- bindings ---------------------------------------------------------------
   effect(() => { _el3.value = newText.value; });
@@ -95,42 +163,67 @@ export function mount(target) {
     const _el6 = document.createElement('li');
     const _el7 = document.createElement('span');
     setAttr(_el7, 'class', 'grow');
-    insert(_el7, document.createTextNode(t.label));
+    const _tx0 = document.createTextNode('');
+    insert(_el7, _tx0);
     insert(_el6, _el7);
-    const _el8 = document.createElement('button');
-    setAttr(_el8, 'class', 'toggle rounded px-2 hover:bg-slate-200');
-    insert(_el8, document.createTextNode('toggle'));
-    insert(_el6, _el8);
-    const _el9 = document.createElement('button');
-    setAttr(_el9, 'class', 'remove rounded px-2 hover:bg-red-200');
-    insert(_el9, document.createTextNode('remove'));
-    insert(_el6, _el9);
+    const _if0 = document.createComment('');
+    insert(_el6, _if0);
+    const _el10 = document.createElement('button');
+    setAttr(_el10, 'class', 'edit rounded px-2 hover:bg-amber-200');
+    insert(_el10, document.createTextNode('edit'));
+    insert(_el6, _el10);
+    const _el11 = document.createElement('button');
+    setAttr(_el11, 'class', 'toggle rounded px-2 hover:bg-slate-200');
+    insert(_el11, document.createTextNode('toggle'));
+    insert(_el6, _el11);
+    const _el12 = document.createElement('button');
+    setAttr(_el12, 'class', 'remove rounded px-2 hover:bg-red-200');
+    insert(_el12, document.createTextNode('remove'));
+    insert(_el6, _el12);
     effect(() => setAttr(_el6, 'class', 'flex gap-2 max-w-[42rem] ' + (t.done.value ? 'line-through text-slate-400' : 'text-slate-900')));
-    listen(_el8, 'click', () => batch(() => {
+    effect(() => setText(_tx0, t.label.value));
+    function ifBody0_0() {
+    const _el8 = document.createElement('input');
+    setAttr(_el8, 'class', 'editbox rounded border px-1');
+    effect(() => { _el8.value = editText.value; });
+    listen(_el8, 'change', (e) => { editText.value = e.target.value; });
+    return _el8;
+  }
+    function ifBody0_1() {
+    const _el9 = document.createElement('button');
+    setAttr(_el9, 'class', 'save rounded px-2 hover:bg-emerald-200');
+    insert(_el9, document.createTextNode('ok'));
+    listen(_el9, 'click', () => batch(() => {
+    saveEdit();
+  }));
+    return _el9;
+  }
+    list(_el6, () => (t.id === editingId.value) ? [0, 1] : [], (i) => i, (i) => i === 0 ? ifBody0_0() : ifBody0_1(), _if0);
+    listen(_el10, 'click', () => batch(() => {
+    startEdit(t.id);
+  }));
+    listen(_el11, 'click', () => batch(() => {
     toggle(t.id);
   }));
-    listen(_el9, 'click', () => batch(() => {
+    listen(_el12, 'click', () => batch(() => {
     remove(t.id);
   }));
     return _el6;
   }
   list(_el5, () => visible.value, (t) => t.id, createT, null);
-  effect(() => setText(_tx0, leftText.value));
+  effect(() => setText(_tx1, left.value));
 
   // -- events -----------------------------------------------------------------
   listen(_el3, 'change', (e) => { newText.value = e.target.value; });
-  listen(_el4, 'click', () => batch(() => {
-    if (newText.value === '') {
-      return;
-    }
-    const t = { id: nextId, label: newText.value, done: signal(false) };
-    nextId = nextId + 1;
-    tasks.push(t);
-    tasksChanged();
-    newText.value = '';
-    refresh();
-  }));
-  listen(_el12, 'click', () => batch(() => {
+  listen(_el3, 'keydown', (e) => {
+    batch(() => {
+      if (e.key === 'Enter') {
+        add();
+      }
+    });
+  });
+  listen(_el4, 'click', () => batch(add));
+  listen(_el15, 'click', () => batch(() => {
     for (let i = tasks.length - 1; i >= 0; i--) {
       if (tasks[i].done.value) {
         tasks.splice(i, 1);
@@ -138,6 +231,7 @@ export function mount(target) {
       }
     }
     refresh();
+    save();
   }));
 
   // -- attach: last, so the effects' first run made no MutationRecord ----------

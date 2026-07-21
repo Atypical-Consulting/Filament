@@ -5456,3 +5456,44 @@ module résout dans la feuille, prouvé vert sur l'app et rouge sur un utilitair
 ---
 
 *Fin de l'entrée n°65. Ne pas modifier — ajouter une entrée n°66 pour toute rectification.*
+
+## Entrée n°66 — 2026-07-21 — Phase 4 : la todo v2 mesurée contre Blazor — la persistance traverse un VRAI reload
+
+**Ce qui est mesuré.** L'app-témoin du programme todo-v2 (décisions 156–161) : la même todo Tailwind
+que le n°65, devenue une APP RÉELLE — persistance localStorage, ajout à Enter, édition en place,
+compteur dérivé — conduite par le contrat `todo` v2 (HARNESS **1.58.0 → 1.59.0**). Le driver a
+DEUX PHASES autour d'un VRAI `page.reload()` : phase 1 = add au clic + add à ENTER (le handler
+KeyboardEventArgs lit e.Key sur l'événement DOM, 159) → toggle d'une ligne PERSISTANTE (classe →
+line-through, 152 ; le compteur computed bouge, 160) → édition EN PLACE (le @if de la 158 monte
+l'input dans la ligne RÉUTILISÉE, le @bind y fonctionne, ok committe) → **la chaîne
+localStorage assertée à l'OCTET près** ; phase 2 = reload → OnInitializedAsync (156) +
+Deserialize (157) restaurent → labels/classes/compteur assertés → clear-done via l'EventCallback
+de l'enfant (130) → remove → vide, stockage `[]`.
+
+**L'assertion-clé.** `[{"Id":1,"Label":"alpha","Done":true},{"Id":2,"Label":"beta2","Done":false}]`
+— Blazor écrit cette chaîne à travers le VRAI System.Text.Json ; Filament à travers le
+`__serItem` émis (noms déclarés PascalCase, `.value` lu sur les props-signaux). L'égalité d'octets
+EST la preuve de fidélité de la 157 — le BCL juge le sérialiseur, comme il jugeait Random au n°63.
+
+**Résultat.** Blazor et Filament rendent un observé STRICTEMENT identique sur les deux phases :
+`afterAdd {alpha|beta, "2 left", input vidé}` → `afterToggle {ligne 1 line-through, "1 left"}` →
+`editStart {value:"beta"}` → `afterEdit {alpha|beta2, éditeur démonté}` → `storage` octet-identique
+→ **reload** → `restored {alpha|beta2, ligne 1 line-through, "1 left"}` → `afterClear {beta2}` →
+`final {0 rangée, "0 left", "[]"}`. Contract met des deux côtés (`--contract-only`).
+
+**En chemin (le programme, décisions 156–161).** Cinq élargissements sondés puis livrés en TDD :
+le cycle de vie (156), le JSON local conscient des signaux (157), le @if-en-ligne par NESTING des
+méthodes de région (158 — premier prédicat de refus corrigé : « sous une ligne », pas « imbriqué »,
+le Duel l'a attrapé), les événements clavier (159), computed() (160 — la transitivité des lectures
+trouvée à la sonde). Plus trois sur-refusals de localité levées (List locale : indexation, .Count)
+et une frontière neuve : le @foreach imbriqué compile mais REFUSE tant qu'aucun témoin ne le mesure.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — tout le programme est générateur-seul,
+`computed` et `list` étaient DÉJÀ à bord. Suite : **528 tests** (444 générateur / 60 subset / 24
+analyzer), runtime 214. Baseline `dotnet build` AVANT le générateur à chaque étape. Snapshot Todo
+re-épinglé délibérément (v2) ; tous les autres octet-identiques. Le gate de couverture Tailwind de
+l'exemple a re-prouvé 45 tokens après l'évolution des sources.
+
+---
+
+*Fin de l'entrée n°66. Ne pas modifier — ajouter une entrée n°67 pour toute rectification.*

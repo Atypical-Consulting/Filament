@@ -136,21 +136,21 @@ Two apps — `Counter` and a 1,000-row `Rows` — compiled from **pure `.razor`*
 
 ## What compiles
 
-Across **155 recorded decisions** and **65 measured bench entries**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **516 tests** back it (432 generator · 60 subset · 24 analyzer, plus 214 runtime).
+Across **161 recorded decisions** and **66 measured bench entries**, the compilable C# subset covers most of everyday C#. Every widening was verified byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser via a Playwright DOM-contract oracle. **528 tests** back it (444 generator · 60 subset · 24 analyzer, plus 214 runtime).
 
 | Area | Covered |
 |------|---------|
-| **Control flow** | `@if` / `@else` / `@else if` (multi-node, nested, mixed, root-level); `@foreach` over `List<T>`, `T[]`, `Dictionary<K,V>` (incl. reassigned) |
+| **Control flow** | `@if` / `@else` / `@else if` (multi-node, nested, mixed, root-level, **and inside a `@foreach` row**); `@foreach` over `List<T>`, `T[]`, `Dictionary<K,V>` (incl. reassigned) |
 | **Statements** | `for`, `while`, `do-while`, `switch`, `try`/`catch`/`throw`/`lock`, root `@{ }` blocks, int-vs-double division, positional records |
 | **Numeric types** | `int`; `long`→BigInt (exact past 2⁵³); `float`→`Math.fround`; `decimal`→boxed `{mantissa, scale}`; `DateTime`→BigInt ticks |
 | **Collections** | `List<T>`, `T[]`, `Dictionary<K,V>`→`Map` — read, reassign, **and element write** (copy-on-write signals) |
 | **LINQ** | `Where`/`Select`/`Count`/`Any`/`All` · `Sum`/`Min`/`Max`/`Average`/`First`/`Last` · `OrderBy`/`Skip`/`Take`/`Reverse` · `GroupBy` |
-| **Reactivity** | `@bind` two-way (string/int/bool/checkbox), inline lambda handlers, reactive attributes, `async`/`await`→`Promise` |
+| **Reactivity** | `@bind` two-way (string/int/bool/checkbox, incl. bind-only fields and inside rows), inline lambda handlers, **keyboard events** (`KeyboardEventArgs.Key`), reactive attributes, **computed properties → `computed()`**, `async`/`await`→`Promise` |
 | **Composition** | static-leaf, bound-parameter (reactive), multi-parameter and nested; `EventCallback` (child→parent); `RenderFragment`/`ChildContent` |
 | **Framework** | `@ref` · `@inject` (`IJSRuntime` + `HttpClient`) · JS interop · resolving `@using` · `CascadingParameter` · generics (`@typeparam`) · `@inherits` — all compiled away, [zero runtime bytes](./docs/adr/0003-bucket-b-nongoals-closed.md) |
 | **Forms** | `<EditForm>` · `<InputText>` · `@bind-Value` onto a model property (validation refused, not ignored) |
 | **Routing** | `@page` + a router **generated into the app** (425 B gzip; the shared runtime is untouched) |
-| **Real-world I/O** | `DateTime.UtcNow`/`Now`/`Today` (the wall clock) · `Random` (seeded = the **exact** BCL sequence) · `HttpClient`→`fetch` + JSON (shape-gated) · `localStorage` via JS interop |
+| **Real-world I/O** | `DateTime.UtcNow`/`Now`/`Today` (the wall clock) · `Random` (seeded = the **exact** BCL sequence) · `HttpClient`→`fetch` + JSON (shape-gated) · **`JsonSerializer` + `localStorage` persistence** (the stored string byte-equal to System.Text.Json's) · **`OnInitialized(Async)`** (once, before first paint) |
 | **Tailwind / CSS** | every utility shape byte-faithful (variant `:`, fraction `/`, `[arbitrary]`, `-neg`) · reactive row classes on the loop variable · a scanned-sources build with a coverage gate ([the todo example](./examples/TodoTailwind)) |
 
 Anything outside the subset raises a **located diagnostic and writes no file** — Filament never emits silently-wrong JavaScript.

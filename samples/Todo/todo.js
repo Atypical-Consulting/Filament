@@ -1,55 +1,39 @@
 /**
- * Todo — hand-written Filament answer key for baseline/Todo.Blazor/App.razor.
+ * Todo v2 — hand-written Filament answer key for baseline/Todo.Blazor/App.razor.
  *
- * THE POINT: Tailwind through the whole pipeline at once (decision 154). Every class below is a
- * real Tailwind utility, and the three attribute behaviours the program fixed/widened are all
- * live in one app:
+ * v1 (decision 154, BENCH n°65) proved the Tailwind class surface. v2 (decision 161, BENCH n°66)
+ * is the REAL app the todo-v2 program's five widenings buy:
  *
- *   - MULTI-TOKEN STATIC values with variant colons, fraction slashes, arbitrary-value brackets
- *     and leading dashes ('mx-auto max-w-[42rem] rounded-xl bg-white/90 …') survive byte-for-byte
- *     — Razor lowers them as several PREFIXED value nodes, and the prefix is part of the value
- *     (decision 151; the old concat welded them into one garbage class).
- *   - The REACTIVE ROW CLASS reads the loop variable: the fold sits in an effect INSIDE the row
- *     create function, over the record's per-record `done` signal, ternary PARENTHESISED (`+`
- *     binds tighter than `?:`) — so toggling a PERSISTING key restyles its reused row
- *     (decision 152; the #125 stale-row trap, applied to attributes).
- *   - A PLAIN @bind alone makes its field reactive: Razor's own lowering reads the field into
- *     `value` and assigns it in the binder, so `newText` is a signal even though no other display
- *     reads it (decision 154 lifting #104's deferral by #138's "a bind IS a write" argument).
+ *   - PERSISTENCE (156+157+133): onInitializedAsync() is called UN-AWAITED before create() —
+ *     its continuation seeds `tasks` from localStorage through the ERASED IJSRuntime bridge and
+ *     the per-record JSON converters. __serItem writes the DECLARED PascalCase names reading
+ *     `.value` off the signal props; __desItem re-wraps Label/Done in signal() — so the STORED
+ *     STRING is byte-identical to what Blazor's real System.Text.Json writes, and the oracle
+ *     asserts exactly that.
+ *   - ENTER ADDS (159): the keydown listener's arrow BINDS the event; `e.key` IS the DOM's key.
+ *   - IN-PLACE EDIT (158+152): the row's @if is a row-anchored list() over
+ *     `t.id === editingId.value`; its two-node branch (input + ok) mounts INSIDE the reused row,
+ *     and the input's @bind works there because effect+listen land in the branch create.
+ *   - THE COUNT IS COMPUTED (160): `left` derives from `visible` AND each row's `done` signal —
+ *     the first generator use of the runtime's computed export.
  *
- * COMPOSITION CARRIES THE APP, fully erased: TodoShell places everything through ChildContent
- * (decision 131), TodoFooter takes the reactive bound string DOWN (decision 90) and raises
- * ClearDone UP through an EventCallback (decision 130). One mount(), no component instances.
+ * State stays the Duel idiom — `tasks` mutated (version signal), `visible` reassigned (a signal
+ * itself); decision 153 refuses the mixed shape on one field.
  *
- * STATE IS THE DUEL IDIOM, and decision 153 is why it must be: `tasks` is mutated (Add/splice —
- * the version signal), `visible`/`leftText` are recomputed by REASSIGNMENT (signals themselves).
- * One field doing both is refused now — the mixed emission declared `const` and assigned to it.
- *
- * Blazor DOM contract (both shells must render byte-identical class attributes):
- *
- *   <section id="shell" class="mx-auto max-w-[42rem] rounded-xl bg-white/90 p-6 shadow-lg sm:px-4 md:px-8">
- *     <h1 id="title" class="text-2xl font-bold -mt-2">todos</h1>
- *     <div id="editor" class="flex gap-2">
- *       <input id="new" aria-label="New todo" class="w-1/2 rounded border px-3 py-2 focus:ring-2" />
- *       <button id="add" class="rounded bg-amber-500 px-4 py-2 hover:bg-amber-400 disabled:opacity-50">add</button>
- *     </div>
- *     \n\n
- *     <ul id="list" class="mt-4">
- *       <li class="flex gap-2 max-w-[42rem] text-slate-900|line-through text-slate-400">…</li>
- *     </ul>
- *     \n\n
- *     <footer id="footer" class="flex justify-between border-t pt-2">
- *       <span id="left" class="text-sm text-slate-500">N left</span>
- *       <button id="clear" class="text-sm hover:underline">clear done</button>
- *     </footer>
- *   </section>
- *
- * The measurement (BENCH n°65): add ×2 → toggle a PERSISTING row (its class gains line-through,
- * #left says "1 left") → #clear (the child's EventCallback runs the parent's ClearDone) → remove
- * → empty list, every className asserted byte-identical against Blazor at each step.
+ * The measurement (BENCH n°66): add via click + add via ENTER → toggle a persisting row (class
+ * flips to line-through, computed count moves) → in-place edit commits a new label → the stored
+ * JSON is asserted BYTE-EQUAL vs Blazor → the page RELOADS and the app restores identically →
+ * clear-done (the child's EventCallback) → remove → empty, storage "[]".
  */
 
-import { signal, effect, batch, setText, setAttr, listen, insert, list } from '../../src/filament-runtime/src/index.ts';
+import { signal, computed, effect, batch, setText, setAttr, listen, insert, list } from '../../src/filament-runtime/src/index.ts';
+
+function __desItem(o) {
+  return { id: o.Id, label: signal(o.Label), done: signal(o.Done) };
+}
+function __serItem(v) {
+  return { Id: v.id, Label: v.label.value, Done: v.done.value };
+}
 
 export function mount(target) {
   const newText = signal('');
@@ -61,24 +45,60 @@ export function mount(target) {
   }
 
   const visible = signal([]);
-  const leftText = signal('0 left');
+  const editingId = signal(0);
+  const editText = signal('');
   let nextId = 1;
+  const left = computed(() => visible.value.filter(x => !x.done.value).length + ' left');
 
   function refresh() {
     visible.value = tasks.filter(x => true);
-    leftText.value = tasks.filter(x => !x.done.value).length + ' left';
   }
 
-  function toggle(id) {
+  async function onInitializedAsync() {
+    const raw = await localStorage.getItem('todos');
+    if (raw !== null) {
+      const data = JSON.parse(raw).map(__desItem);
+      if (data !== null) {
+        for (let i = 0; i < data.length; i++) {
+          tasks.push(data[i]);
+          tasksChanged();
+          if (data[i].id >= nextId) {
+            nextId = data[i].id + 1;
+          }
+        }
+        refresh();
+      }
+    }
+  }
+
+  async function save() {
+    await localStorage.setItem('todos', JSON.stringify(tasks.map(__serItem)));
+  }
+
+  async function add() {
+    if (newText.value === '') {
+      return;
+    }
+    const t = { id: nextId, label: signal(newText.value), done: signal(false) };
+    nextId = nextId + 1;
+    tasks.push(t);
+    tasksChanged();
+    newText.value = '';
+    refresh();
+    await save();
+  }
+
+  async function toggle(id) {
     for (let i = 0; i < tasks.length; i++) {
       if (tasks[i].id === id) {
         tasks[i].done.value = !tasks[i].done.value;
       }
     }
     refresh();
+    await save();
   }
 
-  function remove(id) {
+  async function remove(id) {
     for (let i = tasks.length - 1; i >= 0; i--) {
       if (tasks[i].id === id) {
         tasks.splice(i, 1);
@@ -86,7 +106,30 @@ export function mount(target) {
       }
     }
     refresh();
+    await save();
   }
+
+  function startEdit(id) {
+    editingId.value = id;
+    for (let i = 0; i < tasks.length; i++) {
+      if (tasks[i].id === id) {
+        editText.value = tasks[i].label.value;
+      }
+    }
+  }
+
+  async function saveEdit() {
+    for (let i = 0; i < tasks.length; i++) {
+      if (tasks[i].id === editingId.value) {
+        tasks[i].label.value = editText.value;
+      }
+    }
+    editingId.value = 0;
+    refresh();
+    await save();
+  }
+
+  onInitializedAsync();
 
   const shell = document.createElement('section');
   shell.id = 'shell';
@@ -137,8 +180,15 @@ export function mount(target) {
     const row = document.createElement('li');
     const label = document.createElement('span');
     setAttr(label, 'class', 'grow');
-    insert(label, document.createTextNode(t.label));
+    const labelTx = document.createTextNode('');
+    insert(label, labelTx);
     insert(row, label);
+    const editAnchor = document.createComment('');
+    insert(row, editAnchor);
+    const editButton = document.createElement('button');
+    setAttr(editButton, 'class', 'edit rounded px-2 hover:bg-amber-200');
+    insert(editButton, document.createTextNode('edit'));
+    insert(row, editButton);
     const toggleButton = document.createElement('button');
     setAttr(toggleButton, 'class', 'toggle rounded px-2 hover:bg-slate-200');
     insert(toggleButton, document.createTextNode('toggle'));
@@ -148,6 +198,27 @@ export function mount(target) {
     insert(removeButton, document.createTextNode('remove'));
     insert(row, removeButton);
     effect(() => setAttr(row, 'class', 'flex gap-2 max-w-[42rem] ' + (t.done.value ? 'line-through text-slate-400' : 'text-slate-900')));
+    effect(() => setText(labelTx, t.label.value));
+    function editInputBranch() {
+      const editInput = document.createElement('input');
+      setAttr(editInput, 'class', 'editbox rounded border px-1');
+      effect(() => { editInput.value = editText.value; });
+      listen(editInput, 'change', (e) => { editText.value = e.target.value; });
+      return editInput;
+    }
+    function okButtonBranch() {
+      const okButton = document.createElement('button');
+      setAttr(okButton, 'class', 'save rounded px-2 hover:bg-emerald-200');
+      insert(okButton, document.createTextNode('ok'));
+      listen(okButton, 'click', () => batch(() => {
+        saveEdit();
+      }));
+      return okButton;
+    }
+    list(row, () => (t.id === editingId.value) ? [0, 1] : [], (i) => i, (i) => i === 0 ? editInputBranch() : okButtonBranch(), editAnchor);
+    listen(editButton, 'click', () => batch(() => {
+      startEdit(t.id);
+    }));
     listen(toggleButton, 'click', () => batch(() => {
       toggle(t.id);
     }));
@@ -157,20 +228,17 @@ export function mount(target) {
     return row;
   }
   list(listEl, () => visible.value, (t) => t.id, createRow, null);
-  effect(() => setText(leftTx, leftText.value));
+  effect(() => setText(leftTx, left.value));
 
   listen(input, 'change', (e) => { newText.value = e.target.value; });
-  listen(addButton, 'click', () => batch(() => {
-    if (newText.value === '') {
-      return;
-    }
-    const t = { id: nextId, label: newText.value, done: signal(false) };
-    nextId = nextId + 1;
-    tasks.push(t);
-    tasksChanged();
-    newText.value = '';
-    refresh();
-  }));
+  listen(input, 'keydown', (e) => {
+    batch(() => {
+      if (e.key === 'Enter') {
+        add();
+      }
+    });
+  });
+  listen(addButton, 'click', () => batch(add));
   listen(clearButton, 'click', () => batch(() => {
     for (let i = tasks.length - 1; i >= 0; i--) {
       if (tasks[i].done.value) {
@@ -179,6 +247,7 @@ export function mount(target) {
       }
     }
     refresh();
+    save();
   }));
 
   insert(target, shell);

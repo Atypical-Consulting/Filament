@@ -5275,3 +5275,97 @@ les deux sens — vert sur l'app, rouge sur un utilitaire injecté hors-scan). L
 partout. `examples/FilamentApp` reste le miroir du template ; la todo est la vitrine. Doc :
 « Styling with Tailwind » dans REAL-APPS.md, README (155 décisions / 65 entrées / 516 tests, ligne
 Tailwind/CSS).
+
+## 156. Le cycle de vie entre dans le sous-ensemble — OnInitialized(Async) court UNE fois, avant la première peinture
+
+**2026-07-21.** La sonde du programme todo-v2 : `protected override void OnInitialized()` refusait
+(`'override'` hors sous-ensemble) — donc AUCUN état initial dynamique, pas de persistance au
+chargement. Levé pour exactement la PAIRE d'init, à la forme de ComponentBase près (sans paramètre,
+void / async Task ; une forme divergente refuse avec le fix). L'émission : l'appel se place APRÈS le
+prologue d'état et AVANT create() — ce que le sync écrit, et ce que l'async écrit avant son premier
+await, est ce que la première peinture montre, exactement le before-first-render de Blazor. L'async
+est appelé SANS await : chaque continuation écrit des signaux et les effects re-rendent — le
+StateHasChanged-par-continuation, exprimé par le graphe. La source enveloppée gagne une base stub
+(`__FilamentComponentBase`, DEUX méthodes virtuelles, déclarée en DERNIER pour ne pas décaler les
+indices de classes) ; le RESTE du cycle de vie refuse PAR NOM avec sa raison (pas de passe de
+re-rendu à accrocher : OnParametersSet/OnAfterRender/ShouldRender/SetParametersAsync). Témoins :
+OnInit (sync avant create), OnInitAsync (préfixe sync + continuation), OnAfterRender (frontière).
+
+## 157. Le JSON local — Serialize/Deserialize sous la porte de forme du réseau, et les signaux traversent
+
+**2026-07-21.** `JsonSerializer.Serialize(value)` / `.Deserialize<T>(json)`, options par DÉFAUT
+seulement (un argument d'options change la forme du fil : refusé), T sous la MÊME porte que le
+réseau (147). Le piège que la sonde a exposé : la forme runtime est camelCase avec des props mutées
+EN SIGNAUX (`t.done` est `signal(bool)`), quand le sérialiseur par défaut de C# écrit les noms
+DÉCLARÉS PascalCase, sensible à la casse, dans l'ordre de déclaration. Donc la conversion est
+CONSCIENTE DE LA FORME, par record, dérivée de RecordInfo : `__serItem` écrit les noms déclarés en
+lisant `.value` sur les props-signaux ; `__desItem` lit les noms déclarés et RE-EMBALLE les props
+mutées dans signal(). Scalaires et listes de scalaires : identité, zéro helper. LA PREUVE EST
+L'ORACLE DU n°66 : les deux coquilles écrivent localStorage — Blazor à travers le VRAI
+System.Text.Json — et la chaîne stockée est assertée OCTET-IDENTIQUE. Divergence DIVULGUÉE :
+l'encodeur par défaut de STJ échappe les caractères sensibles HTML (`<` → <) où JSON.stringify
+ne le fait pas — contenu alphanumérique identique, contenu à chevrons non.
+
+## 158. @if DANS une ligne de @foreach — la région imbriquée compile dans la portée de sa boucle
+
+**2026-07-21.** Le refus sondé : les méthodes de région étaient plantées À PLAT au scope classe, donc
+un @if de ligne lisant `t.Done` mourait en « non résolu ». Le fix est l'idiome de la 141 appliqué aux
+MÉTHODES de région : une région-enfant dont le conteneur siège sous l'item d'une autre se plante en
+FONCTION LOCALE juste après le marqueur de cet item — dans les accolades de la boucle de l'auteur —
+et la variable de boucle capture. SlotsIn apprend l'exception du conteneur : son @key et ses attrs
+PROPRES appartiennent à la région EXTÉRIEURE (l'élément est rendu par elle), son contenu à la
+SIENNE. L'émission ne change PAS : le walk de ligne route déjà un conteneur vers EmitOps, donc le
+@if devient une list() ANCRÉE DANS le create de ligne, sa source lisant le signal per-record
+(`() => t.done.value ? [0] : []`) — une clé persistante monte/démonte sa branche au Toggle. PIÈGE
+TROUVÉ EN ROUTE : le premier prédicat de refus (« imbriqué ») requalifiait les régions SŒURS du Duel
+(142 : @if + @foreach côte à côte) et cassait Board — le bon prédicat est « SOUS UNE LIGNE » (les
+lignes des ForEachOp déjà construits). Un @foreach imbriqué COMPILE par la même machinerie — et
+c'est exactement pourquoi il REFUSE : aucun témoin ne le mesure ; sa slice le lèvera. Le @bind et
+les listen d'une branche imbriquée atterrissent dans le create de branche (le routing de la 152) —
+l'édition en place du n°66 en est la mesure.
+
+## 159. Les événements clavier — e.Key EST la key de l'événement DOM
+
+**2026-07-21.** Un handler PEUT déclarer un unique paramètre `KeyboardEventArgs` quand il est câblé
+sur @onkeydown/@onkeyup : listen() reçoit déjà l'événement, la flèche émise lie le NOM du paramètre
+de la méthode (`(e) => …`, batch À L'INTÉRIEUR pour garder l'événement en scope — la forme du
+preventDefault de la 138), et l'accès membre mappe par liste blanche : Key→key, Code→code,
+CtrlKey/ShiftKey/AltKey/MetaKey→leurs noms DOM ; le reste (Location, Repeat…) refuse en nommant la
+liste. Le type est admis en POSITION DE PARAMÈTRE seulement — un champ KeyboardEventArgs refuse
+comme avant. Un tel handler sur @onclick refuse (un click n'a pas de .key : e.Key lirait undefined,
+le genre silencieux). La source enveloppée importe désormais Microsoft.AspNetCore.Components.Web —
+ce que chaque _Imports.razor de template Blazor apporte, là où KeyboardEventArgs vit.
+
+## 160. Les propriétés calculées — computed(), l'export du runtime jamais utilisé, utilisé
+
+**2026-07-21.** `private int Active => xs.Where(x => x > 1).Count();` refusait (PropertyDeclaration
+hors membre admis) — alors que le runtime EXPORTE `computed` depuis le premier jour sans que le
+générateur ne l'émette jamais. Admis : propriété à corps d'expression, get-only, sans attribut
+[Parameter], type §5 — `const active = computed(() => …);` dans le prologue, chaque lecture
+`active.value` (méthodes comprises), réactif par construction. DEUX règles au-delà du sous-ensemble
+d'expressions : (1) les dépendances d'un computed sont des lectures-template PAR TRANSITIVITÉ — le
+template lit le computed, le computed lit le champ, donc le champ se hisse comme si le template le
+lisait (sans quoi la closure capture un binding PLAT et le computed s'évalue une fois, silencieusement
+périmé — mesuré à la sonde : `xs.filter` sans `.value`) ; (2) un corps lisant une List STRUCTURELLEMENT
+mutée refuse — sa réactivité vit dans un signal de version que le corps ne lit pas — avec le remède
+du split du Duel. computed() est PARESSEUX (né dirty), l'ordre de déclaration ne peut pas
+mal-ordonner l'évaluation. Dans le n°66, `Left` dérive de visible ET du signal Done de chaque ligne
+— le boilerplate Refresh-du-compteur MEURT.
+
+## 161. La todo v2 — l'app réelle, et trois sur-refusals de localité levées en chemin
+
+**2026-07-21.** `baseline/Todo.Blazor` évolue sur place (le n°65 reste l'enregistrement historique) :
+persistance localStorage (156+157+133 : OnInitializedAsync sème depuis le stockage à travers le pont
+IJSRuntime ÉRASÉ — `await localStorage.getItem('todos')` est l'émission littérale), ajout à ENTER
+(159), édition en place dont le @if monte la branche DANS la ligne réutilisée avec un @bind qui y
+fonctionne (158+152), compteur computed (160). L'état reste l'idiome du Duel (153 refuse le mixte —
+c'est pourquoi le chargement SÈME par mutations, pas par réassignation). EN CHEMIN : l'indexation et
+le .Count d'une List LOCALE (le résultat de Deserialize) étaient refusés champ-seulement — la
+localité n'a jamais fait partie de l'argument de fidélité, levée (ClassifyExpression + Expr +
+MemberAccess) ; un handler nommé dans une branche @if garde son refus documenté (forme lambda) ; un
+EventCallback n'aliasant qu'une forme Action, ClearDone reste void et tire Save() sans await (le
+pattern OnKey→Add). Gate canon v2 verte au premier essai, snapshot re-épinglé délibérément. La
+mesure est le contrat todo v2 (BENCH n°66, HARNESS 1.59.0) — DEUX PHASES autour d'un VRAI reload.
+L'exemple `examples/TodoTailwind` suit les mêmes sources ; son gate de couverture a attrapé
+`edit-input` (un hook à trait d'union indiscernable d'une utility) → hooks mono-token (`editbox`),
+la convention du dépôt.

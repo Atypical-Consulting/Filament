@@ -55,8 +55,31 @@ as a JS number, not the BigInt `long` maps to), as are `float`, `decimal`, `Date
 `Dictionary` members — each with its reason in the diagnostic. Serve camelCase JSON (the
 System.Text.Json Web default); PascalCase keys are normalized on their leading character.
 
-**Storage.** `localStorage`/`sessionStorage` need no feature at all — they are one escape-hatch
-call away (next section), and the repo's JS-interop witness is exactly a localStorage round trip.
+**Storage & startup** (decisions 156/157). `OnInitialized`/`OnInitializedAsync` run once, before
+the first paint — exactly Blazor's contract — and `JsonSerializer.Serialize`/`Deserialize<T>`
+work under the same shape gate as the network's, so the full persistence loop is four lines:
+
+```razor
+protected override async Task OnInitializedAsync()
+{
+    var raw = await JS.InvokeAsync<string>("localStorage.getItem", "todos");
+    if (raw != null) { /* JsonSerializer.Deserialize<List<Item>>(raw) seeds your state */ }
+}
+```
+
+The stored string is byte-identical to what System.Text.Json writes (measured, BENCH n°66);
+the one disclosed divergence is STJ's HTML-escaping encoder (`<` → `<`).
+
+**Keyboard** (decision 159). A handler may take `KeyboardEventArgs` on `@onkeydown`/`@onkeyup`;
+`e.Key`, `e.Code` and the modifier flags are the DOM event's own properties. Enter-to-submit is
+an `if (e.Key == "Enter")`.
+
+**Derived state** (decision 160). An expression-bodied property compiles to the runtime's
+`computed()` — memoized, re-run when its dependencies change:
+
+```razor
+private string Left => visible.Where(x => !x.Done).Count() + " left";
+```
 
 ## The escape hatch — calling JavaScript
 

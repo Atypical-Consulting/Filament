@@ -68,7 +68,7 @@ public class TodoTests
         var js = File.ReadAllText(Generate.TodoToTemp());
         foreach (var id in new[] { "'shell'", "'title'", "'editor'", "'new'", "'add'", "'list'", "'footer'", "'left'", "'clear'" })
             Assert.Contains($".id = {id};", js);
-        Assert.Contains("effect(() => setText(_tx0, leftText.value));", js);   // Left, reactive across the boundary
+        Assert.Contains(", left.value));", js);   // Left, the COMPUTED (decision 160), reactive across the boundary
         Assert.DoesNotContain("TodoShell", js);                                // no component names survive
         Assert.DoesNotContain("TodoFooter", js);
         Assert.DoesNotContain("ChildContent", js);
