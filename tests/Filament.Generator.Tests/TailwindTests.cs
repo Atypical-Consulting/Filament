@@ -84,6 +84,33 @@ public class TailwindTests
     }
 
     /// <summary>
+    /// DEFECT D2 (decision 153). One field BOTH structurally mutated (Add) and wholesale
+    /// reassigned (Where…ToList) is valid authored Blazor -- the baseline builds -- but the two
+    /// Filament state models collide: mutate+version declares `const items`, reassign-as-signal
+    /// needs the field to BE the signal. The mixed shape emitted `const items = […]` then
+    /// `items = …`: a module that throws at the first click, at exit 0. Refused at the colliding
+    /// write, naming the split fix.
+    /// </summary>
+    [Fact]
+    public void ListMutateReassign_RefusesTheMixedIdiom()
+    {
+        var outPath = Path.Combine(RepoPaths.Unsupported, "Code", $".mutreassign-{Guid.NewGuid():N}.js");
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(
+                Path.Combine(RepoPaths.Unsupported, "Code", "ListMutateReassign.razor"), outPath);
+            Assert.True(exit != 0, "the mixed mutate+reassign idiom was COMPILED -- the emitted module assigns to a const and throws.");
+            Assert.False(File.Exists(outPath), "refused AND wrote the module anyway");
+            Assert.Contains("[list-mutate-and-reassign]", stderr);
+            Assert.Contains("split it into two fields", stderr);
+        }
+        finally
+        {
+            if (File.Exists(outPath)) File.Delete(outPath);
+        }
+    }
+
+    /// <summary>
     /// BOUNDARY for decision 152: the loop variable reaches attribute expressions, the expression
     /// SUBSET is unchanged -- a call in a class value refuses at its own span, row or not.
     /// </summary>

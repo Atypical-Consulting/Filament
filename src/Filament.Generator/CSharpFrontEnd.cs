@@ -309,6 +309,10 @@ public sealed class CSharpFrontEnd
         /// call. A reassigned-never-mutated List is an ordinary signal (decision 140), like a reassigned
         /// T[] (decision 124): there is no version to bump because the reference itself changes.</summary>
         public bool Reassigned;
+        /// <summary>Wrapped-source offset of the FIRST wholesale reassignment -- where decision 153's
+        /// mixed-idiom refusal points, so the author lands on the write that collided with the
+        /// mutations rather than on the field declaration.</summary>
+        public int? ReassignSite;
         /// <summary>Every element is a literal, so the whole thing is inert data (rows.js decision 4).</summary>
         public bool LiteralData;
         public string Version = "";
@@ -808,6 +812,24 @@ public sealed class CSharpFrontEnd
         foreach (var (_, lm) in _lambdaMethods) MarkAssignments(lm.Syntax);
         foreach (var mi in _methods) MarkListMutations(mi.Syntax);
         foreach (var (_, lm) in _lambdaMethods) MarkListMutations(lm.Syntax);
+
+        // ONE FIELD, ONE IDIOM (decision 153). A List that is BOTH structurally mutated and
+        // wholesale reassigned has no consistent declaration: mutate+version declares `const`
+        // (rows.js decision 1), reassign-as-signal makes the field itself the signal (decision
+        // 140). The mixed shape emitted `const items = […]` and then assigned to it -- valid
+        // authored Blazor compiled to a module that THROWS at the first event, the outcome
+        // section 10 forbids. Refused at the colliding write until a faithful mapping is measured.
+        foreach (var f in _fields)
+            if (f.List is { Mutated: true, Reassigned: true } li)
+                Refuse("list-mutate-and-reassign",
+                    $"field '{f.Name}' is both structurally mutated (Add/RemoveAt/Clear/element write) " +
+                    "and wholesale reassigned. One field supports one idiom: mutate + version signal " +
+                    "(rows.js) or reassign-as-signal (decision 140) -- split it into two fields, the " +
+                    "mutated store and the reassigned view (the Duel's tasks/visible). The mixed " +
+                    "emission declared 'const' and assigned to it, a module that throws at the first " +
+                    "event; refusing to emit instead.",
+                    li.ReassignSite ?? 0);
+
         MarkTemplateReads(slots);
         // A TWO-WAY BIND IS A WRITE (decision 138), and marking it is what closes decision 104's
         // deferral ("a pure @bind-only field needs its reactivity marked from the template"). Without
@@ -1890,7 +1912,11 @@ public sealed class CSharpFrontEnd
             {
                 case IFieldSymbol fs when Field(fs) is { } f:
                     f.AssignedOutsideConstruction = true;
-                    if (wholeField && node is AssignmentExpressionSyntax && f.List is { } fl) fl.Reassigned = true;
+                    if (wholeField && node is AssignmentExpressionSyntax && f.List is { } fl)
+                    {
+                        fl.Reassigned = true;
+                        fl.ReassignSite ??= node.SpanStart;
+                    }
                     break;
                 case IPropertySymbol ps when PropAnywhere(ps) is { } p:
                     p.AssignedOutsideConstruction = true;

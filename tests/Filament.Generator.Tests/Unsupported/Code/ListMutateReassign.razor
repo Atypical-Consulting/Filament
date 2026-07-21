@@ -1,0 +1,27 @@
+@* ONE field, BOTH idioms (decision 153): structurally mutated (Add) AND wholesale reassigned
+   (Where…ToList). Valid Blazor C# -- the baseline builds -- but the two Filament models collide:
+   mutate+version declares `const items` (rows.js), reassign-as-signal needs the field itself to
+   be the signal (decision 140). The mixed emission was `const items = […]` then `items = …` -- a
+   module that THROWS at the first click. Refused with the split fix until a faithful mapping is
+   measured. *@
+
+<button id="add" @onclick="Add">add</button>
+
+<ul id="list">
+@foreach (int n in items)
+{
+    <li @key="n">@n</li>
+}
+</ul>
+
+@code {
+    private List<int> items = new List<int> { 1, 2 };
+    private int nextId = 3;
+
+    void Add()
+    {
+        items.Add(nextId);
+        nextId = nextId + 1;
+        items = items.Where(x => x != 1).ToList();
+    }
+}
