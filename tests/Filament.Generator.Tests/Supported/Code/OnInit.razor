@@ -1,0 +1,21 @@
+@* OnInitialized (decision 156): the sync init override runs ONCE, before the first paint --
+   the first render must show "ready", never "idle". *@
+
+<p id="out">@msg</p>
+<button id="b" @onclick="Touch">touch</button>
+
+@code {
+    private string msg = "idle";
+    private int touches = 0;
+
+    protected override void OnInitialized()
+    {
+        msg = "ready";
+    }
+
+    void Touch()
+    {
+        touches++;
+        msg = "touched " + touches;
+    }
+}

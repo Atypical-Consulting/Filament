@@ -1,0 +1,13 @@
+@* BOUNDARY for decision 156: the rest of ComponentBase's lifecycle stays refused BY NAME --
+   a signals module has no re-render pass to hook. *@
+
+<p id="out">@msg</p>
+
+@code {
+    private string msg = "idle";
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        msg = "rendered";
+    }
+}

@@ -2647,6 +2647,15 @@ public sealed class TemplateCompiler
             sb.Append('\n');
         }
 
+        // INIT LIFECYCLE (decision 156): before create(), so what OnInitialized writes -- and what
+        // OnInitializedAsync writes before its first await -- is what the first paint shows.
+        if (_code.InitCalls.Count > 0)
+        {
+            sb.Append("  // -- init: OnInitialized(Async), once, before the first paint ----------------\n");
+            Emit(sb, _code.InitCalls.ToList());
+            sb.Append('\n');
+        }
+
         sb.Append("  // -- create(): the tree, built detached -------------------------------------\n");
         Emit(sb, _create);
 

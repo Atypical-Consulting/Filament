@@ -1,0 +1,16 @@
+@* OnInitializedAsync (decision 156): the sync prefix runs before the first paint ("loading"),
+   the continuation after the await writes the signal and the effects re-render ("loaded") --
+   Blazor's StateHasChanged-per-continuation, expressed by the signal graph. *@
+
+<p id="out">@msg</p>
+
+@code {
+    private string msg = "idle";
+
+    protected override async Task OnInitializedAsync()
+    {
+        msg = "loading";
+        await Task.Delay(1);
+        msg = "loaded";
+    }
+}

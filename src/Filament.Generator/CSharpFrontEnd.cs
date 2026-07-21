@@ -245,6 +245,16 @@ public sealed class CSharpFrontEnd
     /// eventful child is refused rather than half-compiled (decision 88).</summary>
     public bool IsLeafDisplay => _fields.Count == 0 && _methods.Count == 0 && _records.Count == 0;
 
+    /// <summary>
+    /// The init-lifecycle calls (decision 156), in ComponentBase's own order: OnInitialized, then
+    /// OnInitializedAsync. Emitted after the prologue and BEFORE create(), so a sync write -- and the
+    /// async body's synchronous prefix -- is what the first paint shows, exactly Blazor's
+    /// before-first-render. The async call is NOT awaited: each continuation writes signals and the
+    /// effects re-render, which is StateHasChanged-per-continuation expressed by the graph.
+    /// </summary>
+    public IReadOnlyList<string> InitCalls =>
+        _methods.Where(m => m.IsInit).OrderBy(m => m.IsAsync ? 1 : 0).Select(m => $"{m.Js}();").ToList();
+
     /// <summary>The name of the first STATICALLY-FOLDED parameter whose declared type is not `string`,
     /// or null. A static fold splices a JS STRING literal into the child, so a numeric/bool param would
     /// fold a string where a number is meant (refused, deferred). A REACTIVELY bound param carries its
@@ -370,6 +380,7 @@ public sealed class CSharpFrontEnd
         public int CallUses;
         public List<MethodInfo> Callees = [];
         public bool IsAsync;   // `async Task` method -> emitted `async function` (decision 119)
+        public bool IsInit;    // OnInitialized/OnInitializedAsync (decision 156) -> called before create()
     }
 
     /// <summary>A `[Parameter]` component parameter: a scalar value supplied by the parent at the
@@ -588,7 +599,7 @@ public sealed class CSharpFrontEnd
             // The author's @usings (decision 147), validated by TemplateCompiler to resolve. Same
             // resolution Blazor's generated component gets from the directive.
             string.Concat(_usings.Select(ns => $"using {ns};")) +
-            $"partial class __FilamentComponent{TypeParamList} {{");
+            $"partial class __FilamentComponent{TypeParamList} : __FilamentComponentBase {{");
         foreach (var node in codeNodes) _src.Node(node, RawText(node));
         _src.Literal($"\n}}\npartial class __FilamentComponent{TypeParamList} {{\n");
 
@@ -701,6 +712,15 @@ public sealed class CSharpFrontEnd
             _src.Literal("\n");
         }
         _src.Literal("}\n");
+
+        // The virtual init pair (decision 156), so the author's `protected override` BINDS -- the one
+        // sliver of ComponentBase this compilation needs to exist. Declared LAST so the member walk's
+        // class indices (classes[0]=@code partial, classes[1]=regions partial) are untouched; nothing
+        // else is on it, so every other lifecycle override still fails CS0115 (and the by-name refusal
+        // in Method() answers first, with the reason).
+        _src.Literal(
+            "class __FilamentComponentBase { protected virtual void OnInitialized() { } " +
+            "protected virtual System.Threading.Tasks.Task OnInitializedAsync() => System.Threading.Tasks.Task.CompletedTask; }\n");
 
         var text = _src.ToString();
         var tree = CSharpSyntaxTree.ParseText(text);
@@ -1703,15 +1723,56 @@ public sealed class CSharpFrontEnd
     void Method(MethodDeclarationSyntax method)
     {
         // `async` is admitted (decision 119): an `async Task` method emits an `async function`, and `await`
-        // maps to JS's own await. Every OTHER non-access modifier stays refused.
+        // maps to JS's own await. `override` is admitted for exactly the two init lifecycle methods
+        // (decision 156); every OTHER non-access modifier stays refused.
         var isAsync = false;
+        var isInit = false;
         foreach (var mod in method.Modifiers)
         {
             if (mod.IsKind(SyntaxKind.AsyncKeyword)) { isAsync = true; continue; }
+            if (mod.IsKind(SyntaxKind.OverrideKeyword))
+            {
+                var name = method.Identifier.Text;
+                if (name is "OnInitialized" or "OnInitializedAsync") { isInit = true; continue; }
+                // The REST of ComponentBase's lifecycle is refused BY NAME with its reason: there is
+                // nothing for it to mean in a module with no re-render pass and no parameter re-set.
+                if (name is "OnParametersSet" or "OnParametersSetAsync" or "OnAfterRender"
+                    or "OnAfterRenderAsync" or "SetParametersAsync" or "ShouldRender")
+                {
+                    Refuse("unsupported-lifecycle",
+                        $"'{name}' is not in the subset. A Filament module renders through signals -- there is " +
+                        "no re-render pass to hook and no parameter re-set to observe, so only the INIT pair has " +
+                        "a faithful meaning: OnInitialized/OnInitializedAsync run once, before the first paint " +
+                        "(decision 156). Refusing to emit.",
+                        method.Identifier.SpanStart);
+                    return;
+                }
+                Refuse("unsupported-modifier",
+                    $"'{mod.Text}' on a method is not in the subset (only the OnInitialized/OnInitializedAsync " +
+                    "overrides are, decision 156). Refusing to emit.", mod.SpanStart);
+                return;
+            }
             if (!IsAllowedModifier(mod))
             {
                 Refuse("unsupported-modifier",
                     $"'{mod.Text}' on a method is not in the subset. Refusing to emit.", mod.SpanStart);
+                return;
+            }
+        }
+
+        // The init pair's SHAPE is ComponentBase's own: no parameters, void (sync) / async Task. A
+        // divergent shape would not override anything in Blazor either -- refuse it here with the fix.
+        if (isInit)
+        {
+            var wantAsync = method.Identifier.Text == "OnInitializedAsync";
+            if (method.ParameterList.Parameters.Count != 0 || isAsync != wantAsync)
+            {
+                Refuse("unsupported-lifecycle",
+                    $"'{method.Identifier.Text}' must be exactly ComponentBase's shape: " +
+                    (wantAsync ? "`protected override async Task OnInitializedAsync()`"
+                               : "`protected override void OnInitialized()`") +
+                    ". Refusing to emit.",
+                    method.Identifier.SpanStart);
                 return;
             }
         }
@@ -1774,6 +1835,7 @@ public sealed class CSharpFrontEnd
             Symbol = _model.GetDeclaredSymbol(method)!,
             At = method.Identifier.SpanStart,
             IsAsync = isAsync,
+            IsInit = isInit,
         };
 
         foreach (var p in method.ParameterList.Parameters)
