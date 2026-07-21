@@ -83,4 +83,33 @@ public class TodoV2Tests
         Assert.Contains("[unsupported-lifecycle]", stderr);
         Assert.Contains("OnInitialized", stderr);   // the message names the admitted pair
     }
+
+    // ---- W5: computed properties (decision 160) -----------------------------
+
+    /// <summary>
+    /// `private int Active => …;` becomes `const active = computed(() => …);` — the FIRST
+    /// generator use of the runtime's computed export — and every read is `active.value`, so the
+    /// display effect subscribes to the computed, which subscribes to the signals its body reads.
+    /// </summary>
+    [Fact]
+    public void ComputedProperty_EmitsComputed_AndReadsAsValue()
+    {
+        var js = Emit("ComputedProp");
+        Assert.Contains("const active = computed(() => xs.value.filter(x => x > 1).length);", js);
+        Assert.Contains("setText(_tx0, active.value)", js);
+        var import = js.Split('\n').First(l => l.StartsWith("import "));
+        Assert.Contains("computed", import);
+    }
+
+    /// <summary>
+    /// BOUNDARY: a computed over a structurally MUTATED List refuses — its reactivity lives in a
+    /// version signal the body never reads; computed() would evaluate once and go silently stale.
+    /// </summary>
+    [Fact]
+    public void ComputedOverMutatedList_IsRefused_WithTheSplitRemedy()
+    {
+        var stderr = Refused("ComputedMutatedList");
+        Assert.Contains("version signal", stderr);
+        Assert.Contains("REASSIGNED", stderr);
+    }
 }

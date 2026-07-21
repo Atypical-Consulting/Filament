@@ -77,11 +77,18 @@ public static class ConstructSubset
         MethodDeclarationSyntax => null,
         RecordDeclarationSyntax => null,
         PropertyDeclarationSyntax p when IsComponentParameter(p) => null,
+        PropertyDeclarationSyntax p when IsComputedProperty(p) => null,
         _ => new Refusal("FIL0001", "unsupported-member",
             $"{Describe(member)} is not in the C# subset. @code admits FIELDS (state), METHODS " +
             "(behaviour) and RECORDS (row shapes) only (spec 5). Refusing to emit rather than drop it " +
             "silently -- a dropped member is a module that looks right and does less than the source says."),
     };
+
+    /// <summary>An expression-bodied, get-only property with no [Parameter]/[CascadingParameter]
+    /// attribute (decision 160): DERIVED state, compiled to the runtime's computed() -- memoized,
+    /// re-run when a dependency signal changes, read as `.value` like any signal.</summary>
+    public static bool IsComputedProperty(PropertyDeclarationSyntax p) =>
+        p.ExpressionBody is not null && p.AccessorList is null && !IsComponentParameter(p);
 
     /// <summary>The JS binary operator, or null if the operator is out of §5. Division is deliberately
     /// absent: C#'s int/int is integer division and JS's `/` is not (`7/2` = 3 vs 3.5), so `/` on ANY

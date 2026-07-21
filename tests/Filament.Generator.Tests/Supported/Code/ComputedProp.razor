@@ -1,0 +1,18 @@
+@* A COMPUTED property (decision 160): derived state as an expression-bodied get-only property,
+   compiled to the runtime's computed() -- its FIRST use by the generator, though the export has
+   shipped since day one. `Active` re-runs when `xs` (a reassigned List, itself a signal) changes,
+   and the display effect re-runs when Active does. *@
+
+<p id="out">@Active</p>
+<button id="b" @onclick="Go">go</button>
+
+@code {
+    private List<int> xs = new List<int> { 1, 2 };
+
+    private int Active => xs.Where(x => x > 1).Count();
+
+    void Go()
+    {
+        xs = xs.Where(x => true).ToList();
+    }
+}

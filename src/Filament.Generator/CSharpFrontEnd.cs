@@ -69,6 +69,8 @@ public sealed class CSharpFrontEnd
     readonly List<Diagnostic> _diagnostics = [];
     readonly List<FieldInfo> _fields = [];
     readonly List<MethodInfo> _methods = [];
+    readonly List<ComputedInfo> _computeds = [];
+    readonly Dictionary<string, ComputedInfo> _computedsByName = new(StringComparer.Ordinal);
     readonly List<RecordInfo> _records = [];
     readonly HashSet<string> _primitives = [];
 
@@ -243,7 +245,7 @@ public sealed class CSharpFrontEnd
     /// <summary>A LEAF DISPLAY child: only [Parameter] props, no state (fields/signals), no behaviour
     /// (methods), no records. The static-leaf composition slice compiles only these; a stateful or
     /// eventful child is refused rather than half-compiled (decision 88).</summary>
-    public bool IsLeafDisplay => _fields.Count == 0 && _methods.Count == 0 && _records.Count == 0;
+    public bool IsLeafDisplay => _fields.Count == 0 && _methods.Count == 0 && _records.Count == 0 && _computeds.Count == 0;
 
     /// <summary>
     /// The init-lifecycle calls (decision 156), in ComponentBase's own order: OnInitialized, then
@@ -381,6 +383,18 @@ public sealed class CSharpFrontEnd
         public List<MethodInfo> Callees = [];
         public bool IsAsync;   // `async Task` method -> emitted `async function` (decision 119)
         public bool IsInit;    // OnInitialized/OnInitializedAsync (decision 156) -> called before create()
+    }
+
+    /// <summary>A computed property (decision 160): `private int Active => expr;` becomes
+    /// `const active = computed(() => expr);` -- the FIRST generator use of the runtime's
+    /// computed export. BodyJs is translated LATE (after reactivity marking), like field
+    /// initialisers, because what `.value`s inside the body is not known before.</summary>
+    sealed class ComputedInfo
+    {
+        public string Name = "";
+        public string Js = "";
+        public PropertyDeclarationSyntax Syntax = null!;
+        public string BodyJs = "";
     }
 
     /// <summary>A `[Parameter]` component parameter: a scalar value supplied by the parent at the
@@ -851,6 +865,20 @@ public sealed class CSharpFrontEnd
                     li.ReassignSite ?? 0);
 
         MarkTemplateReads(slots);
+        // A COMPUTED's dependencies are template reads BY TRANSITIVITY (decision 160): the template
+        // reads the computed, the computed reads the field, so the field must lift exactly as if
+        // the template read it directly -- otherwise the closure captures a PLAIN binding and the
+        // computed evaluates once, silently stale even on a reassigned collection.
+        foreach (var c in _computeds)
+            foreach (var n in c.Syntax.ExpressionBody!.Expression.DescendantNodesAndSelf())
+            {
+                if (n is not (IdentifierNameSyntax or MemberAccessExpressionSyntax)) continue;
+                switch (_model.GetSymbolInfo(n).Symbol)
+                {
+                    case IFieldSymbol fs when Field(fs) is { } f: f.ReadByTemplate = true; break;
+                    case IPropertySymbol ps when PropAnywhere(ps) is { } pr: pr.ReadByTemplate = true; break;
+                }
+            }
         // A TWO-WAY BIND IS A WRITE (decision 138), and marking it is what closes decision 104's
         // deferral ("a pure @bind-only field needs its reactivity marked from the template"). Without
         // it the bound target is read-but-never-assigned, decision 67's conjunction leaves it a plain
@@ -890,6 +918,32 @@ public sealed class CSharpFrontEnd
             f.List!.Version = Unique(f.Js + "Version");
             f.List.Changed = Unique(f.Js + "Changed");
         }
+        // COMPUTED bodies (decision 160), translated with the marking settled. One admission rule
+        // beyond the expression subset: the body's reactivity must come from SIGNALS (signal
+        // fields, reassigned collections, per-record signals, other computeds). A structurally
+        // MUTATED List's reactivity lives in a version signal the body never reads -- computed()
+        // would evaluate once and go silently stale, the outcome section 10 forbids.
+        foreach (var c in _computeds)
+        {
+            var mutated = c.Syntax.ExpressionBody!.Expression.DescendantNodesAndSelf()
+                .OfType<IdentifierNameSyntax>()
+                .Select(n => _model.GetSymbolInfo(n).Symbol)
+                .OfType<IFieldSymbol>()
+                .Select(Field)
+                .FirstOrDefault(f => f?.List is { Mutated: true });
+            if (mutated is not null)
+            {
+                Refuse("unsupported-member",
+                    $"computed property '{c.Name}' reads '{mutated.Name}', a structurally MUTATED List whose " +
+                    "reactivity lives in a version signal (rows.js decision 1) -- the computed would evaluate " +
+                    "once and go silently stale. Read a REASSIGNED collection (decision 140, the Duel's " +
+                    "tasks/visible split) or recompute in a method. Refusing to emit.",
+                    c.Syntax.Identifier.SpanStart);
+                continue;
+            }
+            c.BodyJs = Expr(c.Syntax.ExpressionBody.Expression);
+        }
+
         foreach (var mi in _methods) _bodies[mi.Name] = Body(mi.Block!);
         foreach (var (attr, lm) in _lambdaMethods)
         {
@@ -1301,12 +1355,43 @@ public sealed class CSharpFrontEnd
         {
             case FieldDeclarationSyntax f: FieldDecl(f); break;
             case MethodDeclarationSyntax m: Method(m); break;
+            case PropertyDeclarationSyntax p when Filament.Subset.ConstructSubset.IsComputedProperty(p):
+                ComputedDecl(p); break;
             case PropertyDeclarationSyntax p: ParamDecl(p); break;
             default:
                 throw new GeneratorException(
                     $"FIL-WIRING: ClassifyMember admitted {member.Kind()} but Member() has no case for it. " +
                     "The subset decision and the translator have drifted. Refusing to emit.");
         }
+    }
+
+    /// <summary>
+    /// A COMPUTED property (decision 160): `private int Active => xs.Where(…).Count();`. Derived
+    /// state -- registered here, TRANSLATED late (after marking, like field initialisers), emitted
+    /// as `const active = computed(() => …);` in the prologue. computed() is lazy (born dirty), so
+    /// declaration order cannot mis-order evaluation.
+    /// </summary>
+    void ComputedDecl(PropertyDeclarationSyntax p)
+    {
+        foreach (var mod in p.Modifiers)
+            if (!IsAllowedModifier(mod))
+            {
+                Refuse("unsupported-modifier",
+                    $"'{mod.Text}' on a computed property is not in the subset. Refusing to emit.",
+                    mod.SpanStart);
+                return;
+            }
+
+        if (!CheckType(_model.GetTypeInfo(p.Type).Type, p.Type.SpanStart)) return;
+
+        var info = new ComputedInfo
+        {
+            Name = p.Identifier.Text,
+            Js = JsName(p.Identifier.Text),
+            Syntax = p,
+        };
+        _computeds.Add(info);
+        _computedsByName[info.Name] = info;
     }
 
     /// <summary>
@@ -2165,6 +2250,8 @@ public sealed class CSharpFrontEnd
             {
                 case IFieldSymbol fs when Field(fs) is { IsSignal: true }: return true;
                 case IPropertySymbol ps when PropAnywhere(ps) is { IsSignal: true }: return true;
+                // A computed IS reactive by construction (decision 160): it re-runs on its deps.
+                case IPropertySymbol ps when _computedsByName.ContainsKey(ps.Name): return true;
                 // A bound [Parameter] a composition parent wired to a REACTIVE expression: the child's
                 // @Name is a live read of the parent's signal (decision 90). The reactivity is the
                 // PARENT's fact, carried in by BindParameters -- the child's own tables cannot see it.
@@ -2250,6 +2337,15 @@ public sealed class CSharpFrontEnd
             {
                 lines.Add($"const {f.Js} = {f.Init};");
             }
+        }
+
+        // COMPUTEDS after the fields they read, before the methods that may read them. computed()
+        // is LAZY (born dirty; the first .value read evaluates), so source order here can never
+        // mis-order evaluation -- the closure captures bindings, not values.
+        foreach (var c in _computeds)
+        {
+            _primitives.Add("computed");
+            lines.Add($"const {c.Js} = computed(() => {c.BodyJs});");
         }
 
         foreach (var m in MethodsInDependencyOrder())
@@ -3047,6 +3143,12 @@ public sealed class CSharpFrontEnd
 
             case IMethodSymbol m when _methodsByName.TryGetValue(m.Name, out var mi):
                 return mi.Js;
+
+            // A COMPUTED property (decision 160): reads as a signal -- computed() memoizes and
+            // re-runs on its dependencies, so `.value` is the whole read protocol here too.
+            case IPropertySymbol ps when _computedsByName.TryGetValue(ps.Name, out var ci) &&
+                    SymbolEqualityComparer.Default.Equals(ps.ContainingType, _component):
+                return $"{ci.Js}.value";
 
             // A [Parameter] read, at a composition site: `@Name` resolves to the JS the parent supplied
             // — a folded CONSTANT for a static leaf (`'World'`, decision 88), or a translated parent

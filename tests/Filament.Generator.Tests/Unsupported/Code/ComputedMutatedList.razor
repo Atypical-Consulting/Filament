@@ -1,0 +1,17 @@
+@* BOUNDARY for decision 160: a computed over a structurally MUTATED List is refused -- its
+   reactivity lives in a version signal the computed's body never reads, so computed() would
+   evaluate once and go silently stale. The remedy is the Duel's split (a reassigned view). *@
+
+<p id="out">@Total</p>
+<button id="b" @onclick="Go">go</button>
+
+@code {
+    private List<int> xs = new List<int> { 1, 2 };
+
+    private int Total => xs.Count;
+
+    void Go()
+    {
+        xs.Add(3);
+    }
+}
