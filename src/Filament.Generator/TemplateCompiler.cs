@@ -1461,8 +1461,16 @@ public sealed class TemplateCompiler
     /// regions were planned by the PARENT's collect walk. Emitting it under the child's context would
     /// resolve those names against the wrong component -- or, worse, silently against nothing.
     /// </summary>
+    /// <param name="Container">
+    /// The node Collect planned the content's region against, when the passed content holds template
+    /// C# (`&lt;Card&gt;@if (show) { … }&lt;/Card&gt;`). A region's children are NOT in document order any
+    /// more -- they are a re-parsed statement list (decision 54) -- so emitting Nodes one by one would
+    /// hand raw C# to the emitter. Carrying the container lets EmitFragment take the same
+    /// `_regions.Contains(container)` branch every other container takes.
+    /// </param>
     sealed record Fragment(
         IReadOnlyList<IntermediateNode> Nodes,
+        IntermediateNode Container,
         CSharpFrontEnd Code,
         HashSet<IntermediateNode> Regions,
         string File);
@@ -1511,11 +1519,17 @@ public sealed class TemplateCompiler
         // clearing this is what stops a fragment that contains `@ChildContent` from re-inlining itself.
         _fragment = null;
 
-        foreach (var node in frag.Nodes)
-        {
-            var c = EmitNode(node, parent);
-            if (c is not null) _create.Add($"insert({parent}, {c});");
-        }
+        // THE CONTENT IS A CONTAINER LIKE ANY OTHER. If it held template C#, Collect planned it as a
+        // region against the element the parent wrote it in, and its emission comes from the C# front
+        // end -- the same branch EmitElement (decision 54) and the root (decision 89) already take.
+        if (_regions.Contains(frag.Container))
+            EmitOps(_code.OpsFor(frag.Container), parent);
+        else
+            foreach (var node in frag.Nodes)
+            {
+                var c = EmitNode(node, parent);
+                if (c is not null) _create.Add($"insert({parent}, {c});");
+            }
 
         _file = savedFile;
         _code = savedCode;
@@ -1569,12 +1583,7 @@ public sealed class TemplateCompiler
             [key] = (_code.SlotJs(expr), _code.SlotIsReactive(expr)),
         };
 
-        foreach (var content in node.Children.OfType<ComponentChildContentIntermediateNode>())
-            foreach (var child in content.Children)
-            {
-                var c = EmitNode(child, parent);
-                if (c is not null && parent is not null) _create.Add($"insert({parent}, {c});");
-            }
+        EmitChildContent(node, parent);
 
         _cascades = saved;
     }
@@ -1639,14 +1648,65 @@ public sealed class TemplateCompiler
             _preventDefault.Add(v);
         }
 
-        foreach (var content in node.Children.OfType<ComponentChildContentIntermediateNode>())
-            foreach (var child in content.Children)
-            {
-                var c = EmitNode(child, parent: v);
-                if (c is not null) _create.Add($"insert({v}, {c});");
-            }
+        EmitChildContent(node, v);
 
         return v;
+    }
+
+    /// <summary>
+    /// The children a RESOLVED framework component was given (&lt;EditForm&gt;, &lt;CascadingValue&gt;).
+    ///
+    /// Razor puts them under a ComponentChildContentIntermediateNode, which is a CONTAINER: when it
+    /// holds template C# (`&lt;EditForm …&gt;@if (show) { … }&lt;/EditForm&gt;`) Collect plans it as a region
+    /// and its children stop being in document order -- they are a re-parsed statement list (decision
+    /// 54). Walking them here regardless is what handed raw C# to the emitter: FIL-WIRING, exit 1, on
+    /// a source Blazor compiles. Asking `_regions` first is the SAME branch EmitElement takes for an
+    /// element (decision 54) and Compile takes for the root (decision 89); this is decision 142's
+    /// descent reaching the one container kind it had never been pointed at.
+    /// </summary>
+    void EmitChildContent(ComponentIntermediateNode node, string? parent)
+    {
+        foreach (var content in node.Children.OfType<ComponentChildContentIntermediateNode>())
+        {
+            if (_regions.Contains(content))
+            {
+                // A region needs a container to insert into, and at the template ROOT the only one is
+                // `target`. That is decision 89's shape -- but decision 89 owns the WHOLE template,
+                // whereas a <CascadingValue> at the root has SIBLINGS. A region's rows are laid down
+                // with the bindings, which run before the attach that inserts those siblings, so
+                // `<button/><CascadingValue>@foreach…</CascadingValue><p/>` would render rows, button,
+                // tail -- source order silently rearranged. Refused rather than reordered; wrapping the
+                // content in ONE element gives the region a container and compiles (measured).
+                if (parent is null)
+                {
+                    Diag("unsupported-cascade",
+                        "a <CascadingValue> at the template ROOT cannot hold control flow directly: its " +
+                        "rows are laid down with the bindings, which run before the attach that inserts " +
+                        "the cascade's root-level siblings, so their order would silently differ from " +
+                        "the source. Wrap the content in an element (`<ul>@foreach …</ul>`), which gives " +
+                        "it a container and compiles. Refusing to emit rather than reorder.",
+                        node.Source);
+                    return;
+                }
+
+                EmitOps(_code.OpsFor(content), parent);
+                continue;
+            }
+
+            foreach (var child in content.Children)
+            {
+                var c = EmitNode(child, parent);
+                if (c is null) continue;
+
+                // A CASCADE EMITS NO ELEMENT OF ITS OWN, so at the template root its children have no
+                // parent -- and the guard used to read `parent is not null`, which built the content
+                // and then inserted it NOWHERE: `<CascadingValue>` at the root rendered an empty page,
+                // silently. The root's container is `target`, and attaching there is what Compile's own
+                // root loop does, so the cascade's children attach exactly like the siblings they are.
+                if (parent is not null) _create.Add($"insert({parent}, {c});");
+                else _attach.Add($"insert(target, {c});");
+            }
+        }
     }
 
     /// <summary>
@@ -1861,7 +1921,7 @@ public sealed class TemplateCompiler
                 // The fragment travels with the PARENT context it was written in, so that when the child's
                 // @ChildContent is reached the parent's scope can be restored to compile it (decision 131).
                 _fragment = fragmentNodes.Count > 0
-                    ? new Fragment(fragmentNodes, savedCode, savedRegions, savedFile)
+                    ? new Fragment(fragmentNodes, el, savedCode, savedRegions, savedFile)
                     : null;
                 result = EmitNode(roots[0], parent: null);
             }

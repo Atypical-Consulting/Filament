@@ -81,6 +81,7 @@ samples/filament-cascade-gen/App.g.js
 samples/filament-generic-gen/App.g.js
 samples/filament-inherits-gen/App.g.js
 samples/filament-forms-gen/App.g.js
+samples/filament-contentregion-gen/App.g.js
 samples/filament-routing-gen/Router.g.js
 samples/filament-routing-gen/Home.g.js
 samples/filament-routing-gen/About.g.js

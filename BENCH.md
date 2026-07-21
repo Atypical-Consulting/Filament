@@ -5537,3 +5537,74 @@ mono-token) ; les témoins D1 restent représentés (variante `:`, slash `stone-
 ---
 
 *Fin de l'entrée n°67. Ne pas modifier — ajouter une entrée n°68 pour toute rectification.*
+
+---
+
+## Entrée n°68 — 2026-07-21 — Phase 4 : le contenu d'un composant mesuré contre Blazor — un plantage et une perte silencieuse fermés
+
+**Ce qui est mesuré.** `baseline/ContentRegion.Blazor` : les TROIS endroits où le contenu-enfant
+d'un composant est émis, chacun portant du C# DE TEMPLATE — `<Card>@if (show) { <span id="body"> }`
+(le contenu d'un `RenderFragment`, décision 131), `<CascadingValue Value="@level"><ul id="list">
+@foreach …</ul></CascadingValue>` (134) et `<EditForm …>@if (show) { <InputText id="name"
+@bind-Value=… /> }` (138) — plus la cascade posée à la RACINE, ENTRE `<div id="head">` et
+`<p id="tail">`, de sorte que sa PRÉSENCE et son ORDRE soient tous deux observables. Contrat
+`contentregion`, HARNESS **1.60.0 → 1.61.0**, divulgué.
+
+**Ceci est du travail d'HONNÊTETÉ, pas de surface, et les deux défauts ont été SONDÉS, pas
+supposés.** (1) Un PLANTAGE : les trois émetteurs de contenu-enfant parcouraient `content.Children`
+sans jamais interroger `_regions`, donc du C# brut atteignait l'émetteur —
+`error FIL-WIRING: raw template C# (if (show) {) reached the emitter`, exit 1 — sur trois sources
+que Blazor compile. (2) Une PERTE SILENCIEUSE, pire : la garde `parent is not null` de la cascade
+faisait construire le contenu d'un `<CascadingValue>` racine et l'insérait NULLE PART — exit 0,
+module écrit, page rendue sans lui. Les deux ont été trouvés en sondant les onze non-buts §3 fermés
+par l'ADR 0003 : aucun témoin n'avait jamais mis de contrôle de flux ENTRE LES BALISES d'un
+composant. Décision 162.
+
+**QUATRE affirmations, et elles échouent INDÉPENDAMMENT** — c'est pourquoi les quatre sont faites.
+**PRÉSENCE** : `#body` dans `#card`, `#name` dans le `<form>`, `#list` à « 123 ». **ORDRE** :
+`#head` < `#list` < `#tail` par `compareDocumentPosition` — une cascade attachée en fin de bloc, ou
+pas attachée du tout, rend pourtant trois éléments d'apparence correcte. **VIVACITÉ** : un `#add`
+réassigne la liste de la cascade (clé 2 retirée, 4/5 insérées, 1/3 déplacées → « 3415 ») et
+incrémente le compteur de la carte (« 0 » → « 1 ») ; `#toggle` DÉMONTE puis REMONTE la région de la
+carte ET celle du formulaire — une région compilée une fois et jamais re-jouée passe tout le reste
+et échoue ici. **LE @bind DE LA RÉGION** : la frappe atteint le modèle et le submit le relit
+(`#out` vide avant, « ok » après) — c'est le `create()` de la région qui le câble.
+
+```
+dotnet publish baseline/ContentRegion.Blazor -c Release -o bench/publish/blazor-contentregion
+./bench/build-filament.sh filament-contentregion-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-contentregion/wwwroot --app contentregion --label blazor-contentregion       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-contentregion-gen   --app contentregion --label filament-contentregion-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#body`∈`#card` / `#name`∈`form` | `#head`<`#list`<`#tail` | `#list` (init → `#add`) | `#body` (init → `#add`) | submit | `#toggle` off → on |
+|---|---|---|---|---|---|---|
+| **blazor-contentregion** (autorité) | `true` / `true` | `true` / `true` | `123 → 3415` | `0 → 1` | `"" → ok` | `{body:false,name:false}` → `{body:"1",name:true}` |
+| **filament-contentregion-gen** (générateur) | `true` / `true` | `true` / `true` | `123 → 3415` | `0 → 1` | `"" → ok` | `{body:false,name:false}` → `{body:"1",name:true}` |
+
+**Les onze champs observés coïncident, à l'octet.** JSON identique des deux côtés :
+`{"bodyInCard":true,"nameInForm":true,"rows":"123","listAfterHead":true,"tailAfterList":true,`
+`"initialBody":"0","afterAdd":{"rows":"3415","body":"1"},"beforeSubmit":"","afterSubmit":"ok",`
+`"afterToggleOff":{"body":false,"name":false},"afterToggleOn":{"body":"1","name":true}}`. Contract
+met des deux côtés (`--contract-only`).
+
+**La frontière, refusée plutôt que réordonnée.** Une `<CascadingValue>` à la RACINE dont le contenu
+est du contrôle de flux DIRECTEMENT refuse `[unsupported-cascade]`, localisé, avec le remède dans le
+message : les rangées d'une région sont posées avec les BINDINGS, qui tournent avant l'attach qui
+insère les frères racine de la cascade, donc `<button/><CascadingValue>@foreach…</CascadingValue><p/>`
+rendrait rangées, bouton, queue. Envelopper le contenu dans UN élément compile — ce qu'écrit le
+témoin mesuré. Témoin `Unsupported/Gate/CascadeRootFlow.razor`, épinglé ligne/colonne.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive : les
+trois costumes réutilisent la branche que l'émetteur prenait déjà et `list()` est à bord depuis
+l'étape Rows. Suite : **537 tests** (453 générateur / 60 subset / 24 analyzer) + 214 runtime, dont
+NEUF neufs (gate canon vert au premier essai, snapshot `ContentRegion.approved.js` neuf, un témoin
+par costume, l'ordre d'attach, aucun nom de composant survivant, le refus). Baseline
+`dotnet build baseline/ContentRegion.Blazor` VERTE avant toute autre chose — une fixture qui n'est
+pas du Blazor valide n'est pas un témoin (RZ9979). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°68. Ne pas modifier — ajouter une entrée n°69 pour toute rectification.*

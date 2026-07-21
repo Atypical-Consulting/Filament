@@ -1,0 +1,8 @@
+@* Leaf-display child that PLACES a fragment: one [Parameter] and nothing else. @ChildContent is the
+   hole the parent's markup drops into -- and here the parent drops CONTROL FLOW into it, which is the
+   whole point of this witness. *@
+<div id="card">@ChildContent</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

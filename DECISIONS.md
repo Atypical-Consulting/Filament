@@ -5369,3 +5369,52 @@ mesure est le contrat todo v2 (BENCH n°66, HARNESS 1.59.0) — DEUX PHASES auto
 L'exemple `examples/TodoTailwind` suit les mêmes sources ; son gate de couverture a attrapé
 `edit-input` (un hook à trait d'union indiscernable d'une utility) → hooks mono-token (`editbox`),
 la convention du dépôt.
+
+
+## 162. Le contenu d'un composant EST un conteneur — trois costumes d'un seul bug, un plantage et une perte silencieuse
+
+**2026-07-21.** Trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 : aucun témoin n'avait
+jamais mis de contrôle de flux ENTRE LES BALISES d'un composant. Un élément dont les enfants portent
+du C# de template est planifié en RÉGION par le walk de collecte — ses enfants cessent d'être une
+liste en ordre document, ils deviennent une liste d'instructions RE-PARSÉE (décision 54) — donc
+l'émission doit interroger `_regions` et sortir les OPS de la région. `EmitElement` le fait (54) ;
+la racine le fait (89) ; les TROIS endroits qui émettent le contenu-enfant d'un composant ne le
+faisaient PAS, ils parcouraient `content.Children`. Résultat mesuré sur trois sources que Blazor
+compile — `<Card>@if…</Card>` (le contenu d'un RenderFragment, 131), `<EditForm …>@if…</EditForm>`
+(138), `<CascadingValue …>@foreach…</CascadingValue>` (134) — :
+`error FIL-WIRING: raw template C# (if (show) {) reached the emitter`, exit 1. Un PLANTAGE, franc.
+Le correctif est une ligne de politique, pas une machinerie : `Fragment` transporte désormais son
+`Container`, et `EmitFragment` + un `EmitChildContent` partagé prennent la MÊME branche
+`_regions.Contains(container)` que tout autre conteneur. C'est la descente de la 142 atteignant la
+seule espèce de conteneur vers laquelle on ne l'avait jamais pointée.
+
+**Un SECOND défaut, trouvé en corrigeant le premier, et pire — silencieux.** La boucle-enfant de la
+cascade gardait `if (c is not null && parent is not null)` — or un `<CascadingValue>` n'émet AUCUN
+élément propre, donc à la RACINE du template ses enfants n'ont pas de parent. Le contenu était
+construit et inséré NULLE PART : exit 0, module écrit, page rendue sans lui (sonde :
+`<div id="head"/><CascadingValue …><span id="inside"/></CascadingValue><p id="tail"/>` → `_el1`
+créé, jamais inséré). Le conteneur de la racine est `target`, et c'est exactement là que la boucle
+racine de `Compile` attache : les enfants d'une cascade s'attachent comme les frères qu'ils sont,
+**EN ORDRE SOURCE**.
+
+**Le refus délibéré, et pourquoi il n'est pas une paresse.** Une `<CascadingValue>` à la RACINE dont
+le contenu est du contrôle de flux DIRECTEMENT (sans élément enveloppant) refuse
+`[unsupported-cascade]`, localisé. `target` EST un conteneur — c'est ainsi qu'un @if racine compile
+(89) — mais la 89 possède le template ENTIER, alors qu'ici la cascade a des FRÈRES : les rangées
+d'une région sont posées avec les BINDINGS, qui tournent AVANT l'attach qui insère ces frères, donc
+`<button/><CascadingValue>@foreach…</CascadingValue><p/>` rendrait rangées, bouton, queue — l'ordre
+du document silencieusement réarrangé, c'est-à-dire exactement le mal-compilé que cette tranche
+ferme. Refusé plutôt que réordonné ; envelopper le contenu dans UN élément lui donne un conteneur
+et compile — ce qu'écrit le témoin mesuré. Témoin `Unsupported/Gate/CascadeRootFlow.razor`, épinglé
+à sa ligne/colonne exactes.
+
+**GÉNÉRATEUR SEUL, ZÉRO PRIMITIVE.** `git diff -- src/filament-runtime` VIDE : les trois costumes
+réutilisent la branche que l'émetteur prenait déjà, `list()` est à bord depuis l'étape Rows, et
+l'import du module témoin est inchangé. La mesure est le contrat `contentregion` (BENCH n°68,
+HARNESS **1.60.0 → 1.61.0**) — QUATRE affirmations qui échouent INDÉPENDAMMENT : présence
+(#body dans #card, #name dans le `<form>`, #list), ORDRE (#head < #list < #tail — une présence
+correcte ne dit rien de l'ordre), VIVACITÉ (#add réassigne la liste de la cascade par @key et
+incrémente le compteur de la carte ; #toggle démonte ET remonte les régions de la carte ET du
+formulaire), et le @bind PROPRE à la région du formulaire (frappe puis submit). Suite : **537
+tests** (453 générateur / 60 subset / 24 analyzer) + 214 runtime. Ceci est du travail d'honnêteté,
+pas de surface : un plantage et une perte silencieuse, tous deux sur des sources que Blazor compile.

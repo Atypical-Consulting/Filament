@@ -368,6 +368,8 @@ public static class Generate
 
     public static string FormsToTemp() => ToTemp(RepoPaths.FormsRazor, "Forms");
 
+    public static string ContentRegionToTemp() => ToTemp(RepoPaths.ContentRegionRazor, "ContentRegion");
+
     /// <summary>
     /// Emit a fixture from the Supported dir (fixtures that now COMPILE -- e.g. root control
     /// flow, decision 89) and hand back a temp copy. Emits IN-REPO first, like ToTemp, so the

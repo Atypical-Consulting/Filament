@@ -1,0 +1,27 @@
+@* THE DELIBERATE REFUSAL decision 162 DREW, and the one shape of a content region it will not emit.
+
+   A <CascadingValue> emits NO element of its own, so at the template ROOT its content belongs to
+   `target` -- and a region needs a container to lay its rows into. `target` is one, which is how a
+   root @if compiles (decision 89), but decision 89 owns the WHOLE template: there is nothing else in
+   it. Here the cascade has SIBLINGS. A region's rows are laid down with the BINDINGS, which run
+   before the attach that inserts those siblings, so this source would render the rows FIRST, then
+   #b, then #t -- the document silently rearranged.
+
+   Refused rather than reordered. Wrapping the content in ONE element gives the region a container
+   and compiles: that is exactly what baseline/ContentRegion.Blazor/App.razor writes, and the oracle
+   measures its order against Blazor's (BENCH n°68).
+
+   `items` IS reassigned by Add, so the @foreach itself is in subset (decision 140) -- this fixture
+   refuses for the cascade and for nothing else. *@
+<button id="b" @onclick="Add">b</button><CascadingValue Value="@level">@foreach (int n in items)
+{
+    <li @key="n">@n</li>
+}</CascadingValue><p id="t">t</p>
+
+@code {
+    private int level = 1;
+    private List<int> items = new List<int> { 1, 2, 3 };
+    private List<int> _pool = new List<int> { 3, 4, 1, 5, 2 };
+
+    void Add() { items = _pool.Where(x => x != 2).ToList(); }
+}

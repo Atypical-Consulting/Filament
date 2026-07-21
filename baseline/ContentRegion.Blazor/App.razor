@@ -1,0 +1,69 @@
+@* CONTENT REGIONS (decision 162). A COMPONENT's child content is a CONTAINER like any other, so when
+   it holds template C# it is a REGION -- and the three places that emit child content never asked.
+
+   The three costumes of ONE bug, each on a source Blazor compiles, each here so it can fail alone:
+
+     1. <Card>@if (show) { … }</Card>              -- a RenderFragment's content (decision 131)
+     2. <CascadingValue Value="@level">…</…>       -- a cascade's content (decision 134)
+     3. <EditForm …>@if (show) { … }</EditForm>    -- a form's content (decision 138)
+
+   And a FOURTH claim the cascade carries: the <CascadingValue> sits at the TEMPLATE ROOT, between
+   #head and #tail. A cascade emits no element of its own, so its children have no parent element --
+   they belong to `target`, in source order. Content built and inserted NOWHERE renders an empty page,
+   silently; content attached out of order renders the right nodes in the wrong places.
+
+   DOM contract, and every line of it fails independently:
+     #head, #list, #tail          -- in THAT order, the cascade's <ul> between its two siblings
+     #list                        -- "123", the @foreach's rows, keyed
+     #body inside #card           -- "0", the parent's control flow placed by the CHILD
+     #name inside the <form>      -- the form's control flow, with a working @bind
+     #out                         -- "", until a submit reads the model back
+
+   #add reassigns the list (keys 2 removed, 4/5 inserted, 1/3 moved -> "3415") and bumps the count, so
+   BOTH the cascade's region and the card's region are live. #toggle flips `show`, so the card's and
+   the form's regions mount and unmount -- a region that compiled but never re-ran would keep them. *@
+
+<div id="head">head</div>
+<CascadingValue Value="@level"><ul id="list">@foreach (int n in items)
+{
+    <li @key="n">@n</li>
+}</ul></CascadingValue>
+<p id="tail">tail</p>
+
+<Card>@if (show)
+{
+    <span id="body">@count</span>
+}</Card>
+
+<EditForm Model="@model" OnValidSubmit="Save">@if (show)
+{
+    <InputText id="name" @bind-Value="model.Name" /><button id="save" type="submit">save</button>
+}</EditForm>
+
+<p id="out">@saved</p>
+
+<button id="toggle" @onclick="Toggle">toggle</button>
+<button id="add" @onclick="Add">add</button>
+
+@code {
+    private int level = 1;
+    private int count = 0;
+    private bool show = true;
+    private string saved = "";
+    private Person model = new Person();
+
+    private List<int> items = new List<int> { 1, 2, 3 };
+    private List<int> _pool = new List<int> { 3, 4, 1, 5, 2 };
+
+    void Toggle() { show = !show; }
+
+    void Add()
+    {
+        count++;
+        items = _pool.Where(x => x != 2).ToList();
+    }
+
+    void Save() { saved = model.Name; }
+
+    public record Person { public string Name { get; set; } = ""; }
+}
