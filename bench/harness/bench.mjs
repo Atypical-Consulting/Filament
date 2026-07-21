@@ -695,8 +695,16 @@ const APPS = {
   // Weight/timing/memory run on top via the generic instruments; the contract is what makes them comparable.
   duel: {
     readySelector: '#task-add',
-    observeSelector: '#board',
+    // The stable root: the router UNMOUNTS #board on navigation, so observing it would blind the
+    // predicate wait the moment the primary action fires. #app is both shells' mount target.
+    observeSelector: '#app',
     scenarios: [],
+    // The weight pass's after-interaction reading: navigate to /about, which on the Blazor side is
+    // where lazily-loaded assemblies would surface. The About counter's initial text is the predicate.
+    primaryAction: {
+      button: '#to-about',
+      predicate: { kind: 'textEquals', args: { selector: '#about-count', expected: 'clicked 0' } },
+    },
   },
   // Correctness-only: verifyContract adds two rows then clicks the FIRST row's own .del button and asserts
   // THAT row alone is removed -- the per-row captured-lambda handler (decision 141): `() => Del(r.Id)` wired
@@ -1766,9 +1774,27 @@ async function waitForNetworkQuiet(tracker, { quietMs, maxSettleMs }) {
  * visible, stable, enabled, receives pointer events) WITHOUT dispatching a click.
  */
 async function waitForAppReady(page, readySelector, timeoutMs) {
+  // The instant of readiness is taken IN-PAGE, inside an observer callback (the same timing rule the
+  // click path applies: never a frame boundary, never a poll), as ms since timeOrigin -- i.e.
+  // navigation -> interactive, the number the weight pass records as msToInteractive (decision 143).
+  // A selector ALREADY present when observation starts is timed at observation start, which can only
+  // OVERSTATE the faster side's number (the conservative direction).
+  const readyAtMs = await page.evaluate(([sel, t]) => new Promise((resolve, reject) => {
+    const at = () => (document.querySelector(sel) ? performance.now() : null);
+    const now = at();
+    if (now !== null) { resolve(now); return; }
+    let timer;
+    const mo = new MutationObserver(() => {
+      const hit = at();
+      if (hit !== null) { mo.disconnect(); clearTimeout(timer); resolve(hit); }
+    });
+    mo.observe(document.documentElement, { childList: true, subtree: true, attributes: true });
+    timer = setTimeout(() => { mo.disconnect(); reject(new Error(`ready selector ${sel} not present within ${t}ms`)); }, t);
+  }), [readySelector, timeoutMs]);
   const loc = page.locator(readySelector);
   await loc.waitFor({ state: 'visible', timeout: timeoutMs });
   await loc.click({ trial: true, timeout: timeoutMs });
+  return readyAtMs;
 }
 
 // ---------------------------------------------------------------------------
@@ -1828,10 +1854,11 @@ async function withFreshPage(browser, opts, fn) {
 
 async function loadAndSettle(ctx, url, app, opts) {
   await ctx.page.goto(url, { waitUntil: 'commit', timeout: opts.navTimeoutMs });
-  await waitForAppReady(ctx.page, APPS[app].readySelector, opts.readyTimeoutMs);
+  const readyAtMs = await waitForAppReady(ctx.page, APPS[app].readySelector, opts.readyTimeoutMs);
   // Blazor lazy-loads framework files, so "the button exists" is NOT the end of
   // the network. Settle before taking any byte reading.
   const settle = await waitForNetworkQuiet(ctx.tracker, opts);
+  settle.readyAtMs = readyAtMs;
   return settle;
 }
 
@@ -3768,6 +3795,7 @@ async function measureWeightOnce(browser, url, app, opts) {
 
     return {
       atReady,
+      readyAtMs: settle.readyAtMs,
       afterInteraction,
       // Complete CDP view of the run, for reconciliation against the server ledger.
       final: ctx.tracker.snapshot(),
@@ -3853,8 +3881,15 @@ async function measureWeight(browser, url, app, opts, server) {
   }
 
   const summaryToInteractive = summarize(toInteractive);
+  const readySamples = runs.map((r) => r.readyAtMs).filter((x) => typeof x === 'number');
   return {
     unit: 'bytes',
+    // navigation -> ready-selector-present, observed in-page (see waitForAppReady). This is the
+    // load-time axis (TTI) the app-level duel reports; the byte fields below are the weight axis.
+    msToInteractive: readySamples.length
+      ? { ...summarize(readySamples), samples: readySamples,
+          basis: 'ms since timeOrigin at which the ready selector was observed present, in-page' }
+      : null,
     method: 'CDP Network.loadingFinished.encodedDataLength summed across all requests from navigation until app-interactive AND network idle',
     toInteractive: {
       ...summaryToInteractive,
