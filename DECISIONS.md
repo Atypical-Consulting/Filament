@@ -4918,3 +4918,36 @@ d'état d'une ligne persistante est un EFFET sur un signal par record, jamais un
 existants sont passés inchangés — l'élargissement n'a pas déplacé un octet des émissions en place ; suite à 478.
 
 Générateur seul, firewall runtime vide. La mesure de l'app est l'affaire du Duel (entrée n°60 à venir).
+
+## 143. Le Duel — l'app est la preuve, le contrat est l'oracle, et deux instruments qui ne savent pas mentir
+
+**2026-07-21.** Le registre gagnait ses preuves un témoin à la fois ; l'objection restante était l'ÉCHELLE (« et
+une vraie app ? »). L'arbitrage du Duel : une app composite (`baseline/Duel.Blazor`, task board routé) dont les
+pages sont compilées PAR LES DEUX chaînes depuis les mêmes octets source, et dont l'oracle n'est pas une clé canon
+mais un CONTRAT COMPORTEMENTAL de 10 étapes exécuté sur les deux rendus — parce qu'un assemblage de tranches
+déjà gâtées n'a pas besoin d'une seconde clé, il a besoin qu'on prouve que la COMPOSITION tient (DuelTests) et que
+les deux apps FONT la même chose avant d'être pesées.
+
+**Trois arbitrages d'instrumentation, chacun contre l'auto-flatterie :**
+
+**1. Le TTI est pris en page, à l'instant de l'observation** — jamais une frontière de frame, jamais un sondage
+Playwright — et un sélecteur déjà présent quand l'observation s'ouvre est daté de l'ouverture : l'erreur résiduelle
+SURESTIME le côté rapide (Filament), jamais l'inverse. Mesuré sur localhost et DIT tel : 6,7× est un plancher.
+
+**2. La mémoire est `measureUserAgentSpecificMemory`, pas le tas JS.** `JSHeapUsedSize` aurait EXCLU la mémoire
+linéaire WASM — c'est-à-dire caché le tas .NET entier de Blazor, l'artefact précis que la comparaison existe pour
+montrer. L'API exige l'isolation cross-origin : COOP/COEP entrent dans `server.mjs` (tout y est same-origin, le
+require-corp ne contraint rien d'autre). Si l'isolation ou l'API manque : REFUS bruyant, pas de repli — un repli
+silencieux vers le tas JS est le mensonge par omission du §10. Le burst d'interaction est le driver de contrat
+lui-même, extrait en `driveLoadedApp` (une description de « ce que l'app doit faire », deux consommateurs — la
+leçon 53, encore).
+
+**3. L'AOT est mesuré et PERD sur cette app** (plus lourd ET plus lent qu'interprété : l'échange
+poids-contre-vitesse ne paie pas quand le chargement domine). Le garder dans le tableau coûte à la narration
+simple et c'est pour ça qu'il y reste : le no-JIT est le meilleur cas Blazor ici, et c'est LUI le dénominateur.
+
+**La page `/benchmark`** rend les JSON committés à la construction — un chiffre y est un artefact relu, jamais une
+prose retapée. Barres linéaires (l'échelle EST le message : la barre Filament fait ~0,25 % de la barre Blazor),
+identité portée par le libellé (jamais par la couleur seule), tableau complet, méthodologie et réserves sur la page.
+
+Mesuré : entrée n°60. Générateur + harnais seuls ; runtime intact.

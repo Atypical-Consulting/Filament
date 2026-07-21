@@ -1,10 +1,14 @@
 ---
+// Anchor links are rooted at the base URL so they resolve from EVERY page (a bare "#problem"
+// silently does nothing on /benchmark); the trailing-slash strip matches Layout.astro's.
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 const links = [
-  { href: "#problem", label: "Problem" },
-  { href: "#solution", label: "How it works" },
-  { href: "#evidence", label: "Evidence" },
-  { href: "#subset", label: "What compiles" },
-  { href: "#honesty", label: "Limits" },
+  { href: `${base}/#problem`, label: "Problem" },
+  { href: `${base}/#solution`, label: "How it works" },
+  { href: `${base}/#evidence`, label: "Evidence" },
+  { href: `${base}/benchmark`, label: "Benchmark" },
+  { href: `${base}/#subset`, label: "What compiles" },
+  { href: `${base}/#honesty`, label: "Limits" },
 ];
 ---
 
@@ -15,7 +19,7 @@ const links = [
     class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
     aria-label="Primary"
   >
-    <a href="#top" class="flex items-center gap-2.5 font-semibold tracking-tight">
+    <a href={`${base}/#top`} class="flex items-center gap-2.5 font-semibold tracking-tight">
       <span
         class="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-ink-800 ring-1 ring-inset ring-ink-700"
         aria-hidden="true"

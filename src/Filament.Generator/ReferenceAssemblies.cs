@@ -37,9 +37,20 @@ public static class ReferenceAssemblies
 
     static List<MetadataReference> Load()
     {
+        // FILAMENT_DOTNET_ROOT (decision 144): the ONE seam for a host with no SDK on disk -- the WASM
+        // playground fetches the packs over HTTP, writes them into MEMFS, and points this variable at
+        // them. Same layout, same loud failures below; nothing else about resolution changes. When set
+        // it is AUTHORITATIVE: no silent fallback to the machine's SDK, or two hosts would resolve
+        // against subtly different references and disagree in silence.
+        var overrideRoot = Environment.GetEnvironmentVariable("FILAMENT_DOTNET_ROOT");
+
+        // The SDK probe runs ONLY when no override is set: on the WASM host there is no SDK and
+        // GetRuntimeDirectory's answer is meaningless at best -- the override must engage before it.
         // .../shared/Microsoft.NETCore.App/10.0.9/  ->  .../
-        var runtimeDir = System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory();
-        var dotnetRoot = Path.GetFullPath(Path.Combine(runtimeDir, "..", "..", ".."));
+        var dotnetRoot = overrideRoot is { Length: > 0 }
+            ? Path.GetFullPath(overrideRoot)
+            : Path.GetFullPath(Path.Combine(
+                System.Runtime.InteropServices.RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", ".."));
         var packs = Path.Combine(dotnetRoot, "packs");
 
         if (!Directory.Exists(packs))

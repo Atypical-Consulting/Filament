@@ -5194,3 +5194,57 @@ avec guidance. Suite : **476 tests** (398 générateur / 60 subset / 18 analyzer
 ---
 
 *Fin de l'entrée n°59. Ne pas modifier — ajouter une entrée n°60 pour toute rectification.*
+
+---
+
+## Entrée n°60 — 2026-07-21 — LE DUEL : une app non triviale, les deux compilateurs, trois axes
+
+**L'objection que cette entrée ferme** : « d'accord pour un compteur-jouet, mais une vraie app ? ». Le Duel est
+**une app** — un task board routé : `EditForm`/`@bind-Value` pour ajouter, liste keyée de records mutables avec
+**toggle/remove PAR LIGNE**, trois filtres, stats LINQ, état-vide `@if`, seconde page + routeur généré — compilée
+depuis les **MÊMES fichiers `.razor`** (`baseline/Duel.Blazor/Pages/`) par Blazor WebAssembly d'un côté et par
+`--router` de l'autre. Rien n'est porté ; c'est le même source, jugé par le même contrat.
+
+**LE CONTRAT D'ABORD** (10 étapes, `verifyContract` branche `duel`) : état initial, ajout ×2 par le formulaire
+(l'input se vide), toggle d'une ligne PERSISTANTE (la classe de piège #125 — le span d'état doit suivre), les trois
+filtres, remove par le bouton DE la ligne, navigation sans rechargement, About porteur d'état, retour = Board
+remonté À NEUF (le contrat mounted-afresh de #139, PARTAGÉ : RouteView instancie aussi à neuf), Back. **JSON
+observé identique octet pour octet des deux côtés** avant qu'aucun chiffre ne soit émis. `HARNESS_VERSION`
+1.53.0 → **1.54.0** (contrat duel + les deux instruments ci-dessous), divulgué.
+
+### Les instruments nouveaux
+
+**TTI** : `msToInteractive` — navigation → sélecteur ready observé PRÉSENT, l'instant pris EN PAGE dans le callback
+d'un MutationObserver (la règle de chronométrage des clics, appliquée au chargement). Un sélecteur déjà présent à
+l'ouverture de l'observation est daté de l'ouverture — ce qui ne peut que SURESTIMER le côté rapide (la direction
+conservatrice). **Mémoire** : `performance.measureUserAgentSpecificMemory()` sur page cross-origin-isolated
+(COOP/COEP ajoutés à `server.mjs`) — le seul instrument qui ATTRIBUE la mémoire linéaire WASM à la page, donc le
+tas .NET de Blazor est compté, pas caché ; échec BRUYANT si l'isolation ou l'API manque (aucun repli JS-heap-only,
+qui flatterait précisément le côté qui a un runtime à cacher) ; le burst d'interaction est LE driver de contrat
+(une description, deux consommateurs) ; médiane de 5 pages froides, breakdowns conservés dans le JSON.
+
+### Résultats (passes miroir, `bench/run-duel.sh`, séquentiel, cache froid, IQR ≤ 4,8 ms partout)
+
+| Axe | blazor-duel-nojit | blazor-duel-aot | **filament-duel-gen** | facteur (vs nojit / vs aot) |
+|---|---|---|---|---|
+| Poids → interactif, brotli | 1 833 677 o (48 req.) | 4 211 631 o | **4 555 o (3 req.)** | **~402× / ~925×** |
+| Poids → interactif, gzip | 2 231 483 o | 6 151 314 o | **5 100 o** | ~438× / ~1206× |
+| TTI, brotli, médiane de 10 | 180,3 ms | 233,0 ms | **26,9 ms** | ~6,7× / ~8,7× |
+| Mémoire après charge | 43 484 358 o | 47 357 844 o | **770 742 o** | ~56× / ~61× |
+| Mémoire après burst | 43 668 646 o | 47 534 484 o | **879 323 o** | ~49,7× / ~54× |
+
+**RÉSERVES, divulguées.** (1) Le TTI est mesuré sur LOCALHOST : les mégaoctets de la colonne poids n'y coûtent
+presque rien — sur un réseau réel l'écart s'ÉLARGIT ; 6,7× est un plancher, pas une revendication. (2) L'AOT est
+PLUS LOURD et PLUS LENT que le no-JIT sur cette app : l'AOT échange du poids contre de la vitesse d'exécution, et
+une app dominée par le chargement n'encaisse que le poids — c'est le no-JIT, le MEILLEUR cas Blazor ici, qui sert
+de dénominateur aux gros ratios. (3) Pas de clé de réponse canon pour le Duel : c'est un ASSEMBLAGE de tranches
+déjà gâtées une à une ; son oracle est le contrat à 10 étapes, et `DuelTests` épingle la composition. (4) La page
+`/benchmark` du site rend ces chiffres DEPUIS les JSON committés (`bench/results/duel/`) — la relancer, c'est
+recommitter des artefacts, jamais retaper des nombres.
+
+`git diff -- src/filament-runtime` vide — le runtime n'a pas bougé d'un octet pour tout le programme du Duel
+(#140/#141/#142 compris). Suite : **478 tests**.
+
+---
+
+*Fin de l'entrée n°60. Ne pas modifier — ajouter une entrée n°61 pour toute rectification.*

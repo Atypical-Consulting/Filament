@@ -305,6 +305,12 @@ const nonGoals = [
           <code class="text-mist-100">Rows</code> — compiled from pure <code class="text-mist-100"
             >.razor</code
           > and benchmarked against the same apps built with Blazor WASM (interpreted and AOT).
+          For the app-level head-to-head — a routed task board with a form, a keyed list and
+          per-row handlers, measured on weight, time-to-interactive and memory — see
+          <a
+            class="font-semibold text-filament-400 underline decoration-filament-500/40 underline-offset-4 hover:decoration-filament-400"
+            href={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/benchmark`}>the Duel</a
+          >.
         </p>
 
         <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">

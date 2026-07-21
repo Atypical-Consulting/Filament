@@ -1,0 +1,234 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+
+// EVERY number on this page is read from the committed measurement artifacts in
+// bench/results/duel/ at build time. Nothing is typed in by hand: a re-run of
+// bench/run-duel.sh re-commits the JSONs and this page follows. The bench never runs
+// in CI (thermal discipline, DECISIONS #47) — these are the artifacts of a real,
+// sequential, mirrored-pass run on a quiet machine.
+import filGz from "../../../bench/results/duel/filament-duel-gen-gzip.json";
+import filBr from "../../../bench/results/duel/filament-duel-gen-br.json";
+import nojitGz from "../../../bench/results/duel/blazor-duel-nojit-gzip.json";
+import nojitBr from "../../../bench/results/duel/blazor-duel-nojit-br.json";
+import aotGz from "../../../bench/results/duel/blazor-duel-aot-gzip.json";
+import aotBr from "../../../bench/results/duel/blazor-duel-aot-br.json";
+import filMem from "../../../bench/results/duel/filament-duel-gen-memory.json";
+import nojitMem from "../../../bench/results/duel/blazor-duel-nojit-memory.json";
+import aotMem from "../../../bench/results/duel/blazor-duel-aot-memory.json";
+
+const fmtBytes = (b: number) =>
+  b >= 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(2)} MB` : b >= 1024 ? `${(b / 1024).toFixed(1)} KB` : `${b} B`;
+const fmtMs = (ms: number) => `${ms.toFixed(ms < 100 ? 1 : 0)} ms`;
+
+type Row = { name: string; value: number; display: string; filament?: boolean };
+const section = (rows: Row[]) => {
+  const max = Math.max(...rows.map((r) => r.value));
+  return rows.map((r) => ({ ...r, pct: Math.max((r.value / max) * 100, 0.35) }));
+};
+
+// WEIGHT — cold-cache wire bytes to interactive, brotli negotiation (the production-like
+// encoding); the gzip pass is reported in the table below.
+const weight = section([
+  { name: "Blazor WASM (no JIT)", value: nojitBr.weight.toInteractive.median, display: fmtBytes(nojitBr.weight.toInteractive.median) },
+  { name: "Blazor WASM (AOT)", value: aotBr.weight.toInteractive.median, display: fmtBytes(aotBr.weight.toInteractive.median) },
+  { name: "Filament", value: filBr.weight.toInteractive.median, display: fmtBytes(filBr.weight.toInteractive.median), filament: true },
+]);
+
+// TIME TO INTERACTIVE — navigation to ready-selector-present, observed in-page, brotli pass.
+const tti = section([
+  { name: "Blazor WASM (no JIT)", value: nojitBr.weight.msToInteractive.median, display: fmtMs(nojitBr.weight.msToInteractive.median) },
+  { name: "Blazor WASM (AOT)", value: aotBr.weight.msToInteractive.median, display: fmtMs(aotBr.weight.msToInteractive.median) },
+  { name: "Filament", value: filBr.weight.msToInteractive.median, display: fmtMs(filBr.weight.msToInteractive.median), filament: true },
+]);
+
+// MEMORY — performance.measureUserAgentSpecificMemory (includes WASM linear memory), after the
+// full contract-drive burst, median of 5 cold pages.
+const memory = section([
+  { name: "Blazor WASM (no JIT)", value: nojitMem.memory.medianBytes.afterBurst, display: fmtBytes(nojitMem.memory.medianBytes.afterBurst) },
+  { name: "Blazor WASM (AOT)", value: aotMem.memory.medianBytes.afterBurst, display: fmtBytes(aotMem.memory.medianBytes.afterBurst) },
+  { name: "Filament", value: filMem.memory.medianBytes.afterBurst, display: fmtBytes(filMem.memory.medianBytes.afterBurst), filament: true },
+]);
+
+const ratio = (blazor: number, filament: number) => Math.round(blazor / filament);
+const weightX = ratio(nojitBr.weight.toInteractive.median, filBr.weight.toInteractive.median);
+const ttiX = (nojitBr.weight.msToInteractive.median / filBr.weight.msToInteractive.median).toFixed(1);
+const memX = ratio(nojitMem.memory.medianBytes.afterBurst, filMem.memory.medianBytes.afterBurst);
+
+const env = filBr.environment;
+const repo = "https://github.com/Atypical-Consulting/Filament";
+
+const table = [
+  ["Wire bytes to interactive (gzip)", fmtBytes(nojitGz.weight.toInteractive.median), fmtBytes(aotGz.weight.toInteractive.median), fmtBytes(filGz.weight.toInteractive.median)],
+  ["Wire bytes to interactive (brotli)", fmtBytes(nojitBr.weight.toInteractive.median), fmtBytes(aotBr.weight.toInteractive.median), fmtBytes(filBr.weight.toInteractive.median)],
+  ["Time to interactive (brotli, median)", fmtMs(nojitBr.weight.msToInteractive.median), fmtMs(aotBr.weight.msToInteractive.median), fmtMs(filBr.weight.msToInteractive.median)],
+  ["Time to interactive (IQR)", `${nojitBr.weight.msToInteractive.iqr.toFixed(2)} ms`, `${aotBr.weight.msToInteractive.iqr.toFixed(2)} ms`, `${filBr.weight.msToInteractive.iqr.toFixed(2)} ms`],
+  ["Memory after load", fmtBytes(nojitMem.memory.medianBytes.afterLoad), fmtBytes(aotMem.memory.medianBytes.afterLoad), fmtBytes(filMem.memory.medianBytes.afterLoad)],
+  ["Memory after interaction burst", fmtBytes(nojitMem.memory.medianBytes.afterBurst), fmtBytes(aotMem.memory.medianBytes.afterBurst), fmtBytes(filMem.memory.medianBytes.afterBurst)],
+  ["Requests to interactive", String(nojitBr.weight.requestCount), String(aotBr.weight.requestCount), String(filBr.weight.requestCount)],
+];
+---
+
+<Layout
+  title="The Duel — one app, two compilers | Filament"
+  description="The same routed task-board app, built from the same .razor sources by Blazor WebAssembly and by Filament, measured on weight, time-to-interactive and memory."
+>
+  <Nav />
+  <main id="main" class="mx-auto max-w-6xl px-6">
+    <header class="pt-16 pb-10 md:pt-24">
+      <p class="font-mono text-sm tracking-widest text-spark-400 uppercase">The Duel</p>
+      <h1 class="mt-3 max-w-3xl text-4xl font-bold tracking-tight text-mist-100 md:text-5xl">
+        One app. The same <span class="text-filament-400">.razor</span> sources. Two compilers.
+      </h1>
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
+        A routed task board — <code class="text-mist-100">EditForm</code> add, keyed list with
+        per-row toggle/remove, filters, LINQ stats, a second page — compiled once by
+        <strong class="text-mist-100">Blazor WebAssembly</strong> and once by
+        <strong class="text-mist-100">Filament</strong>, from the
+        <a class="text-filament-400 underline decoration-filament-500/40 underline-offset-4 hover:decoration-filament-400" href={`${repo}/tree/main/baseline/Duel.Blazor`}>same page files</a>.
+        Every number below was taken only after a
+        <strong class="text-mist-100">10-step behavioural contract</strong> — add, toggle a
+        persisting row, all three filters, per-row remove, navigate, remount afresh, Back —
+        passed <em>identically</em> on both sides.
+      </p>
+    </header>
+
+    <section aria-labelledby="h-weight" class="border-t border-ink-800 py-12">
+      <div class="flex flex-wrap items-baseline justify-between gap-4">
+        <h2 id="h-weight" class="text-2xl font-bold text-mist-100">Weight on the wire</h2>
+        <p class="font-mono text-sm text-filament-400">{weightX}× less to download</p>
+      </div>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-mist-500">
+        Cold cache, service workers blocked, every byte counted by CDP from navigation until the
+        app is interactive and the network idle. Brotli negotiated, as production would.
+      </p>
+      <div class="mt-6 space-y-3" role="img" aria-label={`Wire bytes to interactive: ${weight.map((r) => `${r.name} ${r.display}`).join(", ")}`}>
+        {weight.map((r) => (
+          <div class="grid grid-cols-[11rem_1fr_auto] items-center gap-3 text-sm">
+            <span class="text-mist-300">{r.name}</span>
+            <div class="h-3 overflow-hidden rounded-r">
+              <div
+                class:list={["h-full rounded-r", r.filament ? "bg-filament-500" : "bg-mist-500/50"]}
+                style={`width:${r.pct}%`}
+              ></div>
+            </div>
+            <span class:list={["font-mono", r.filament ? "text-filament-400" : "text-mist-300"]}>{r.display}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section aria-labelledby="h-tti" class="border-t border-ink-800 py-12">
+      <div class="flex flex-wrap items-baseline justify-between gap-4">
+        <h2 id="h-tti" class="text-2xl font-bold text-mist-100">Time to interactive</h2>
+        <p class="font-mono text-sm text-filament-400">{ttiX}× sooner — over localhost</p>
+      </div>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-mist-500">
+        Navigation to the app answering its ready probe, the instant observed in-page by a
+        MutationObserver — never a frame boundary. Median of 10 cold loads. Localhost flatters
+        the heavier side: on a real network, the megabytes above arrive first.
+      </p>
+      <div class="mt-6 space-y-3" role="img" aria-label={`Time to interactive: ${tti.map((r) => `${r.name} ${r.display}`).join(", ")}`}>
+        {tti.map((r) => (
+          <div class="grid grid-cols-[11rem_1fr_auto] items-center gap-3 text-sm">
+            <span class="text-mist-300">{r.name}</span>
+            <div class="h-3 overflow-hidden rounded-r">
+              <div
+                class:list={["h-full rounded-r", r.filament ? "bg-filament-500" : "bg-mist-500/50"]}
+                style={`width:${r.pct}%`}
+              ></div>
+            </div>
+            <span class:list={["font-mono", r.filament ? "text-filament-400" : "text-mist-300"]}>{r.display}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section aria-labelledby="h-memory" class="border-t border-ink-800 py-12">
+      <div class="flex flex-wrap items-baseline justify-between gap-4">
+        <h2 id="h-memory" class="text-2xl font-bold text-mist-100">Memory</h2>
+        <p class="font-mono text-sm text-filament-400">{memX}× smaller footprint</p>
+      </div>
+      <p class="mt-2 max-w-2xl text-sm leading-relaxed text-mist-500">
+        <code class="text-mist-300">performance.measureUserAgentSpecificMemory()</code> on a
+        cross-origin-isolated page — the one instrument that attributes
+        <strong class="text-mist-100">WebAssembly linear memory</strong> to the page, so
+        Blazor's .NET heap is counted, not hidden. Measured after the full interaction burst;
+        median of 5 cold pages; per-run attribution breakdowns kept in the committed JSON.
+      </p>
+      <div class="mt-6 space-y-3" role="img" aria-label={`Memory after the interaction burst: ${memory.map((r) => `${r.name} ${r.display}`).join(", ")}`}>
+        {memory.map((r) => (
+          <div class="grid grid-cols-[11rem_1fr_auto] items-center gap-3 text-sm">
+            <span class="text-mist-300">{r.name}</span>
+            <div class="h-3 overflow-hidden rounded-r">
+              <div
+                class:list={["h-full rounded-r", r.filament ? "bg-filament-500" : "bg-mist-500/50"]}
+                style={`width:${r.pct}%`}
+              ></div>
+            </div>
+            <span class:list={["font-mono", r.filament ? "text-filament-400" : "text-mist-300"]}>{r.display}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <section aria-labelledby="h-table" class="border-t border-ink-800 py-12">
+      <h2 id="h-table" class="text-2xl font-bold text-mist-100">All the numbers</h2>
+      <div class="mt-6 overflow-x-auto">
+        <table class="w-full min-w-[40rem] text-left text-sm">
+          <thead>
+            <tr class="border-b border-ink-700 text-mist-500">
+              <th scope="col" class="py-2 pr-4 font-medium">Measure</th>
+              <th scope="col" class="py-2 pr-4 font-medium">Blazor (no JIT)</th>
+              <th scope="col" class="py-2 pr-4 font-medium">Blazor (AOT)</th>
+              <th scope="col" class="py-2 font-medium text-filament-400">Filament</th>
+            </tr>
+          </thead>
+          <tbody class="font-mono text-mist-300">
+            {table.map((row) => (
+              <tr class="border-b border-ink-800/70">
+                <td class="py-2.5 pr-4 font-sans text-mist-500">{row[0]}</td>
+                <td class="py-2.5 pr-4">{row[1]}</td>
+                <td class="py-2.5 pr-4">{row[2]}</td>
+                <td class="py-2.5 text-filament-400">{row[3]}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="h-method" class="border-t border-ink-800 py-12 pb-20">
+      <h2 id="h-method" class="text-2xl font-bold text-mist-100">How this was measured</h2>
+      <ul class="mt-5 max-w-3xl space-y-3 text-sm leading-relaxed text-mist-500">
+        <li>
+          <strong class="text-mist-300">Same source, both sides.</strong> The Blazor app compiles
+          <code>baseline/Duel.Blazor/Pages/*.razor</code>; Filament compiles
+          <em>the very same files</em> via its <code>--router</code> mode. Nothing is ported.
+        </li>
+        <li>
+          <strong class="text-mist-300">Contract first, numbers second.</strong> The harness
+          refuses to report any number for an app that fails the shared 10-step DOM contract —
+          an app doing less work can never read as fast.
+        </li>
+        <li>
+          <strong class="text-mist-300">Mirrored passes.</strong> Three labels × two encodings,
+          order reversed between halves (<code>bench/run-duel.sh</code>), so thermal or scheduler
+          drift cannot masquerade as a framework effect. Strictly sequential, cold cache each run.
+        </li>
+        <li>
+          <strong class="text-mist-300">Environment, recorded.</strong> Chrome {env.chrome.version},
+          .NET SDK {env.dotnetSdk}, harness v{env.harnessVersion} — pinned inside every committed JSON in
+          <a class="text-filament-400 hover:underline" href={`${repo}/tree/main/bench/results/duel`}>bench/results/duel/</a>.
+        </li>
+        <li>
+          <strong class="text-mist-300">The full log.</strong> Entry n°60 of
+          <a class="text-filament-400 hover:underline" href={`${repo}/blob/main/BENCH.md`}>BENCH.md</a>
+          records this run, its reserves, and every command to reproduce it.
+        </li>
+      </ul>
+    </section>
+  </main>
+  <Footer />
+</Layout>

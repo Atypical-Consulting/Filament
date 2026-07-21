@@ -109,6 +109,8 @@ Reactive lists compile to `list(parent, sourceFn, keyFn, bodyFn, anchor)` — a 
 
 Two apps — `Counter` and a 1,000-row `Rows` — compiled from **pure `.razor`** and benchmarked against the same apps built with Blazor WASM (interpreted and AOT). The project's grading criteria:
 
+> **The Duel (app-level, BENCH n°60).** One non-trivial app — a routed task board (`EditForm` add, keyed list with per-row toggle/remove, filters, LINQ stats, second page) — built from the **same `.razor` sources** by both compilers, measured only after a 10-step behavioural contract passed identically on both sides: wire weight **4,555 B vs 1,833,677 B** brotli (**~402×**, ~925× vs AOT), time-to-interactive **26.9 ms vs 180.3 ms** over localhost (**~6.7×**, a floor — a real network widens it), memory after interaction **0.88 MB vs 43.7 MB** (`measureUserAgentSpecificMemory`, WASM heap counted — **~50×**). Rendered from the committed artifacts on [the benchmark page](https://atypical-consulting.github.io/Filament/benchmark).
+
 | # | Criterion | Result | Detail |
 |---|-----------|:------:|--------|
 | **C1** | Bundle weight (< 10 KB gzip) | ✅ **PASS** | `Counter` **2,987 B**, `Rows` **4,373 B** gzip. The signals runtime holds a **1,943 B / 2,048 B** budget with the runtime byte-frozen across all 57 subset slices. |

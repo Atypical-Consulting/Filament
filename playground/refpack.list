@@ -1,0 +1,45 @@
+# The curated reference-pack list (decision 144) — the assemblies the WASM playground ships so the
+# UNCHANGED generator can resolve types and tag helpers in the browser. The list is DISCOVERED, not
+# designed: playground/prove-refpack.sh runs the FULL generator test suite against a layout holding
+# exactly these, and the suite being green is the equivalence proof. Add a name only when the proof
+# demands it; every addition costs the visitor bytes.
+#
+# pack: Microsoft.NETCore.App.Ref
+netstandard
+mscorlib
+System.Runtime
+System.Runtime.InteropServices
+System.Runtime.Extensions
+System.Collections
+System.Collections.Concurrent
+System.Linq
+System.Linq.Expressions
+System.Console
+System.ComponentModel
+System.ComponentModel.Primitives
+System.ObjectModel
+System.Private.CoreLib
+System.Private.Uri
+System.Threading
+System.Threading.Tasks
+System.Text.RegularExpressions
+System.Text.Encoding.Extensions
+System.Net.Http
+System.Net.Primitives
+System.Memory
+System.Runtime.Numerics
+System.Globalization
+System.Resources.ResourceManager
+System.Diagnostics.Debug
+System.Diagnostics.Tools
+#
+# pack: Microsoft.AspNetCore.App.Ref
+Microsoft.AspNetCore.Components
+Microsoft.AspNetCore.Components.Web
+Microsoft.AspNetCore.Components.Forms
+Microsoft.AspNetCore.Authorization
+Microsoft.AspNetCore.Metadata
+Microsoft.Extensions.DependencyInjection.Abstractions
+Microsoft.Extensions.Logging.Abstractions
+Microsoft.Extensions.Primitives
+Microsoft.JSInterop

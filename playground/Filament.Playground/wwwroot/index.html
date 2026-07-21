@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <title>Filament Playground — dev host</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preload" id="webassembly" />
+  <script type="importmap"></script>
+  <script type='module' src="main#[.{fingerprint}].js"></script>
+</head>
+
+<body>
+  <!-- The DEV harness only: the real page is website/src/pages/playground.astro, which loads the
+       same published _framework + refpack assets. This shell exists so the engine can be driven and
+       byte-parity-tested without the site build in the loop. -->
+  <h1>Filament Playground — engine dev host</h1>
+  <p id="status">loading .NET…</p>
+  <textarea id="razor" rows="16" cols="80"></textarea>
+  <p><button id="compile" disabled>Compile</button></p>
+  <pre id="out"></pre>
+</body>
+
+</html>
