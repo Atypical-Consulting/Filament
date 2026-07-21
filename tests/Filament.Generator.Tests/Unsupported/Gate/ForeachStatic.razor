@@ -1,0 +1,16 @@
+@* BOUNDARY WITNESS for decision 140: a List that is never written AT ALL -- neither mutated in
+   place (decision 106's version signal) nor reassigned wholesale (decision 140's field signal).
+   list() would have nothing to subscribe to; a never-written list rendered once is a static tree,
+   and that mapping is (still) not implemented. Decision 140 admits the REASSIGNED List; it must
+   not invent reactivity for an inert one. *@
+
+<ul id="list">
+@foreach (int n in items)
+{
+    <li @key="n">@n</li>
+}
+</ul>
+
+@code {
+    private List<int> items = new List<int> { 1, 2, 3 };
+}

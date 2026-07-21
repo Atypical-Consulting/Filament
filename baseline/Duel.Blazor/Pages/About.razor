@@ -1,0 +1,10 @@
+@page "/about"
+
+@* The second page: nearly static, one interactive element -- so route re-entry has state to
+   reset, which is the decision-139 mounted-afresh contract the harness drives. *@
+
+<div id="about"><h2>about</h2><p>The same .razor pages, two compilers.</p><button id="about-count" @onclick="() => n++">clicked @n</button><a id="to-board" href="/">board</a></div>
+
+@code {
+    private int n = 0;
+}

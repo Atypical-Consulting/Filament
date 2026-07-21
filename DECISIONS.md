@@ -4815,3 +4815,36 @@ routeur qui masque au lieu de démonter passe les premiers contrôles et échoue
 ni établie »**. Fermer les onze est une preuve que le modèle de compilation les ABSORBE ; ce n'est pas une
 preuve qu'une app réelle tiendrait sur ce sous-ensemble, et le routage vient précisément de montrer où le
 modèle atteint sa limite : il a fallu émettre du code.
+
+## 140. Une `List<T>` réassignée EST un signal — la découpe de #67 se resserre sur la List mutée
+
+**2026-07-21.** Sonde préparatoire du Duel (l'app composite de la page benchmark) : `visible = tasks.Where(…).ToList()`
+— l'idiome que n'importe quel auteur Blazor écrit pour une vue filtrée — était REFUSÉ au `@foreach`, avec un message
+qui affirmait « nothing in this component ever mutates », alors que le champ est réassigné à chaque handler. Le refus
+était une SUR-CONSERVATION héritée de la forme de #67 : `IsSignal => List is null && …` excluait TOUTE `List` de la
+qualité de signal, parce qu'à l'époque la seule réactivité d'une `List` était son signal de version (rows.js
+décision 1). #124 a ensuite admis le `T[]` réassigné comme signal — et la `List` réassignée-jamais-mutée, qui a
+exactement la même sémantique (la référence change, rien d'autre), est restée orpheline. Leçon 1×/#111 rejouée :
+**un refus délibéré peut être une sur-conservation — la rechercher avant de l'écarter.**
+
+**L'ARBITRAGE : GÉNÉRALISER LA CONDITION, ne pas dupliquer la branche** (la leçon de #96). Pas d'`IsListSignal`
+parallèle à maintenir en phase : la découpe de `IsSignal` se resserre de « toute List » à « la List MUTÉE »
+(`List is null || List is { Mutated: false, Reassigned: true }`). Une List réassignée-jamais-mutée suit alors le
+chemin signal ORDINAIRE partout — déclaration `signal([...])`, lectures `.value`, écritures `.value =`, batch #68 —
+et le `@foreach` reçoit la MÊME source effondrée `() => items.value` que le tableau de #124. Quatre formes de
+source désormais, toutes documentées au même endroit (`ForEach`).
+
+**`Reassigned` est un fait distinct de `AssignedOutsideConstruction`** : l'écriture d'élément de #127
+(`items[i] = v`) marque le RECEVEUR comme assigné, mais elle ne fait pas d'une List un signal — c'est la mutation
+de #127, pas la réassignation de #140. Le flag n'est posé que pour l'assignation du champ ENTIER.
+
+**Le hissage devait suivre** : une liste littérale (`new List<int> { 1, 2, 3 }`) réassignée est de l'ÉTAT, pas une
+donnée inerte — `Hoisted` exige désormais `!Reassigned`, sinon le générateur aurait hissé une cible d'écriture en
+constante de module (du JS invalide, attrapé par le witness avant d'être raisonné).
+
+**FRONTIÈRE TENUE** : une List jamais écrite (ni mutée ni réassignée) reste refusée —
+`Unsupported/Gate/ForeachStatic.razor` le pin, et le message du refus nomme désormais les deux voies absentes au
+lieu d'affirmer faussement qu'il n'y a qu'une voie. Le cas MIXTE (mutée ET réassignée) garde le comportement
+antérieur (source de version) ; sa cohérence d'émission est une question ouverte notée, pas tranchée ici.
+
+Générateur seul, firewall runtime vide. Mesuré : entrée n°58. Suite : 471 tests.

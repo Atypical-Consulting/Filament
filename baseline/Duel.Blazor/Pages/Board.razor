@@ -1,0 +1,92 @@
+@page "/"
+
+@* The Duel's working page: the constructs a real app is made of, in ONE component.
+   A form adds tasks (EditForm/@bind-Value, decisions 137/138); a keyed @foreach renders them
+   (decision 124's list machinery); per-row buttons toggle in place (Rows' #update shape,
+   decision 127's element writes) and remove (RemoveAt, decision 106's list ops); filters
+   recompute the visible list; the stats line is LINQ (decision 116). Rendering markup is kept
+   on single lines where whitespace would otherwise become text nodes (Rows' contract note). *@
+
+<div id="board">
+<EditForm Model="@model" OnValidSubmit="Add"><InputText id="task-input" @bind-Value="model.Label" /><button id="task-add" type="submit">add</button></EditForm>
+
+<p id="stats"><span id="active">@active</span> active / <span id="total">@total</span> total</p>
+
+<p><button id="filter-all" @onclick="ShowAll">all</button><button id="filter-active" @onclick="ShowActive">active</button><button id="filter-done" @onclick="ShowDone">done</button></p>
+
+@if (total == 0)
+{
+    <p id="empty">no tasks</p>
+}
+
+<ul id="task-list">@foreach (TaskItem t in visible)
+{
+    <li @key="t.Id"><span class="label">@t.Label</span><span class="state">@(t.Done ? "done" : "todo")</span><button class="toggle" @onclick="() => Toggle(t.Id)">toggle</button><button class="remove" @onclick="() => Remove(t.Id)">remove</button></li>
+}</ul>
+
+<a id="to-about" href="/about">about</a>
+</div>
+
+@code {
+    // Mutable record, exactly Rows' Row shape: Toggle rewrites Done in place.
+    record TaskItem
+    {
+        public int Id { get; set; }
+        public string Label { get; set; } = "";
+        public bool Done { get; set; }
+    }
+
+    public record Draft { public string Label { get; set; } = ""; }
+
+    private Draft model = new Draft();
+    private List<TaskItem> tasks = new List<TaskItem>();
+    private List<TaskItem> visible = new List<TaskItem>();
+    private int filter = 0;
+    private int active = 0;
+    private int total = 0;
+    private int nextId = 1;
+
+    void Add()
+    {
+        if (model.Label == "") { return; }
+        TaskItem t = new TaskItem();
+        t.Id = nextId;
+        t.Label = model.Label;
+        t.Done = false;
+        nextId = nextId + 1;
+        tasks.Add(t);
+        model.Label = "";
+        Refresh();
+    }
+
+    void Toggle(int id)
+    {
+        for (int i = 0; i < tasks.Count; i++)
+        {
+            if (tasks[i].Id == id) { tasks[i].Done = !tasks[i].Done; }
+        }
+        Refresh();
+    }
+
+    void Remove(int id)
+    {
+        for (int i = tasks.Count - 1; i >= 0; i--)
+        {
+            if (tasks[i].Id == id) { tasks.RemoveAt(i); }
+        }
+        Refresh();
+    }
+
+    void ShowAll() { filter = 0; Refresh(); }
+    void ShowActive() { filter = 1; Refresh(); }
+    void ShowDone() { filter = 2; Refresh(); }
+
+    void Refresh()
+    {
+        total = tasks.Count;
+        active = tasks.Where(x => !x.Done).Count();
+        if (filter == 1) { visible = tasks.Where(x => !x.Done).ToList(); }
+        else if (filter == 2) { visible = tasks.Where(x => x.Done).ToList(); }
+        else { visible = tasks.Where(x => true).ToList(); }
+    }
+}

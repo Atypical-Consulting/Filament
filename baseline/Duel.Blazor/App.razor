@@ -1,0 +1,9 @@
+@* Blazor's routing host, exactly as in Routing.Blazor: a <Router> over this assembly rendering the
+   matched page. Filament has no equivalent of this file -- its router is generated from the page set
+   at build time (decision 139). The Duel keeps the two hosts structurally identical so the comparison
+   is app vs app, not shell vs shell. *@
+
+<Router AppAssembly="@typeof(Program).Assembly">
+    <Found Context="routeData"><RouteView RouteData="@routeData" /></Found>
+    <NotFound><p id="missing">not found</p></NotFound>
+</Router>

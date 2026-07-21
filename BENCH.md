@@ -5092,3 +5092,48 @@ avancé pour cette entrée : le contrat est correctionnel, aucun scénario chron
 ---
 
 *Fin de l'entrée n°57. Ne pas modifier — ajouter une entrée n°58 pour toute rectification.*
+
+---
+
+## Entrée n°58 — 2026-07-21 — Phase 4 : le `@foreach` sur une `List<T>` réassignée mesuré contre Blazor (CORRECTION)
+
+**Un `@foreach` sur un champ `List<T>` réassigné en bloc, jamais muté sur place** (décision #140) rejoint le §5 —
+le jumeau `List` du `@foreach`-sur-tableau (#124). Une `List` MUTÉE se réconcilie sur son signal de version
+(rows.js décision 1) parce que la référence du tableau ne change jamais ; une `List` réassignée-jamais-mutée n'a
+aucune version à incrémenter — **le CHAMP est la chose abonnable**, exactement comme un `T[]` réassigné. La source
+de `list()` s'effondre donc sur la même lecture auto-abonnante `() => items.value`. **AUCUNE forme d'émission
+nouvelle** : la tranche est un changement d'ADMISSION (la découpe « une List n'est jamais un signal » de #67 se
+resserre sur la List *mutée*), pas d'émetteur. **AUCUNE primitive runtime.**
+
+### Ce qui est mesuré
+
+`baseline/ForeachList.Blazor` : `items` démarre `[1,2,3]` → trois `<li>` ; `#add` réassigne à
+`_pool.Where(x => x != 2).ToList()` = `[3,4,1,5]`. Un seul clic exerce les TROIS comportements du reconcile :
+la clé 2 est RETIRÉE, 4 et 5 sont INSÉRÉES, 1 et 3 sont DÉPLACÉES. La branche `foreachlist` de `verifyContract`
+clique `#add` puis exige le texte de `#list` et son compte de `<li>`. **`HARNESS_VERSION` 1.51.0 → 1.52.0**,
+divulgué. `_pool`, liste littérale jamais écrite et jamais rendue, est HISSÉE en constante de module (règle
+rows.js décision 4 — le gotcha de l'entrée n°40 rejoué et confirmé : la clé de réponse doit suivre la règle de
+hissage du générateur, pas la disposition du C#).
+
+```
+dotnet publish baseline/ForeachList.Blazor -c Release -o bench/publish/blazor-foreachlist
+./bench/build-filament.sh filament-foreachlist-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-foreachlist/wwwroot --app foreachlist --label blazor-foreachlist       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-foreachlist-gen    --app foreachlist --label filament-foreachlist-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#list` (texte / compte `<li>`) | verdict |
+|---|---|---|
+| **blazor-foreachlist** (autorité) | `"123"/3 → "3415"/4` | contrat OK |
+| **filament-foreachlist-gen** (générateur) | `"123"/3 → "3415"/4` | contrat OK |
+
+**Les deux réconcilient à l'identique** — retrait, insertions et déplacements par clé produisent le même ordre
+DOM des deux côtés. `git diff -- src/filament-runtime` vide. Le témoin-frontière `Unsupported/Gate/ForeachStatic.razor`
+(une List jamais écrite) reste refusé, avec un message qui nomme désormais les DEUX voies absentes (ni mutation,
+ni réassignation). Suite : **471 tests** (393 générateur / 60 subset / 18 analyzer, +5), runtime 214.
+
+---
+
+*Fin de l'entrée n°58. Ne pas modifier — ajouter une entrée n°59 pour toute rectification.*

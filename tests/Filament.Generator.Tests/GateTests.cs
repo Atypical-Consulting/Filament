@@ -334,6 +334,8 @@ public static class Generate
 
     public static string ForeachDictToTemp() => ToTemp(RepoPaths.ForeachDictRazor, "ForeachDict");
 
+    public static string ForeachListToTemp() => ToTemp(RepoPaths.ForeachListRazor, "ForeachList");
+
     public static string LinqOrderToTemp() => ToTemp(RepoPaths.LinqOrderRazor, "LinqOrder");
 
     public static string ElementWriteToTemp() => ToTemp(RepoPaths.ElementWriteRazor, "ElementWrite");

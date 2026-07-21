@@ -261,14 +261,22 @@ public sealed class CSharpFrontEnd
         /// a signal -- it is not state, it is a handle on a node that exists for the module's lifetime.</summary>
         public bool IsElementRef;
 
-        /// <summary>counter.js + rows.js decision (2), CONJOINED. Decision 67.</summary>
-        public bool IsSignal => List is null && !IsElementRef && ReadByTemplate && AssignedOutsideConstruction;
+        /// <summary>counter.js + rows.js decision (2), CONJOINED. Decision 67. A List is carved out of
+        /// signal-hood only while its reactivity lives in a version signal (mutation, rows.js decision 1);
+        /// a REASSIGNED-never-mutated List has no version and IS the signal, exactly as a reassigned T[]
+        /// (decisions 124/140) -- one generalised condition, not a parallel IsListSignal to keep in step.</summary>
+        public bool IsSignal => !IsElementRef && ReadByTemplate && AssignedOutsideConstruction &&
+            (List is null || List is { Mutated: false, Reassigned: true });
     }
 
     /// <summary>A List&lt;T&gt; field: a mutable array, and -- iff anything mutates it -- a version signal.</summary>
     sealed class ListInfo
     {
         public bool Mutated;
+        /// <summary>The FIELD itself is assigned a new list (`items = …`), never an element or a mutating
+        /// call. A reassigned-never-mutated List is an ordinary signal (decision 140), like a reassigned
+        /// T[] (decision 124): there is no version to bump because the reference itself changes.</summary>
+        public bool Reassigned;
         /// <summary>Every element is a literal, so the whole thing is inert data (rows.js decision 4).</summary>
         public bool LiteralData;
         public string Version = "";
@@ -278,9 +286,11 @@ public sealed class CSharpFrontEnd
         /// rows.js mapping decision (4), STATED THERE AS A RULE: "hoisting immutable literal
         /// lists to module scope is a generator-level constant-folding decision and changes
         /// nothing about the work done per row". Immutable AND literal, both, or it stays in
-        /// mount() where the component's state lives.
+        /// mount() where the component's state lives. A REASSIGNED list is state even when its
+        /// initialiser is literal data -- hoisting it to a module const would be hoisting a write
+        /// target (decision 140).
         /// </summary>
-        public bool Hoisted => !Mutated && LiteralData;
+        public bool Hoisted => !Mutated && !Reassigned && LiteralData;
     }
 
     sealed class RecordInfo
@@ -816,15 +826,17 @@ public sealed class CSharpFrontEnd
     /// </summary>
     ForEachOp? ForEach(ForEachStatementSyntax fe, IReadOnlyDictionary<string, IntermediateNode> markers)
     {
-        // The collection must be a FIELD with something list() can SUBSCRIBE to. Three shapes qualify, each
+        // The collection must be a FIELD with something list() can SUBSCRIBE to. Four shapes qualify, each
         // fixing the source lambda list() re-runs on:
         //   - a MUTATED List<T>       -> a BLOCK that reads the version signal then returns the plain array
         //     (rows.js decision 1): `() => { xVersion.value; return x; }`.
+        //   - a REASSIGNED List<T>    -> never mutated in place, so no version exists; the field is itself a
+        //     signal (decision 140, the List twin of 124): `() => x.value`.
         //   - a REASSIGNED T[]        -> the array field is itself a signal (decision 124), so reading it both
         //     subscribes AND yields the array: `() => x.value`.
         //   - a REASSIGNED Dictionary -> the Map field is a signal too (decision 125); list() needs an ARRAY,
         //     so the source spreads the Map to its [k,v][] entries: `() => [...x.value]`.
-        // A never-mutated List / never-reassigned array or Dict is a STATIC tree, whose mapping is not
+        // A never-written List / never-reassigned array or Dict is a STATIC tree, whose mapping is not
         // implemented -> refused.
         string sourceJs;
         if (_model.GetSymbolInfo(fe.Expression).Symbol is not IFieldSymbol fs || Field(fs) is not { } f)
@@ -838,16 +850,27 @@ public sealed class CSharpFrontEnd
         }
         if (f.List is { } li)
         {
-            if (!li.Mutated)
+            if (li.Mutated)
+            {
+                sourceJs = $"() => {{\n  {li.Version}.value;\n  return {f.Js};\n}}";
+            }
+            else if (f.IsSignal)
+            {
+                // REASSIGNED, never mutated (decision 140): no version signal exists or is needed -- the
+                // FIELD is the subscribable thing, exactly as a reassigned T[] (decision 124), so the
+                // source collapses to the same single self-subscribing read.
+                sourceJs = $"() => {f.Js}.value";
+            }
+            else
             {
                 Refuse("unsupported-foreach",
-                    $"@foreach iterates '{f.Name}', which nothing in this component ever mutates, so it has no " +
-                    "version signal and list() would have no source to re-run on. A never-mutated list rendered " +
-                    "once is a static tree; that mapping is not implemented. Refusing to emit.",
+                    $"@foreach iterates '{f.Name}', a List that is neither mutated in place (which would give " +
+                    "it a version signal) nor reassigned wholesale (which would make the field itself a signal, " +
+                    "decision 140), so list() has no source to re-run on. A never-written list rendered once is " +
+                    "a static tree; that mapping is not implemented. Refusing to emit.",
                     fe.Expression.SpanStart);
                 return null;
             }
-            sourceJs = $"() => {{\n  {li.Version}.value;\n  return {f.Js};\n}}";
         }
         else if (f.Symbol.Type is IArrayTypeSymbol { Rank: 1 })
         {
@@ -1750,6 +1773,9 @@ public sealed class CSharpFrontEnd
             // `arr[i] = v` / `d[k] = v` mutate the FIELD (decision 127): the assigned thing is the element, but the
             // field is what must lift to a signal (its copy-on-write reassignment fires the effects). So the receiver
             // of an element-access target is what gets marked -- not the indexer symbol, which is no field at all.
+            // Whether the WHOLE field was the target is remembered separately: only `items = …` makes a List
+            // Reassigned (decision 140); `items[i] = …` does not -- that is decision 127's element write.
+            var wholeField = target is not ElementAccessExpressionSyntax;
             if (target is ElementAccessExpressionSyntax ea) target = ea.Expression;
             if (node.Ancestors().OfType<ExpressionStatementSyntax>().FirstOrDefault() is { } st &&
                 folded.Contains(st)) continue;
@@ -1758,6 +1784,7 @@ public sealed class CSharpFrontEnd
             {
                 case IFieldSymbol fs when Field(fs) is { } f:
                     f.AssignedOutsideConstruction = true;
+                    if (wholeField && node is AssignmentExpressionSyntax && f.List is { } fl) fl.Reassigned = true;
                     break;
                 case IPropertySymbol ps when PropAnywhere(ps) is { } p:
                     p.AssignedOutsideConstruction = true;
@@ -1970,7 +1997,10 @@ public sealed class CSharpFrontEnd
             // invalid JS, caught by generating the slice's own baseline rather than by reasoning about it.
             if (f.IsElementRef) continue;
 
-            if (f.List is { } li)
+            // A reassigned-never-mutated List is an ordinary signal (decision 140): it must NOT take this
+            // branch's plain-const + version emission -- it falls through to the IsSignal path below and
+            // becomes `const items = signal([...])`, the same declaration a reassigned T[] gets.
+            if (f.List is { } li && !f.IsSignal)
             {
                 lines.Add($"const {f.Js} = {f.Init};");
                 if (!li.Mutated) continue;
