@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
-  "//": "baseBranchPatterns overrides the org-level default of [\"dev\"] — this repo's default branch is main, and without this override Renovate would target a branch that does not exist here.",
+  "description": "baseBranchPatterns overrides the org-level default of [\"dev\"] — this repo's default branch is main, and without this override Renovate would target a branch that does not exist here.",
   "baseBranchPatterns": ["main"],
   "packageRules": [
     {
