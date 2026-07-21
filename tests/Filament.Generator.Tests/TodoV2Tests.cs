@@ -173,4 +173,34 @@ public class TodoV2Tests
         var stderr = Refused("JsonOptions");
         Assert.Contains("DEFAULT options", stderr);
     }
+
+    // ---- W3: @if inside a @foreach row (decision 158) -----------------------
+
+    /// <summary>
+    /// The nested region compiles inside the loop's braces (a local function, the decision-141
+    /// idiom applied to region methods), so the loop variable resolves — and it renders as a
+    /// row-anchored list() reading the per-record signal, mounting/unmounting the badge on a
+    /// PERSISTING row as Toggle flips Done.
+    /// </summary>
+    [Fact]
+    public void IfInsideARow_CompilesToARowAnchoredList_OnThePerRecordSignal()
+    {
+        var js = Emit("IfInRow");
+        var create = js.Substring(js.IndexOf("function createT"));
+        create = create[..(create.IndexOf("\n  list(_el0") is var e && e > 0 ? e : create.Length)];
+        Assert.Contains("document.createComment(", create);          // the row-local anchor
+        Assert.Contains("function ifBody()", create);                // the branch create, row-scoped
+        Assert.Contains("(t.done.value) ? [0] : []", create);        // the per-record signal source
+        Assert.Contains("list(_el", create);                         // the nested list() call itself
+    }
+
+    /// <summary>BOUNDARY: a nested @foreach refuses — it compiles through the same machinery but
+    /// has no witness, and an unmeasured emission does not ship.</summary>
+    [Fact]
+    public void ForeachInsideARow_IsRefused_UntilItsOwnSliceMeasuresIt()
+    {
+        var stderr = Refused("ForeachInRow");
+        Assert.Contains("[unsupported-template-statement]", stderr);
+        Assert.Contains("nested @if", stderr);
+    }
 }

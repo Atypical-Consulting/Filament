@@ -1,0 +1,53 @@
+@* @if INSIDE a @foreach row (decision 158): the nested region compiles as a LOCAL FUNCTION
+   inside the outer region's loop braces -- the loop variable resolves, the decision-141 idiom
+   applied to region methods -- and renders as a row-anchored list() whose source reads the
+   per-record signal: `() => t.done.value ? [0] : []`. A persisting key's row mounts/unmounts
+   the badge as Toggle flips Done. *@
+
+<button id="add" @onclick="Add">add</button>
+
+<ul id="list">@foreach (Item t in visible)
+{
+    <li @key="t.Id"><span>@t.Label</span>@if (t.Done)
+    {
+        <em class="done">done</em>
+    }<button class="toggle" @onclick="() => Toggle(t.Id)">toggle</button></li>
+}</ul>
+
+@code {
+    record Item
+    {
+        public int Id { get; set; }
+        public string Label { get; set; } = "";
+        public bool Done { get; set; }
+    }
+
+    private List<Item> tasks = new List<Item>();
+    private List<Item> visible = new List<Item>();
+    private int nextId = 1;
+
+    void Add()
+    {
+        Item t = new Item();
+        t.Id = nextId;
+        t.Label = "task";
+        t.Done = false;
+        nextId = nextId + 1;
+        tasks.Add(t);
+        Refresh();
+    }
+
+    void Toggle(int id)
+    {
+        for (int i = 0; i < tasks.Count; i++)
+        {
+            if (tasks[i].Id == id) { tasks[i].Done = !tasks[i].Done; }
+        }
+        Refresh();
+    }
+
+    void Refresh()
+    {
+        visible = tasks.Where(x => true).ToList();
+    }
+}

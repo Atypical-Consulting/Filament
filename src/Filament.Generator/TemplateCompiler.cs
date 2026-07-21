@@ -909,10 +909,18 @@ public sealed class TemplateCompiler
                 return;
             }
             // Stop at any node that is ITSELF a region container (decision 142) -- including the root,
-            // when an outer region's markup item IS one: its slots belong to ITS region method -- the
-            // scope its own C# declares (a loop variable, say) -- not to this one's, where they would be
-            // planted outside the braces that bind them and CS0103.
-            if (n.Children.Any(c => c is CSharpCodeIntermediateNode)) return;
+            // when an outer region's markup item IS one: its INNER slots belong to ITS region method --
+            // the scope its own C# declares (a loop variable, say) -- not to this one's, where they
+            // would be planted outside the braces that bind them and CS0103. The container's OWN @key
+            // and attribute values are the exception (decision 158): they sit on the element the OUTER
+            // scope renders (`<li @key="t.Id" class="… @(t.Done ? …)">` holding an @if), so they are
+            // THIS region's slots.
+            if (n.Children.Any(c => c is CSharpCodeIntermediateNode))
+            {
+                foreach (var c in n.Children)
+                    if (c is SetKeyIntermediateNode or HtmlAttributeIntermediateNode) Walk(c);
+                return;
+            }
             // A resolved form component's parameters are not ordinary slots inside a region either --
             // the same decision-138 rule Collect() applies outside one: Razor's @bind-Value lowering
             // (ValueChanged binder, ValueExpression accessor) is machinery this compiler REPLACES, and

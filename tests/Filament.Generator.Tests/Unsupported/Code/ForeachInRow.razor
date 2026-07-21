@@ -1,0 +1,26 @@
+@* BOUNDARY for decision 158: a nested @if is admitted (measured); a nested @foreach compiles
+   through the same machinery but has NO witness -- so it refuses until its own slice measures
+   it, rather than shipping an unmeasured emission. *@
+
+<ul id="list">@foreach (Item t in visible)
+{
+    <li @key="t.Id">@foreach (int n in nums)
+    {
+        <em @key="n">@n</em>
+    }</li>
+}</ul>
+<button id="b" @onclick="Go">go</button>
+
+@code {
+    record Item { public int Id { get; set; } }
+
+    private List<Item> tasks = new List<Item>();
+    private List<Item> visible = new List<Item>();
+    private List<int> nums = new List<int> { 1, 2 };
+
+    void Go()
+    {
+        visible = tasks.Where(x => true).ToList();
+        nums = nums.Where(x => true).ToList();
+    }
+}

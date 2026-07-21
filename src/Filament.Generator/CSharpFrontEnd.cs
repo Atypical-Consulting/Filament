@@ -71,6 +71,11 @@ public sealed class CSharpFrontEnd
     readonly List<MethodInfo> _methods = [];
     readonly List<ComputedInfo> _computeds = [];
     readonly Dictionary<string, ComputedInfo> _computedsByName = new(StringComparer.Ordinal);
+    /// <summary>Every @foreach ROW node seen while building region ops (decision 158): a region
+    /// container sitting under one compiles in that loop's scope -- where a nested @if is admitted
+    /// (measured) and a nested @foreach is refused (its own witness is not). Sibling regions
+    /// (decision 142) sit under no row and are untouched.</summary>
+    readonly List<IntermediateNode> _rowScopes = [];
     readonly List<RecordInfo> _records = [];
     readonly HashSet<string> _primitives = [];
 
@@ -686,15 +691,20 @@ public sealed class CSharpFrontEnd
         // in and the loop variable resolves (decision 141). This is the slots' own scope story (see "row is
         // a loop local and only this tree knows it" below) applied to handlers; the class-scope planting
         // (decision 105) remains for lambdas on mount-level markup, where there is no region to carry them.
+        // A NESTED region (decision 158) -- an @if whose container sits under another region's
+        // markup item, reading that region's loop variable -- is planted the SAME way, as a LOCAL
+        // FUNCTION right after its item's marker, so the loop variable resolves in it too. The
+        // recursion mirrors the author's own lexical nesting; sibling regions (decision 142) stay
+        // flat exactly as before.
         var lambdaNames = new List<(IntermediateNode Attr, string Name)>();
         var claimedLambdas = new bool[plan.LambdaHandlers.Count];
-        var regionMethods = new List<string>();
+        var emittedRegions = new bool[plan.Regions.Count];
+        var regionMethods = Enumerable.Range(0, plan.Regions.Count).Select(r => $"__filament_t{r}").ToList();
         var m = 0;
-        for (var r = 0; r < plan.Regions.Count; r++)
+        void EmitRegionMethod(int r)
         {
-            var name = $"__filament_t{r}";
-            regionMethods.Add(name);
-            _src.Literal($"void {name}() {{\n");
+            emittedRegions[r] = true;
+            _src.Literal($"void {regionMethods[r]}() {{\n");
             foreach (var item in plan.Regions[r].Items)
                 switch (item)
                 {
@@ -716,10 +726,15 @@ public sealed class CSharpFrontEnd
                             _src.Node(plan.LambdaHandlers[k].Attr, lbody);
                             _src.Literal("\n");
                         }
+                        for (var cr = 0; cr < plan.Regions.Count; cr++)
+                            if (!emittedRegions[cr] && IsUnder(mi.Node, plan.Regions[cr].Container))
+                                EmitRegionMethod(cr);
                         break;
                 }
             _src.Literal("\n}\n");
         }
+        for (var r = 0; r < plan.Regions.Count; r++)
+            if (!emittedRegions[r]) EmitRegionMethod(r);
 
         // Lambda event handlers (decision 105): each body as a synthetic method at class scope, so it is
         // marked + translated exactly like a @code method body. Mapped to the attribute's source so a
@@ -963,7 +978,12 @@ public sealed class CSharpFrontEnd
         }
         TranslateSlots(slots);
         foreach (var (container, method) in plan.Regions.Zip(regionMethods))
-            _ops[container.Container] = RegionOps(FindMethod(classes[1], method).Body!.Statements, markers);
+        {
+            _ops[container.Container] = RegionOps(FindMethod(classes[1], method).Statements, markers,
+                underRow: _rowScopes.Any(row => IsUnder(row, container.Container)));
+            foreach (var feOp in _ops[container.Container].OfType<ForEachOp>())
+                _rowScopes.Add(feOp.Body);
+        }
 
         // 5. THE BACKSTOP: is this even C#? Roslyn's OWN verdict, asked LAST.
         if (_diagnostics.Count == 0) CheckSemantics(compilation);
@@ -974,8 +994,13 @@ public sealed class CSharpFrontEnd
     static int CountSlots(TemplatePlan plan) =>
         plan.FreeSlots.Count + plan.Regions.Sum(r => r.Items.OfType<MarkupItem>().Sum(m => m.Slots.Count));
 
-    static MethodDeclarationSyntax FindMethod(ClassDeclarationSyntax cls, string name) =>
-        cls.Members.OfType<MethodDeclarationSyntax>().First(m => m.Identifier.Text == name);
+    /// <summary>A region method's BODY. A top-level region is a class member; a NESTED region
+    /// (decision 158) is a LOCAL FUNCTION planted inside its parent region's loop braces -- the
+    /// scope that binds its loop variable -- so both shapes are searched.</summary>
+    static BlockSyntax FindMethod(ClassDeclarationSyntax cls, string name) =>
+        (cls.Members.OfType<MethodDeclarationSyntax>().FirstOrDefault(m => m.Identifier.Text == name)?.Body
+         ?? cls.DescendantNodes().OfType<LocalFunctionStatementSyntax>()
+             .First(lf => lf.Identifier.Text == name).Body)!;
 
     // ---- the template's own C# ----------------------------------------------
 
@@ -984,7 +1009,8 @@ public sealed class CSharpFrontEnd
     /// positively accounted for: this is the walk decision 54 said Razor makes impossible,
     /// so it is exactly the place where an unaccounted node would become silent wrong JS.
     /// </summary>
-    List<TemplateOp> RegionOps(IEnumerable<StatementSyntax> statements, IReadOnlyDictionary<string, IntermediateNode> markers)
+    List<TemplateOp> RegionOps(IEnumerable<StatementSyntax> statements, IReadOnlyDictionary<string, IntermediateNode> markers,
+        bool underRow = false)
     {
         var ops = new List<TemplateOp>();
         foreach (var s in statements)
@@ -998,6 +1024,19 @@ public sealed class CSharpFrontEnd
 
             if (s is ForEachStatementSyntax fe)
             {
+                // Decision 158 admits a nested @if (the row-anchored list() over the per-record
+                // signal, measured); a nested @foreach compiles TOO -- and that is exactly why it is
+                // refused here: it has no witness, and an unmeasured emission is the thing this
+                // repo does not ship. Its own slice can lift this.
+                if (underRow)
+                {
+                    Refuse("unsupported-template-statement",
+                        "a @foreach nested inside another @foreach's row is not measured -- decision 158 " +
+                        "admits a nested @if; a nested list() needs its own witness before it ships. " +
+                        "Refusing to emit.",
+                        fe.SpanStart);
+                    continue;
+                }
                 if (ForEach(fe, markers) is { } op) ops.Add(op);
                 continue;
             }
@@ -1023,6 +1062,12 @@ public sealed class CSharpFrontEnd
             // and wired as the element's listener where the row/branch template is emitted.
             if (s is LocalFunctionStatementSyntax lf &&
                 lf.Identifier.Text.StartsWith("__filament_lambda_", StringComparison.Ordinal))
+                continue;
+
+            // A NESTED region method (decision 158): the same scope-carrier idiom, for an @if under a
+            // row. Its ops are parsed from ITS OWN body (keyed by its container); nothing to emit here.
+            if (s is LocalFunctionStatementSyntax nested &&
+                nested.Identifier.Text.StartsWith("__filament_t", StringComparison.Ordinal))
                 continue;
 
             Refuse("unsupported-template-statement",
@@ -2184,7 +2229,7 @@ public sealed class CSharpFrontEnd
     {
         foreach (var method in regionMethods)
         {
-            var body = FindMethod(regionClass, method).Body!;
+            var body = FindMethod(regionClass, method);
             foreach (var ifs in body.DescendantNodes().OfType<IfStatementSyntax>())
                 MarkReads(ifs.Condition);
             // A @foreach collection is read by the template the same way an @if condition is: a T[]
