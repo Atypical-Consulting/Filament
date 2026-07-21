@@ -85,6 +85,8 @@ samples/filament-routing-gen/Router.g.js
 samples/filament-routing-gen/Home.g.js
 samples/filament-routing-gen/About.g.js
 
+samples/filament-todo-gen/App.g.js
+
 # examples/FilamentApp: emitted/copied at build, never committed (same rule as samples/*.g.js).
 examples/FilamentApp/wwwroot/App.g.js
 examples/FilamentApp/wwwroot/filament.js
