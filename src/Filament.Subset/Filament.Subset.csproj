@@ -1,6 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <!-- FilamentGeneratorAsLibrary propagates down the reference graph as a global property, so the
+         playground's publish evaluates THIS project twice (with and without it): two concurrent
+         builds racing on one deps.json killed the Pages deploy (GenerateDepsFile IOException,
+         measured on the runner). Distinct outputs make the flavors disjoint, same as the
+         generator's own split. -->
+    <IntermediateOutputPath Condition="'$(FilamentGeneratorAsLibrary)' == 'true'">obj/lib-shape/</IntermediateOutputPath>
+    <OutputPath Condition="'$(FilamentGeneratorAsLibrary)' == 'true'">bin/lib-shape/</OutputPath>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>disable</ImplicitUsings>
