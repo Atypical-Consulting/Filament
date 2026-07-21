@@ -43,6 +43,41 @@ public static partial class PlaygroundApi
         return CompileRazor("<p id=\"probe\">@n</p>\n\n@code {\n    private int n = 0;\n}\n", "./filament.js");
     }
 
+    /// <summary>Stage-by-stage boot bisection (dev diagnosis): which pipeline stage trips the runtime.</summary>
+    [JSExport]
+    internal static string Probe(int stage)
+    {
+        try
+        {
+            switch (stage)
+            {
+                case 0:
+                    Environment.SetEnvironmentVariable("FILAMENT_DOTNET_ROOT", RefRoot);
+                    return "env:" + (Environment.GetEnvironmentVariable("FILAMENT_DOTNET_ROOT") ?? "null");
+                case 1:
+                    Directory.CreateDirectory(WorkDir);
+                    File.WriteAllText(Path.Combine(WorkDir, "t.txt"), "x");
+                    return "fs:" + File.ReadAllText(Path.Combine(WorkDir, "t.txt"));
+                case 2:
+                    return "refs:" + ReferenceAssemblies.All().Count;
+                case 3:
+                {
+                    Directory.CreateDirectory(WorkDir);
+                    var f = Path.Combine(WorkDir, "Static.razor");
+                    File.WriteAllText(f, "<p id=\"s\">static</p>\n");
+                    var parse = RazorFrontEnd.Parse(f);
+                    return "parse:" + parse.Ir.DocumentKind;
+                }
+                default:
+                    return "?" + stage;
+            }
+        }
+        catch (Exception ex)
+        {
+            return "EX[" + stage + "]: " + ex.GetType().Name + ": " + ex.Message;
+        }
+    }
+
     /// <summary>Razor source in -> { ok, js | diagnostics, ms } out. Refusals are the FEATURE: the
     /// diagnostics carry the same wording the CLI prints, FIL codes and all.</summary>
     [JSExport]

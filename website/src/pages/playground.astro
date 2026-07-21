@@ -1,0 +1,179 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+
+// The examples are REAL repo fixtures, imported at build time — the same files the test suite
+// gates. The refusal example is a genuine Unsupported witness: refusals are a feature, and the
+// playground shows them with the CLI's own wording.
+import counterRazor from "../../../baseline/Counter.Blazor/App.razor?raw";
+import foreachListRazor from "../../../baseline/ForeachList.Blazor/App.razor?raw";
+import rowActionsRazor from "../../../baseline/RowActions.Blazor/App.razor?raw";
+import formsRazor from "../../../baseline/Forms.Blazor/App.razor?raw";
+import refusalRazor from "../../../tests/Filament.Generator.Tests/Unsupported/Gate/ForeachStatic.razor?raw";
+
+const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+const examples = [
+  { key: "counter", label: "Counter — the flagship witness", source: counterRazor },
+  { key: "foreachlist", label: "ForeachList — keyed list over a reassigned List<T>", source: foreachListRazor },
+  { key: "rowactions", label: "RowActions — per-row captured-lambda handlers", source: rowActionsRazor },
+  { key: "forms", label: "Forms — EditForm + @bind-Value", source: formsRazor },
+  { key: "refusal", label: "ForeachStatic — an honest refusal (FIL0001)", source: refusalRazor },
+];
+---
+
+<Layout
+  title="Playground — the Filament compiler, in your browser | Filament"
+  description="Type Razor, get the generated JavaScript and a running component — or the compiler's honest refusal. The unchanged Filament generator, compiled to WebAssembly."
+>
+  <Nav />
+  <main id="main" class="mx-auto max-w-6xl px-6">
+    <header class="pt-16 pb-8 md:pt-20">
+      <p class="font-mono text-sm tracking-widest text-spark-400 uppercase">Playground</p>
+      <h1 class="mt-3 max-w-3xl text-4xl font-bold tracking-tight text-mist-100 md:text-5xl">
+        The compiler itself, <span class="text-filament-400">in your browser</span>.
+      </h1>
+      <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
+        This page runs the <strong class="text-mist-100">unchanged</strong> Filament generator —
+        the same Roslyn-and-Razor pipeline the test suite gates — compiled to WebAssembly. Type
+        Razor on the left; the emitted JavaScript, or the compiler's verbatim refusal, appears on
+        the right; a supported component runs below. The irony is deliberate:
+        <em class="text-mist-100">you downloaded a .NET runtime to run a compiler whose output
+        needs none.</em>
+      </p>
+    </header>
+
+    <div
+      id="engine-banner"
+      class="mb-6 rounded-2xl border border-ink-700 bg-ink-850/60 p-4 font-mono text-sm text-mist-300"
+      aria-live="polite"
+    >
+      <span id="status">loading the engine…</span>
+      <span id="engine-stats" class="text-mist-500"></span>
+    </div>
+
+    <section aria-label="Playground" class="grid gap-6 lg:grid-cols-2">
+      <div>
+        <div class="flex items-center justify-between gap-3">
+          <label for="example" class="text-sm font-semibold text-mist-100">Example</label>
+          <select
+            id="example"
+            class="min-w-0 flex-1 rounded-lg border border-ink-600 bg-ink-900 px-3 py-1.5 text-sm text-mist-100"
+          >
+            {examples.map((e) => <option value={e.key}>{e.label}</option>)}
+          </select>
+        </div>
+        <label for="razor" class="sr-only">Razor source</label>
+        <textarea
+          id="razor"
+          spellcheck="false"
+          class="mt-3 h-[28rem] w-full resize-y rounded-2xl border border-ink-700 bg-ink-900 p-4 font-mono text-sm leading-relaxed text-mist-100 focus:border-filament-500/60 focus:outline-none"
+        ></textarea>
+        <div class="mt-3 flex items-center gap-3">
+          <button
+            id="compile"
+            disabled
+            class="rounded-lg bg-filament-500 px-4 py-2 text-sm font-semibold text-ink-950 transition-opacity disabled:opacity-40"
+          >Compile (⌘⏎)</button>
+          <span id="compile-stats" class="font-mono text-sm text-mist-500" aria-live="polite"></span>
+        </div>
+      </div>
+
+      <div>
+        <p class="text-sm font-semibold text-mist-100">Generated JavaScript</p>
+        <pre
+          id="out"
+          class="mt-3 h-[28rem] overflow-auto rounded-2xl border border-ink-700 bg-ink-900 p-4 font-mono text-sm leading-relaxed text-mist-300"
+        >// the module the compiler emits appears here</pre>
+        <div
+          id="diagnostics"
+          hidden
+          class="mt-3 rounded-2xl border border-spark-500/40 bg-ink-900 p-4 font-mono text-sm leading-relaxed text-spark-300"
+          role="alert"
+        ></div>
+      </div>
+    </section>
+
+    <section aria-labelledby="h-preview" class="mt-10 pb-20">
+      <h2 id="h-preview" class="text-sm font-semibold text-mist-100">Running component</h2>
+      <iframe
+        id="preview"
+        title="The compiled component, running"
+        sandbox="allow-scripts allow-same-origin"
+        class="mt-3 h-56 w-full rounded-2xl border border-ink-700 bg-white"
+      ></iframe>
+      <p class="mt-3 max-w-2xl text-sm leading-relaxed text-mist-500">
+        The preview mounts the emitted module against the same 1.9 KB signals runtime every
+        Filament app ships. A refused component renders nothing — refusing beats silently-wrong
+        JavaScript, and that guarantee is the point of the whole project.
+      </p>
+    </section>
+  </main>
+  <Footer />
+
+  <script is:inline define:vars={{ examples, base }}>
+    const $ = (id) => document.getElementById(id);
+    const razor = $("razor");
+    const out = $("out");
+    const diag = $("diagnostics");
+    const btn = $("compile");
+    const stats = $("compile-stats");
+    const engineStats = $("engine-stats");
+    const preview = $("preview");
+    const select = $("example");
+
+    const byKey = Object.fromEntries(examples.map((e) => [e.key, e.source]));
+    razor.value = byKey.counter;
+    select.addEventListener("change", () => {
+      razor.value = byKey[select.value];
+      if (window.filamentPlayground) compileNow();
+    });
+
+    const runtimeUrl = new URL(`${base}/playground-engine/filament.js`, location.href).href;
+    let lastBlob = null;
+
+    function compileNow() {
+      const r = window.filamentPlayground.compile(razor.value, runtimeUrl);
+      if (r.ok) {
+        out.textContent = r.js;
+        diag.hidden = true;
+        stats.textContent = `${r.ms} ms · ${new Blob([r.js]).size} B emitted`;
+        if (lastBlob) URL.revokeObjectURL(lastBlob);
+        lastBlob = URL.createObjectURL(new Blob([r.js], { type: "text/javascript" }));
+        preview.srcdoc = `<!doctype html><meta charset="utf-8"><style>body{font-family:system-ui;margin:1rem}</style><div id="app"></div><script type="module">import { mount } from '${lastBlob}'; const app = document.getElementById('app'); app.textContent = ''; mount(app);<\/script>`;
+      } else {
+        out.textContent = "// refused — see the diagnostics below. Refusing beats silently-wrong JS.";
+        diag.hidden = false;
+        diag.textContent = (r.diagnostics || []).join("\n");
+        stats.textContent = `${r.ms} ms · refused`;
+        preview.srcdoc = "<!doctype html><p style='font-family:system-ui;color:#666;margin:1rem'>nothing runs — the component was refused</p>";
+      }
+    }
+
+    window.addEventListener("filament-playground-ready", () => {
+      btn.disabled = false;
+      // The LIVE irony banner: wire bytes actually transferred for the engine, from the
+      // browser's own resource timing — never a hardcoded number.
+      const wire = performance
+        .getEntriesByType("resource")
+        .filter((e) => e.name.includes("/playground-engine/"))
+        .reduce((a, e) => a + (e.transferSize || 0), 0);
+      const mb = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+      engineStats.textContent = ` — engine on the wire: ${mb(wire)} (cached after first visit); its output: bytes.`;
+      compileNow();
+    });
+
+    btn.addEventListener("click", compileNow);
+    razor.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !btn.disabled) compileNow();
+    });
+  </script>
+  <script is:inline define:vars={{ base }}>
+    // Boot the engine (published by deploy: _framework + refpack + main.js under playground-engine/).
+    import(`${base}/playground-engine/main.js`).catch((e) => {
+      document.getElementById("status").textContent =
+        "the engine failed to load — the editor stays readable, nothing half-works. See the console.";
+      console.error(e);
+    });
+  </script>
+</Layout>

@@ -8,11 +8,31 @@
     <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
     <InvariantGlobalization>true</InvariantGlobalization>
 
-    <!-- The generator is Roslyn + the EOL Razor engine, both reflection-rich; the IL trimmer would
-         have to be taught both to keep this app honest, and a wrongly-trimmed compiler fails in
-         exactly the silent ways section 10 forbids. Ship untrimmed, measure, and treat trimming as
-         a later, verified optimisation -- never a default. -->
-    <PublishTrimmed>false</PublishTrimmed>
+    <!-- AOT, and not by preference (decision 144): the mono-wasm INTERPRETER (10.0.9 and 10.0.10
+         both, measured) never intrinsifies .NET 10 corelib's Volatile.ReadBarrier, whose managed
+         [Intrinsic] body is a SELF-CALL: the first compilation that reaches it recurses to a
+         StackOverflowException at ANY stack size (5 MB and 16 MB died identically; staged probes
+         pinned the site inside Roslyn's compilation machinery; downgrading S.C.Immutable/S.R.Metadata
+         did not move it, so the caller sits in corelib itself). The AOT compiler DOES know the
+         intrinsic, so AOT-compiled code never executes that body. Trimming is AOT's precondition;
+         partial mode keeps every non-IsTrimmable assembly (Roslyn, the EOL Razor engine, this repo's
+         projects) whole, and the in-browser fixture battery is the behavioural judge. -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+    <RunAOTCompilation>true</RunAOTCompilation>
+
+    <!-- Roslyn parses by recursion and Emscripten's default stack is tiny: the first in-browser
+         compile died in a StackOverflowException (measured, not feared). A native relink with a
+         16 MB stack is the documented remedy; wasm-tools supplies the toolchain. -->
+    <WasmBuildNative>true</WasmBuildNative>
+    <EmccStackSize>16777216</EmccStackSize>
+
+    <!-- Dedup DROPS gsharedvt wrappers the interpreter needs to call back into AOT'd generic code:
+         Roslyn's overload resolution (BindingDiagnosticBag<T>.AddDiagnostics<SyntaxToken>, a
+         value-type generic method) died on "AOT NOT FOUND: gsharedvt_out_sig
+         (CompoundUseSiteInfo`1<object>&, intptr)" -> interp.c:2737 assertion, pinned via
+         MONO_LOG_MASK=aot. Bigger image, working compiler. -->
+    <WasmDedup>false</WasmDedup>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,7 +40,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../../src/Filament.Generator/Filament.Generator.csproj" />
+    <!-- AdditionalProperties selects the generator's LIBRARY shape (see its csproj): a top-level
+         Program.cs in a library is just an unused entry point; the pipeline classes are what we call. -->
+    <ProjectReference Include="../../src/Filament.Generator/Filament.Generator.csproj"
+                      AdditionalProperties="FilamentGeneratorAsLibrary=true" />
   </ItemGroup>
+
 
 </Project>

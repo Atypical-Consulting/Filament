@@ -11,7 +11,13 @@ const status = (msg) => {
 
 async function boot() {
   status('booting .NET runtime…');
-  const { getAssemblyExports, getConfig } = await dotnet.create();
+  const diag = new URLSearchParams(location.search).has('monolog');
+  const builder = diag
+    ? dotnet.withDiagnosticTracing(true)
+        .withEnvironmentVariable('MONO_LOG_LEVEL', 'debug')
+        .withEnvironmentVariable('MONO_LOG_MASK', 'aot')
+    : dotnet;
+  const { getAssemblyExports, getConfig } = await builder.create();
   const exports = await getAssemblyExports(getConfig().mainAssemblyName);
   const api = exports.Filament.Playground.PlaygroundApi;
 
@@ -27,6 +33,12 @@ async function boot() {
   }
 
   status('proving the wiring…');
+  for (let s = 0; s <= 3; s++) {
+    const r = api.Probe(s);
+    console.log(`[playground probe ${s}]`, r);
+    status(`probe ${s}: ${r}`);
+    if (r.startsWith('EX[')) throw new Error(`probe ${s} failed: ${r}`);
+  }
   const ready = JSON.parse(api.Ready());
   if (!ready.ok) {
     status('engine failed its own probe — see console');

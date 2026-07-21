@@ -4951,3 +4951,59 @@ prose retapée. Barres linéaires (l'échelle EST le message : la barre Filament
 identité portée par le libellé (jamais par la couleur seule), tableau complet, méthodologie et réserves sur la page.
 
 Mesuré : entrée n°60. Générateur + harnais seuls ; runtime intact.
+
+## 144. Le compilateur inchangé dans le navigateur — un seam, une preuve par la suite entière, et trois défauts d'hôte mesurés
+
+**2026-07-21.** Le playground du site devait faire tourner Filament.Generator DANS le navigateur — pas un port, pas
+un sous-ensemble réimplémenté : le même pipeline. L'arbitrage d'architecture tient en une phrase : **le navigateur
+a un système de fichiers** (MEMFS d'Emscripten), donc `RazorFrontEnd.Parse`, `File.WriteAllText` et tout le
+pipeline à chemins fonctionnent tels quels ; la SEULE chose qui ne peut pas exister est le SDK sur disque.
+
+**LE SEAM : `FILAMENT_DOTNET_ROOT`** — consulté avant la sonde `RuntimeEnvironment` (qui n'est même plus appelée
+quand l'override est posé : sa réponse sous WASM n'aurait aucun sens), même disposition `packs/`, mêmes échecs
+FIL-WIRING bruyants, et AUTORITAIRE quand il est posé (aucun repli silencieux vers le SDK de la machine — deux
+hôtes qui résolvent contre des références subtilement différentes divergent en silence). Testé par sous-processus
+(la variable est globale au processus et le cache statique aussi).
+
+**LA PREUVE DU PACK ÉLAGUÉ EST LA SUITE ENTIÈRE.** Les packs du SDK font 307 assemblies / ~84 Mo ; le playground
+expédie `playground/refpack.list` : **34 assemblies / 2 222 752 octets bruts (~37× moins)**. L'équivalence n'est
+pas curatée à l'espoir : `prove-refpack.sh` fait tourner LES 480 TESTS avec `FILAMENT_DOTNET_ROOT` pointé sur la
+disposition élaguée — gates canon, snapshots octet à octet, refus compris — et un job CI ubuntu rejoue la preuve
+pour qu'une montée de SDK qui grossit la fermeture casse FORT au lieu d'expédier un playground cassé. La liste est
+DÉCOUVERTE (deux System.Private.* retirés parce que les ref packs n'en ont pas), jamais dessinée.
+
+**TROIS DÉFAUTS D'HÔTE, chacun épinglé à la sonde, pas au raisonnement :**
+
+**1. L'interpréteur mono-wasm (10.0.9 ET 10.0.10, mesurés tous deux) n'intrinsifie pas `Volatile.ReadBarrier`**
+(.NET 10), dont le corps managé `[Intrinsic]` est un AUTO-APPEL destiné à être remplacé : premier passage → -
+récursion infinie → `StackOverflowException` à N'IMPORTE quelle taille de pile (5 Mo et 16 Mo sont morts à
+l'identique — c'est ce qui a disqualifié l'hypothèse « profondeur »). Des sondes étagées (env → MEMFS → 34
+MetadataReference → Parse) ont épinglé le site dans la machinerie de compilation ; Roslyn 4.8.0 (netstandard2.0,
+antérieur à l'API) reproduit — l'appelant est corelib même ; rétrograder S.C.Immutable/S.R.Metadata ne déplace
+rien. **Remède : l'AOT** — son compilateur connaît l'intrinsèque, le corps piégé n'est jamais exécuté. L'AOT
+exige le trimming : mode `partial`, qui laisse ENTIER tout assembly non-IsTrimmable (Roslyn, le moteur Razor EOL,
+les projets du repo) ; le juge comportemental est la batterie de fixtures en navigateur.
+
+**2. « Cannot wait on monitors on this runtime »** : `concurrentBuild: true` (défaut Roslyn) parallélise derrière
+`Task.Wait`, c'est-à-dire `Monitor.Wait`, interdit sur un hôte mono-thread. `concurrentBuild: false` dans
+CSharpFrontEnd — neutre sur desktop (une compilation d'un bloc `@code` n'a rien à paralléliser), les 480 tests
+inchangés le confirment.
+
+**3. La pile d'Emscripten** est petite pour un parseur récursif : `EmccStackSize` 16 Mo au relink natif —
+ceinture-et-bretelles une fois le défaut n°1 réglé, nécessaire pour les sources profondes.
+
+**4. La déduplication wasm PERD des wrappers gsharedvt** dont l'interpréteur a besoin pour rappeler du code
+générique AOTé : la résolution de surcharge de Roslyn (`BindingDiagnosticBag<T>.AddDiagnostics<SyntaxToken>`,
+méthode générique sur STRUCT) mourait sur « AOT NOT FOUND: gsharedvt_out_sig (CompoundUseSiteInfo`1<object>&,
+intptr) » → assertion interp.c:2737 — épinglée non par raisonnement mais par `MONO_LOG_MASK=aot` lu dans la
+console : Counter compilait (parité octet DÉJÀ verte), le premier `items.Add(…)` à résoudre tombait. Piège
+subtil : le crash ne dépend pas du navigateur mais de l'ENTRÉE (quel chemin de binder Roslyn s'exerce), ce qui a
+d'abord fait accuser Chromium. `<WasmDedup>false</WasmDedup>` : image plus grosse, compilateur qui marche.
+
+**Au passage, la forme bibliothèque** : une app wasm self-contained ne peut pas référencer un exe
+framework-dependent (NETSDK1150) ; `OutputType` du générateur devient conditionnel et la forme bibliothèque
+retire `Program.cs` (le wrapper CLI, CS8805) — un projet, un pipeline, deux sorties ; l'ordre des gates du wrapper
+est re-décrit dans PlaygroundApi et ÉPINGLÉ ÉGAL par le smoke de parité octet (`playground/smoke.mjs`), qui
+compile les mêmes sources par la CLI et par le moteur navigateur et exige l'identité octet.
+
+Mesures (payload, latence de compile en navigateur, verdict de parité) : entrée n°61.

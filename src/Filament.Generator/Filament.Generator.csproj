@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!-- Exe for the CLI (the tests and build scripts shell out to it); the WASM playground consumes
+         the SAME project as a LIBRARY (a self-contained wasm app cannot reference a framework-dependent
+         exe, NETSDK1150), selected via AdditionalProperties on its ProjectReference. One project, one
+         pipeline, two outputs; never a second copy of the compiler. -->
+    <OutputType Condition="'$(FilamentGeneratorAsLibrary)' != 'true'">Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -15,11 +19,25 @@
          There is no 7/8/9/10. Do not "upgrade" them; nothing to upgrade to. -->
     <PackageReference Include="Microsoft.AspNetCore.Razor.Language" Version="6.0.36" />
     <PackageReference Include="Microsoft.CodeAnalysis.Razor" Version="6.0.36" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.6.0" />
+    <!-- 4.8.0, ALIGNED with Filament.Subset/Analyzer, and pinned by a measured failure: 5.6.0's
+         corelib use of .NET 10's new Volatile.ReadBarrier dies in an infinite self-recursion inside
+         the mono-wasm INTERPRETER (StackOverflowException at any stack size, 5 MB and 16 MB both,
+         so it is a broken intrinsic, not depth). 4.8.0 predates the API, the whole suite is the
+         equivalence proof, and one Roslyn across the three projects was overdue anyway. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../Filament.Subset/Filament.Subset.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(FilamentGeneratorAsLibrary)' == 'true'">
+    <!-- Program.cs is the CLI wrapper only: arg parsing and file plumbing AROUND the pipeline
+         (RazorFrontEnd / TemplateCompiler / RouterEmitter), which is what the library shape exists
+         to expose. Top-level statements cannot compile in a library (CS8805), and the playground
+         re-states the wrapper's gate ORDER in PlaygroundApi, pinned equal by the byte-parity
+         smoke, which compiles the same source through both and diffs the bytes. -->
+    <Compile Remove="Program.cs" />
   </ItemGroup>
 
 </Project>

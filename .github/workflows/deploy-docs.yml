@@ -9,6 +9,9 @@ on:
     branches: [main]
     paths:
       - 'website/**'
+      - 'playground/**'
+      - 'src/**'
+      - 'baseline/**'
       - '.github/workflows/deploy-docs.yml'
   workflow_dispatch:
 
@@ -25,7 +28,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # The playground engine is an AOT wasm publish of the whole generator (Roslyn included) —
+    # minutes of mono-aot on a shared runner, not the seconds an Astro build takes.
+    timeout-minutes: 75
     defaults:
       run:
         working-directory: website
@@ -44,6 +49,44 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      # ---- the playground engine (decision 144) --------------------------------------------
+      # The /playground page loads the UNCHANGED generator compiled to WebAssembly from
+      # playground-engine/. Building it needs dotnet + the wasm-tools workload (AOT: see the
+      # csproj for why AOT is load-bearing, not an optimisation), the curated ref-pack, and the
+      # signals runtime bundle the preview mounts against.
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install wasm-tools workload
+        working-directory: .
+        run: dotnet workload install wasm-tools
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-pages-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Build the signals runtime
+        working-directory: src/filament-runtime
+        run: npm ci && npm run build
+
+      - name: Build the curated ref-pack (with manifest)
+        working-directory: .
+        run: bash playground/make-refpack.sh playground/Filament.Playground/wwwroot/refpack --manifest
+
+      - name: Publish the playground engine (AOT)
+        working-directory: .
+        run: dotnet publish playground/Filament.Playground -c Release -o /tmp/playground-publish
+
+      - name: Stage the engine into the site
+        working-directory: .
+        run: bash playground/stage-engine.sh /tmp/playground-publish/wwwroot website/public
 
       # The site is a PROJECT page served from /Filament/, not a domain root — astro.config.mjs
       # sets `base` accordingly and the build rewrites every asset and link under it. A

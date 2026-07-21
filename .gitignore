@@ -104,3 +104,5 @@ tests/Filament.Generator.Tests/Snapshots/*.received.js
 
 # Local NuGet feed (Filament.Sdk nupkgs): build artifacts, regenerable via `dotnet pack src/Filament.Sdk`.
 artifacts/
+website/public/playground-engine/
+playground/Filament.Playground/wwwroot/refpack/

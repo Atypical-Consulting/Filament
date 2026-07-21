@@ -674,8 +674,12 @@ public sealed class CSharpFrontEnd
             return;
         }
 
+        // concurrentBuild: false -- Roslyn's default parallelises semantic work behind Task.Wait,
+        // which is Monitor.Wait, which a single-threaded WASM host cannot do ("Cannot wait on
+        // monitors on this runtime", measured in the playground; decision 144). One compilation of
+        // one @code block gains nothing from parallelism anywhere else either.
         var compilation = CSharpCompilation.Create("FilamentCode", [tree], ReferenceAssemblies.ForCode(),
-            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
+            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, concurrentBuild: false));
 
         // VERIFY THE COMPILATION FROM THE ARTIFACT (decision 10/53). If the references did not
         // load, every type is an error symbol and this class would emit FIL0002 for `int` -- a
