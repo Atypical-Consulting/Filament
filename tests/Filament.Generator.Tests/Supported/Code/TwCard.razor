@@ -1,0 +1,8 @@
+@* Leaf-display child for TwCompose: two string [Parameter]s, nothing else. @Cls folds to the
+   static string the parent supplied -- spaces and all. *@
+<span id="card" class="@Cls">@Label</span>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Cls { get; set; } = "";
+}

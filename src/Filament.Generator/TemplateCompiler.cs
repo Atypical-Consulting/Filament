@@ -1695,8 +1695,11 @@ public sealed class TemplateCompiler
                 reactive.Add(attr.AttributeName);
                 continue;
             }
+            // Prefix-aware for the same reason as the static path (decision 151): a multi-token
+            // value arrives as several nodes whose spaces are prefixes, and the child must fold
+            // the string the parent AUTHORED.
             var value = string.Concat(attr.Children.OfType<HtmlAttributeValueIntermediateNode>()
-                .SelectMany(h => h.Children.OfType<IntermediateToken>()).Select(t => t.Content));
+                .Select(h => h.Prefix + string.Concat(h.Children.OfType<IntermediateToken>().Select(t => t.Content))));
             bindings[attr.AttributeName] = JsString(value);
         }
 
@@ -2228,7 +2231,13 @@ public sealed class TemplateCompiler
             return;
         }
 
-        var value = string.Concat(html.SelectMany(h => h.Children.OfType<IntermediateToken>()).Select(t => t.Content));
+        // Razor lowers a multi-token value ("w-1/2 hover:bg-amber-400 …") as SEVERAL
+        // HtmlAttributeValue nodes whose leading whitespace is each node's PREFIX, not a token.
+        // Concatenating tokens alone welded seven Tailwind utilities into one garbage class
+        // (decision 151); the prefix is part of the authored value, exactly as
+        // ComposeAttributeValue already treats it on the mixed path.
+        var value = string.Concat(html.Select(h =>
+            h.Prefix + string.Concat(h.Children.OfType<IntermediateToken>().Select(t => t.Content))));
 
         if (PropertyAttributes.TryGetValue(name, out var prop))
             _create.Add($"{v}.{prop} = {JsString(value)};");

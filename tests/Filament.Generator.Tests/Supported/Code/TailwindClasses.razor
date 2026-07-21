@@ -1,0 +1,26 @@
+@* Tailwind's surface syntax through the STATIC attribute path (decision 151). Variant colons,
+   fraction slashes, arbitrary-value brackets, leading dashes -- and, the defect this witness
+   pins: MANY TOKENS in one class value. Razor lowers such a value as SEVERAL prefixed
+   HtmlAttributeValue nodes; a concat that reads only the tokens drops the prefixes, welding
+   "w-1/2 hover:bg-amber-400 ..." into one garbage class. The emitted string must equal the
+   authored string, byte for byte, at top level AND inside a keyed list row. *@
+
+<h1 id="title" class="w-1/2 hover:bg-amber-400 focus:ring-2 max-w-[42rem] sm:px-4 -mt-2 md:grid-cols-[1fr_2fr]">Todo</h1>
+
+<button id="inc" @onclick="Inc" class="bg-cyan-500/75 disabled:opacity-50">inc: <span id="out">@count</span></button>
+
+<ul id="list">@foreach (int i in items)
+{
+    <li @key="i" class="flex w-1/2 hover:bg-amber-400 max-w-[42rem]"><span>@i</span></li>
+}</ul>
+
+@code {
+    private int count = 0;
+    private List<int> items = new List<int> { 1, 2 };
+
+    void Inc()
+    {
+        count++;
+        items = items.Where(x => true).ToList();
+    }
+}
