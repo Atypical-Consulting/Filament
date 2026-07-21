@@ -1,0 +1,23 @@
+@* BOUNDARY WITNESS for decision 141: the EVENT-OBJECT lambda `e => …` stays refused, in a row as
+   everywhere else (decision 105 deferred it; 141 admits only the no-argument captured form). The
+   event object would need a faithful mapping of C#'s MouseEventArgs onto the DOM event -- a
+   separate surface, refused rather than half-translated. *@
+
+<ul id="list">
+@foreach (int n in items)
+{
+    <li @key="n"><button class="del" @onclick="e => Del(n)">x</button></li>
+}
+</ul>
+
+@code {
+    private List<int> items = new List<int> { 1, 2, 3 };
+
+    private void Del(int id)
+    {
+        for (int i = items.Count - 1; i >= 0; i--)
+        {
+            if (items[i] == id) { items.RemoveAt(i); }
+        }
+    }
+}

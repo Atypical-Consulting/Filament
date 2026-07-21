@@ -4848,3 +4848,36 @@ lieu d'affirmer faussement qu'il n'y a qu'une voie. Le cas MIXTE (mutée ET réa
 antérieur (source de version) ; sa cohérence d'émission est une question ouverte notée, pas tranchée ici.
 
 Générateur seul, firewall runtime vide. Mesuré : entrée n°58. Suite : 471 tests.
+
+## 141. Le handler par ligne — une lambda qui capture la variable de boucle est une arrow qui capture le paramètre de ligne
+
+**2026-07-21.** Deuxième sonde du Duel : `@onclick="() => Toggle(t.Id)"` dans une ligne de `@foreach` — l'idiome
+central de toute app à liste — refusé `[not-csharp]` avec « CS0103: The name 'r' does not exist » et l'affirmation
+que Blazor refuserait aussi. FAUSSE : Blazor capture la variable de boucle sans effort. La cause était
+ARCHITECTURALE, pas sémantique : #105 plantait chaque corps de lambda comme méthode synthétique en portée de
+CLASSE, et une variable de boucle n'est pas un membre. Sur-conservation recherchée puis levée — la leçon de #111,
+deuxième occurrence coup sur coup (#140 ce matin).
+
+**L'ARBITRAGE : compiler le corps DANS LA PORTÉE OÙ L'AUTEUR L'A ÉCRIT.** Les slots avaient déjà la bonne histoire
+(« row is a loop local and only this tree knows it ») : leurs appels `__filament_s{i}(…)` sont plantés dans la
+méthode de région, à l'intérieur des accolades du `@foreach` recopié. La tranche applique la MÊME histoire aux
+handlers : une lambda récoltée sous un item de markup d'une région est plantée comme FONCTION LOCALE juste après le
+marqueur de cet item — donc dans la portée de boucle — et Roslyn résout `r` tout seul. Le plantage en portée de
+classe (#105) reste pour les lambdas du markup de niveau mount. `MethodInfo.Syntax` se généralise en `SyntaxNode`
+(méthode OU fonction locale) ; les passes de marquage marchent sur `DescendantNodes` et n'ont pas changé d'une
+ligne de logique.
+
+**CÔTÉ ÉMISSION, deux faits nouveaux.** (1) Les `listen()` produits pendant l'émission d'une ligne sont EXTRAITS de
+la section events du mount et câblés dans la fonction de ligne — ils nomment des consts locales à la ligne et
+capturent son paramètre ; au niveau mount, ni l'une ni l'autre n'existe. Même extraction pour les corps de branche
+`@if` (symétrie, et le même bug latent y dormait). (2) Un handler NOMMÉ dans une ligne (`@onclick="Add"`) passait
+par la passe différée de niveau mount (le comptage de sites décide l'inlining) et aurait émis un listen()
+référencant une const hors de portée — du JS cassé, EN SILENCE. Il est désormais REFUSÉ avec la forme lambda en
+guidance. Le §10 préfère un refus guidé à une émission plausible et morte.
+
+**FRONTIÈRES TENUES** : `e => …` (l'objet événement) reste refusée — FIL0003, jamais épissée — et
+`Unsupported/Gate/RowEventArg.razor` le pin ; la fermeture n'ouvre PAS MouseEventArgs (surface séparée, différée).
+`batch()` suit la règle #68 inchangée : le corps appelle `Del`, dont la boucle peut écrire plus d'une fois →
+l'arrow est batchée.
+
+Générateur seul, firewall runtime vide. Mesuré : entrée n°59. Suite : 476 tests.

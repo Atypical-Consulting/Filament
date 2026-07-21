@@ -226,6 +226,11 @@ public static class RepoPaths
     /// <summary>The @foreach-over-reassigned-List SPEC (decisions 51/140). Never edited to make a gate pass.</summary>
     public static string ForeachListAnswerKey => Path.Combine(Root, "samples", "ForeachList", "foreachlist.js");
 
+    public static string RowActionsRazor => Path.Combine(Root, "baseline", "RowActions.Blazor", "App.razor");
+
+    /// <summary>The per-row-handler SPEC (decisions 51/141). Never edited to make a gate pass.</summary>
+    public static string RowActionsAnswerKey => Path.Combine(Root, "samples", "RowActions", "rowactions.js");
+
     public static string LinqOrderRazor => Path.Combine(Root, "baseline", "LinqOrder.Blazor", "App.razor");
 
     /// <summary>The LINQ-ordering SPEC (decisions 51/126). Never edited to make a gate pass.</summary>

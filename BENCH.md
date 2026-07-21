@@ -5137,3 +5137,60 @@ ni réassignation). Suite : **471 tests** (393 générateur / 60 subset / 18 ana
 ---
 
 *Fin de l'entrée n°58. Ne pas modifier — ajouter une entrée n°59 pour toute rectification.*
+
+---
+
+## Entrée n°59 — 2026-07-21 — Phase 4 : le handler PAR LIGNE (lambda capturant la variable de boucle) mesuré contre Blazor (CORRECTION)
+
+**Un handler d'événement PAR LIGNE** — `@onclick="() => Del(r.Id)"` sur un bouton DANS une ligne de `@foreach`
+keyée, la lambda **capturant la variable de boucle** (décision #141) — rejoint le §5. C'est l'idiome dont toute
+vraie app à liste est faite (le bouton supprimer/sélectionner/basculer de chaque ligne), et la seule forme que la
+machinerie lambda de #105 ne pouvait pas atteindre : elle enveloppait les corps de lambda en méthodes synthétiques
+en portée de CLASSE, où la variable de boucle n'existe pas — refus avec un message qui accusait faussement l'entrée
+(« Blazor would refuse to build this file too » — Blazor le compile très bien). Sur-conservation, recherchée puis
+levée (leçon #111, 2e occurrence en deux tranches).
+
+**LE MAPPING, et pourquoi il ne coûte presque rien** : le gabarit de ligne est DÉJÀ une fonction qui reçoit la
+ligne (`createR(r)`, la forme list() de #124) — une lambda qui capture la variable de boucle en C# est donc une
+arrow qui capture le paramètre de fonction en JS. `() => Del(r.Id)` compile DANS `createR` en
+`() => batch(() => { del(r.id); })` ; la fermeture fait exactement ce que fait celle de C#. Le listener est câblé à
+la CRÉATION de la ligne et meurt avec elle (le scope de disposal par ligne de list()) — pas de table de délégation,
+pas de registre de lignes, **AUCUNE primitive runtime**.
+
+**Côté compilateur** : la lambda récoltée dans une région est PLANTÉE comme fonction locale dans la méthode de
+région — c'est-à-dire à l'intérieur des accolades que le `@foreach`/`@if` de l'auteur posait déjà — si bien que son
+corps est compilé dans la portée où l'auteur l'a écrit et que la variable de boucle se résout par Roslyn, pas par
+une devinette (l'histoire de portée des slots, appliquée aux handlers). Les `listen()` émis pendant l'émission d'une
+ligne sont extraits de la section events du mount et câblés dans la fonction de ligne, où les consts d'éléments
+existent. Un handler NOMMÉ dans une ligne (`@onclick="Add"`) est désormais REFUSÉ avec la forme lambda en guidance —
+avant cette tranche il aurait émis un listen() au niveau mount référençant une const de ligne hors de portée : du
+JS cassé, en silence (§10).
+
+### Ce qui est mesuré
+
+`baseline/RowActions.Blazor` : deux clics `#add` → `"task 1xtask 2x"` (2 `<li>`) ; clic sur le `.del` de la
+PREMIÈRE ligne → CETTE ligne seule disparaît → `"task 2x"` (1 `<li>`). **`HARNESS_VERSION` 1.52.0 → 1.53.0**,
+divulgué.
+
+```
+dotnet publish baseline/RowActions.Blazor -c Release -o bench/publish/blazor-rowactions
+./bench/build-filament.sh filament-rowactions-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-rowactions/wwwroot --app rowactions --label blazor-rowactions       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-rowactions-gen     --app rowactions --label filament-rowactions-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#list` (texte / compte `<li>`) | verdict |
+|---|---|---|
+| **blazor-rowactions** (autorité) | `"" /0 → "task 1xtask 2x"/2 → "task 2x"/1` | contrat OK |
+| **filament-rowactions-gen** (générateur) | `"" /0 → "task 1xtask 2x"/2 → "task 2x"/1` | contrat OK |
+
+**La fermeture capture à l'identique** — le `.del` de la première ligne retire cette ligne et elle seule, des deux
+côtés. Module généré : 2 104 o bruts. `git diff -- src/filament-runtime` vide. Témoins-frontières :
+`Unsupported/Gate/RowEventArg.razor` (la lambda `e => …` reste refusée, FIL0003) ; le handler nommé en ligne refusé
+avec guidance. Suite : **476 tests** (398 générateur / 60 subset / 18 analyzer, +5), runtime 214.
+
+---
+
+*Fin de l'entrée n°59. Ne pas modifier — ajouter une entrée n°60 pour toute rectification.*

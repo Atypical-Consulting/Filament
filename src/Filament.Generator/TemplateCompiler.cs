@@ -1771,10 +1771,15 @@ public sealed class TemplateCompiler
         var fn = Unique("create" + char.ToUpperInvariant(fe.Var[0]) + fe.Var[1..]);
 
         // The row's own create/bindings. Saved and restored rather than threaded through every
-        // call: the row template IS mount()'s emission shape, one level down.
+        // call: the row template IS mount()'s emission shape, one level down. Events too (decision
+        // 141): a row listener names row-local consts AND may capture the loop variable, so every
+        // listen() this row's emission produces is scooped out of the mount-level section and wired
+        // inside the row function, where both exist -- and dies with the row (list()'s disposal scope).
         var outerCreate = _create;
         var outerBindings = _bindings;
         var outerKey = _consumedKey;
+        var eventsBefore = _events.Count;
+        var handlersBefore = _handlers.Count;
         _create = [];
         _bindings = [];
         _consumedKey = fe.Key;
@@ -1783,10 +1788,28 @@ public sealed class TemplateCompiler
         var body = new List<string>();
         body.AddRange(_create);
         body.AddRange(_bindings);
+        body.AddRange(_events.GetRange(eventsBefore, _events.Count - eventsBefore));
+        _events.RemoveRange(eventsBefore, _events.Count - eventsBefore);
 
         _create = outerCreate;
         _bindings = outerBindings;
         _consumedKey = outerKey;
+
+        // A NAMED-method handler inside a row records into the DEFERRED mount-level pass (its site
+        // count decides inlining), which would emit its listen() where the row's element const does
+        // not exist -- broken JS, silently. Refused instead (section 10); the captured-lambda form
+        // `() => Method()` is the row idiom and is supported (decision 141).
+        if (_handlers.Count > handlersBefore)
+        {
+            Diag("unsupported-handler",
+                "a METHOD-NAMED event handler inside a @foreach row is not mapped: its listen() is wired " +
+                "in the deferred mount-level pass, where the row's element does not exist. Use the inline " +
+                "lambda form (`@onclick=\"() => TheMethod()\"`), which is wired inside the row (decision 141). " +
+                "Refusing to emit.",
+                fe.Body.Source);
+            _handlers.RemoveRange(handlersBefore, _handlers.Count - handlersBefore);
+            return;
+        }
 
         if (root is null) return; // the row template was refused; nothing is emitted for it
         body.Add($"return {root};");
@@ -1908,6 +1931,10 @@ public sealed class TemplateCompiler
         var outerCreate = _create;
         var outerBindings = _bindings;
         var outerKey = _consumedKey;
+        // Same scooping as a row's (decision 141): a listener on a branch-local element must be wired
+        // inside the branch function, where its const exists -- not in the mount events section.
+        var eventsBefore = _events.Count;
+        var handlersBefore = _handlers.Count;
         _create = [];
         _bindings = [];
         _consumedKey = null;
@@ -1916,10 +1943,24 @@ public sealed class TemplateCompiler
         var lines = new List<string>();
         lines.AddRange(_create);
         lines.AddRange(_bindings);
+        lines.AddRange(_events.GetRange(eventsBefore, _events.Count - eventsBefore));
+        _events.RemoveRange(eventsBefore, _events.Count - eventsBefore);
 
         _create = outerCreate;
         _bindings = outerBindings;
         _consumedKey = outerKey;
+
+        if (_handlers.Count > handlersBefore)
+        {
+            Diag("unsupported-handler",
+                "a METHOD-NAMED event handler inside an @if branch is not mapped: its listen() is wired " +
+                "in the deferred mount-level pass, where the branch's element does not exist. Use the inline " +
+                "lambda form (`@onclick=\"() => TheMethod()\"`), which is wired inside the branch (decision 141). " +
+                "Refusing to emit.",
+                bodyNode.Source);
+            _handlers.RemoveRange(handlersBefore, _handlers.Count - handlersBefore);
+            return false;
+        }
 
         if (root is null) return false;
         lines.Add($"return {root};");

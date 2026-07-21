@@ -145,6 +145,17 @@ public sealed class CSharpFrontEnd
     /// <summary>Whether the lambda handler writes more than once, so its arrow needs batch() (decision 68).</summary>
     public bool LambdaBatched(IntermediateNode attr) => _lambdaBatched.Contains(attr);
 
+    /// <summary>Whether target sits anywhere under root in the IR tree -- how a harvested lambda handler is
+    /// matched to the region markup item that carries its element, so it is planted in that region's scope
+    /// (decision 141) instead of at class scope.</summary>
+    static bool IsUnder(IntermediateNode root, IntermediateNode target)
+    {
+        if (ReferenceEquals(root, target)) return true;
+        foreach (var c in root.Children)
+            if (IsUnder(c, target)) return true;
+        return false;
+    }
+
     /// <summary>The C# method body block of a no-arg, non-async lambda (`() => …`), e.g. "{ currentCount++; }",
     /// or null if it is not that form (an `e => …` or `async` lambda, or unparseable).</summary>
     static string? LambdaMethodBody(string raw)
@@ -319,7 +330,16 @@ public sealed class CSharpFrontEnd
         public string Name = "";
         public string Js = "";
         public List<string> Parameters = [];
-        public MethodDeclarationSyntax Syntax = null!;
+        /// <summary>A @code method's MethodDeclarationSyntax -- or, for a REGION-planted lambda handler
+        /// (decision 141), the LocalFunctionStatementSyntax the region method carries it as. Everything
+        /// downstream walks DescendantNodes or reads <see cref="Block"/>, so one field serves both.</summary>
+        public SyntaxNode Syntax = null!;
+        public BlockSyntax? Block => Syntax switch
+        {
+            MethodDeclarationSyntax md => md.Body,
+            LocalFunctionStatementSyntax lf => lf.Body,
+            _ => null,
+        };
         public IMethodSymbol Symbol = null!;
         public int At;
         public int CallUses;
@@ -572,6 +592,15 @@ public sealed class CSharpFrontEnd
 
         // Regions: THE REASSEMBLY. Decision 54's unbalanced spans, put back together with the
         // markup as calls, so the braces close and Roslyn can see a loop.
+        //
+        // A lambda handler harvested from markup INSIDE a region is planted HERE, as a LOCAL FUNCTION
+        // right after its markup item's marker -- i.e. inside whatever braces the author's own @foreach/@if
+        // put around that markup -- so a body like `Del(r.Id)` is compiled in the scope the author wrote it
+        // in and the loop variable resolves (decision 141). This is the slots' own scope story (see "row is
+        // a loop local and only this tree knows it" below) applied to handlers; the class-scope planting
+        // (decision 105) remains for lambdas on mount-level markup, where there is no region to carry them.
+        var lambdaNames = new List<(IntermediateNode Attr, string Name)>();
+        var claimedLambdas = new bool[plan.LambdaHandlers.Count];
         var regionMethods = new List<string>();
         var m = 0;
         for (var r = 0; r < plan.Regions.Count; r++)
@@ -589,6 +618,17 @@ public sealed class CSharpFrontEnd
                         markers[$"__filament_m{m}"] = mi.Node;
                         _src.Literal($"\n__filament_m{m++}();\n");
                         foreach (var s in mi.Slots) Slot(s);
+                        for (var k = 0; k < plan.LambdaHandlers.Count; k++)
+                        {
+                            if (claimedLambdas[k] || !IsUnder(mi.Node, plan.LambdaHandlers[k].Attr)) continue;
+                            if (LambdaMethodBody(plan.LambdaHandlers[k].RawHandler) is not { } lbody) continue;
+                            claimedLambdas[k] = true;
+                            var lname = $"__filament_lambda_{k}";
+                            lambdaNames.Add((plan.LambdaHandlers[k].Attr, lname));
+                            _src.Literal($"void {lname}() ");
+                            _src.Node(plan.LambdaHandlers[k].Attr, lbody);
+                            _src.Literal("\n");
+                        }
                         break;
                 }
             _src.Literal("\n}\n");
@@ -597,10 +637,11 @@ public sealed class CSharpFrontEnd
         // Lambda event handlers (decision 105): each body as a synthetic method at class scope, so it is
         // marked + translated exactly like a @code method body. Mapped to the attribute's source so a
         // diagnostic inside the lambda points at the handler. Bodies that are not the no-arg lambda form
-        // are skipped here (the harvest regex admits only `() => …`, so this is belt-and-braces).
-        var lambdaNames = new List<(IntermediateNode Attr, string Name)>();
+        // are skipped here (the harvest regex admits only `() => …`, so this is belt-and-braces). Region
+        // lambdas were already planted above, in the scope that declares their captures (decision 141).
         for (var k = 0; k < plan.LambdaHandlers.Count; k++)
         {
+            if (claimedLambdas[k]) continue;
             if (LambdaMethodBody(plan.LambdaHandlers[k].RawHandler) is not { } mbody) continue;
             var lname = $"__filament_lambda_{k}";
             lambdaNames.Add((plan.LambdaHandlers[k].Attr, lname));
@@ -692,9 +733,18 @@ public sealed class CSharpFrontEnd
         // NEVER emitted as top-level functions (they inline into their listen()).
         foreach (var (attr, name) in lambdaNames)
         {
-            var syntax = FindMethod(classes[1], name);
-            if (syntax?.Body is null || _model.GetDeclaredSymbol(syntax) is not { } sym) continue;
-            _lambdaMethods.Add((attr, new MethodInfo { Name = name, Syntax = syntax, Symbol = sym }));
+            // A mount-level lambda is a class-scope synthetic METHOD (decision 105); a region lambda is a
+            // LOCAL FUNCTION inside its region method (decision 141). Same MethodInfo either way -- the
+            // marking passes walk DescendantNodes and the translator reads Block, and both syntaxes carry
+            // an IMethodSymbol.
+            SyntaxNode? syntax = (SyntaxNode?)classes[1].Members.OfType<MethodDeclarationSyntax>()
+                    .FirstOrDefault(md => md.Identifier.Text == name)
+                ?? tree.GetRoot().DescendantNodes().OfType<LocalFunctionStatementSyntax>()
+                    .FirstOrDefault(lf => lf.Identifier.Text == name);
+            if (syntax is null || _model.GetDeclaredSymbol(syntax) is not IMethodSymbol sym) continue;
+            var lm = new MethodInfo { Name = name, Syntax = syntax, Symbol = sym };
+            if (lm.Block is null) continue;
+            _lambdaMethods.Add((attr, lm));
         }
 
         // 2. reactivity, in the order the rule requires:
@@ -717,7 +767,7 @@ public sealed class CSharpFrontEnd
 
         // 3. the call graph: who calls whom, for the inlining arbitrage AND for the emission
         //    order (callees before callers -- see MethodsInDependencyOrder).
-        foreach (var mi in _methods) MarkCalls(mi.Syntax);
+        foreach (var mi in _methods) MarkCalls(mi.Syntax, mi);
         foreach (var (_, lm) in _lambdaMethods) MarkCalls(lm.Syntax, lm);
 
         // 3b. FIELD INITIALISERS, now that the marking is settled (decision 137). They are translated
@@ -736,10 +786,10 @@ public sealed class CSharpFrontEnd
             f.List!.Version = Unique(f.Js + "Version");
             f.List.Changed = Unique(f.Js + "Changed");
         }
-        foreach (var mi in _methods) _bodies[mi.Name] = Body(mi.Syntax.Body!);
+        foreach (var mi in _methods) _bodies[mi.Name] = Body(mi.Block!);
         foreach (var (attr, lm) in _lambdaMethods)
         {
-            _lambdaBodies[attr] = Body(lm.Syntax.Body!);
+            _lambdaBodies[attr] = Body(lm.Block!);
             if (CountWrites(lm, []) > 1) _lambdaBatched.Add(attr);
         }
         TranslateSlots(slots);
@@ -798,6 +848,13 @@ public sealed class CSharpFrontEnd
                 ops.Add(new CodeOp(Statement(ld)));
                 continue;
             }
+
+            // A planted lambda-handler local function (decision 141): this compiler's own scope carrier,
+            // not an author statement. It emits nothing here -- its body is translated via _lambdaBodies
+            // and wired as the element's listener where the row/branch template is emitted.
+            if (s is LocalFunctionStatementSyntax lf &&
+                lf.Identifier.Text.StartsWith("__filament_lambda_", StringComparison.Ordinal))
+                continue;
 
             Refuse("unsupported-template-statement",
                 $"{Describe(s)} in the template is not in the subset. The template admits @foreach and @if " +
@@ -1663,12 +1720,10 @@ public sealed class CSharpFrontEnd
     }
 
     /// <summary>Count @code's own calls to each method, and record the edges. See CallsTo and MethodsInDependencyOrder.</summary>
-    void MarkCalls(MethodDeclarationSyntax method) => MarkCalls(method, _methodsByName[method.Identifier.Text]);
-
     /// <summary>The caller is passed in (rather than looked up by name) so a lambda handler's synthetic
     /// method -- which is NOT in _methodsByName -- can still record the @code methods its body calls,
     /// bumping their CallUses correctly (decision 105).</summary>
-    void MarkCalls(MethodDeclarationSyntax method, MethodInfo caller)
+    void MarkCalls(SyntaxNode method, MethodInfo caller)
     {
         foreach (var inv in method.DescendantNodes().OfType<InvocationExpressionSyntax>())
             if (_model.GetSymbolInfo(inv).Symbol is IMethodSymbol s &&
@@ -1705,7 +1760,7 @@ public sealed class CSharpFrontEnd
         public HashSet<StatementSyntax> Folded = [];
     }
 
-    void MarkConstructionSites(MethodDeclarationSyntax method)
+    void MarkConstructionSites(SyntaxNode method)
     {
         foreach (var block in method.DescendantNodes().OfType<BlockSyntax>())
             for (var i = 0; i < block.Statements.Count; i++)
@@ -1755,7 +1810,7 @@ public sealed class CSharpFrontEnd
     /// initialiser, so any assignment reached from a method body marks it. For a record
     /// property it is the run computed above, so those assignments are excluded HERE.
     /// </summary>
-    void MarkAssignments(MethodDeclarationSyntax method)
+    void MarkAssignments(SyntaxNode method)
     {
         var folded = _sites.Values.SelectMany(s => s.Folded).ToHashSet();
 
@@ -1793,7 +1848,7 @@ public sealed class CSharpFrontEnd
         }
     }
 
-    void MarkListMutations(MethodDeclarationSyntax method)
+    void MarkListMutations(SyntaxNode method)
     {
         foreach (var s in method.DescendantNodes().OfType<StatementSyntax>())
             if (MutatedList(s) is { } f)
@@ -2122,7 +2177,7 @@ public sealed class CSharpFrontEnd
         if (!seen.Add(m.Name)) return 2; // recursion: cannot prove "once". Batch it.
 
         var n = 0;
-        foreach (var node in m.Syntax.Body!.DescendantNodes())
+        foreach (var node in m.Block!.DescendantNodes())
         {
             var writes = 0;
 

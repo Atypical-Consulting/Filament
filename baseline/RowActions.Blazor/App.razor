@@ -1,0 +1,40 @@
+@* A PER-ROW event handler (decision 141): `@onclick="() => Del(r.Id)"` on a button INSIDE a keyed
+   @foreach row -- the lambda captures the loop variable. This is the idiom every real list app is
+   made of (a delete/select/toggle button per row) and the one shape decision 105's lambda machinery
+   could not reach: it wrapped lambda bodies as synthetic methods at CLASS scope, where the loop
+   variable does not exist. The row markup is single-line (Rows' whitespace contract). #add appends
+   "task N" rows; each row's .del removes THAT row by id, exactly as Blazor's captured lambda does. *@
+
+<ul id="list"><button id="add" @onclick="Add">add</button>@foreach (Row r in _rows)
+{
+    <li @key="r.Id"><span class="lbl">@r.Label</span><button class="del" @onclick="() => Del(r.Id)">x</button></li>
+}</ul>
+
+@code {
+    // Rows' Row shape: mutable record, Id plain identity, Label written only at construction.
+    record Row
+    {
+        public int Id { get; set; }
+        public string Label { get; set; } = "";
+    }
+
+    private List<Row> _rows = new List<Row>();
+    private int _next = 1;
+
+    private void Add()
+    {
+        Row r = new Row();
+        r.Id = _next;
+        r.Label = "task " + _next;
+        _next = _next + 1;
+        _rows.Add(r);
+    }
+
+    private void Del(int id)
+    {
+        for (int i = _rows.Count - 1; i >= 0; i--)
+        {
+            if (_rows[i].Id == id) { _rows.RemoveAt(i); }
+        }
+    }
+}

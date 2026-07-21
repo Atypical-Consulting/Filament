@@ -210,6 +210,7 @@ ALL_LABELS=(
   filament-asyncresult-gen
   filament-foreacharray-gen
   filament-foreachlist-gen
+  filament-rowactions-gen
   filament-foreachdict-gen
   filament-linqorder-gen
   filament-elementwrite-gen
@@ -272,6 +273,7 @@ project_for() {
     filament-asyncresult-gen)                        echo "samples/filament-asyncresult-gen" ;;
     filament-foreacharray-gen)                       echo "samples/filament-foreacharray-gen" ;;
     filament-foreachlist-gen)                        echo "samples/filament-foreachlist-gen" ;;
+    filament-rowactions-gen)                         echo "samples/filament-rowactions-gen" ;;
     filament-foreachdict-gen)                        echo "samples/filament-foreachdict-gen" ;;
     filament-linqorder-gen)                          echo "samples/filament-linqorder-gen" ;;
     filament-elementwrite-gen)                       echo "samples/filament-elementwrite-gen" ;;
@@ -294,7 +296,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachlist-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen|filament-inherits-gen|filament-forms-gen|filament-routing-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachlist-gen|filament-rowactions-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen|filament-inherits-gen|filament-forms-gen|filament-routing-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -363,6 +365,7 @@ razor_for() {
     filament-asyncresult-gen)                        echo "$REPO_ROOT/baseline/AsyncResult.Blazor/App.razor" ;;
     filament-foreacharray-gen)                       echo "$REPO_ROOT/baseline/ForeachArray.Blazor/App.razor" ;;
     filament-foreachlist-gen)                        echo "$REPO_ROOT/baseline/ForeachList.Blazor/App.razor" ;;
+    filament-rowactions-gen)                         echo "$REPO_ROOT/baseline/RowActions.Blazor/App.razor" ;;
     filament-foreachdict-gen)                        echo "$REPO_ROOT/baseline/ForeachDict.Blazor/App.razor" ;;
     filament-linqorder-gen)                          echo "$REPO_ROOT/baseline/LinqOrder.Blazor/App.razor" ;;
     filament-elementwrite-gen)                       echo "$REPO_ROOT/baseline/ElementWrite.Blazor/App.razor" ;;
@@ -426,6 +429,7 @@ generated_js_for() {
     filament-asyncresult-gen)                        echo "App.g.js" ;;
     filament-foreacharray-gen)                       echo "App.g.js" ;;
     filament-foreachlist-gen)                        echo "App.g.js" ;;
+    filament-rowactions-gen)                         echo "App.g.js" ;;
     filament-foreachdict-gen)                        echo "App.g.js" ;;
     filament-linqorder-gen)                          echo "App.g.js" ;;
     filament-elementwrite-gen)                       echo "App.g.js" ;;
@@ -485,6 +489,7 @@ title_for() {
     filament-asyncresult-gen)                        echo "AsyncResult" ;;
     filament-foreacharray-gen)                       echo "ForeachArray" ;;
     filament-foreachlist-gen)                        echo "ForeachList" ;;
+    filament-rowactions-gen)                         echo "RowActions" ;;
     filament-foreachdict-gen)                        echo "ForeachDict" ;;
     filament-linqorder-gen)                          echo "LinqOrder" ;;
     filament-elementwrite-gen)                       echo "ElementWrite" ;;
@@ -548,6 +553,7 @@ blazor_label_for() {
     filament-asyncresult-gen)                        echo "blazor-asyncresult" ;;
     filament-foreacharray-gen)                       echo "blazor-foreacharray" ;;
     filament-foreachlist-gen)                        echo "blazor-foreachlist" ;;
+    filament-rowactions-gen)                         echo "blazor-rowactions" ;;
     filament-foreachdict-gen)                        echo "blazor-foreachdict" ;;
     filament-linqorder-gen)                          echo "blazor-linqorder" ;;
     filament-elementwrite-gen)                       echo "blazor-elementwrite" ;;
@@ -619,6 +625,7 @@ css_for() {
     filament-asyncresult-gen)                        echo "$REPO_ROOT/baseline/AsyncResult.Blazor/wwwroot/css/app.css" ;;
     filament-foreacharray-gen)                       echo "$REPO_ROOT/baseline/ForeachArray.Blazor/wwwroot/css/app.css" ;;
     filament-foreachlist-gen)                        echo "$REPO_ROOT/baseline/ForeachList.Blazor/wwwroot/css/app.css" ;;
+    filament-rowactions-gen)                         echo "$REPO_ROOT/baseline/RowActions.Blazor/wwwroot/css/app.css" ;;
     filament-foreachdict-gen)                        echo "$REPO_ROOT/baseline/ForeachDict.Blazor/wwwroot/css/app.css" ;;
     filament-linqorder-gen)                          echo "$REPO_ROOT/baseline/LinqOrder.Blazor/wwwroot/css/app.css" ;;
     filament-elementwrite-gen)                       echo "$REPO_ROOT/baseline/ElementWrite.Blazor/wwwroot/css/app.css" ;;
