@@ -18,8 +18,6 @@ System.Console
 System.ComponentModel
 System.ComponentModel.Primitives
 System.ObjectModel
-System.Private.CoreLib
-System.Private.Uri
 System.Threading
 System.Threading.Tasks
 System.Text.RegularExpressions

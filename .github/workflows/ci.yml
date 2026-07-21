@@ -103,6 +103,49 @@ jobs:
           path: "**/*.trx"
           if-no-files-found: ignore
 
+  refpack-proof:
+    name: Playground ref-pack proof (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            src/filament-runtime/package-lock.json
+
+      - name: Install root tooling (esbuild, for canon.mjs)
+        run: npm ci
+
+      - name: Build the signals runtime
+        working-directory: src/filament-runtime
+        run: npm ci && npm run build
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-refpack-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      # THE EQUIVALENCE PROOF (decision 144): the FULL suite, green, with FILAMENT_DOTNET_ROOT
+      # pointed at the curated layout playground/refpack.list describes. This is what stops a
+      # renovate SDK bump from silently growing the closure past the list: the playground would
+      # ship a broken compiler, and this job fails loud instead.
+      - name: Prove the curated ref-pack against the whole suite
+        env:
+          VSTEST_CONNECTION_TIMEOUT: 180
+        run: bash playground/prove-refpack.sh -m:1
+
   runtime:
     name: Signals runtime (vitest)
     runs-on: ubuntu-latest
