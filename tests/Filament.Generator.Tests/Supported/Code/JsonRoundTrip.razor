@@ -1,0 +1,50 @@
+@* LOCAL JSON (decision 157): Serialize/Deserialize under the network's shape gate (147). The
+   trap this witness pins: Item's Done is MUTATED, so at runtime it is a per-record SIGNAL --
+   naive JSON.stringify would serialize signal internals, and a parsed object would carry a
+   plain bool where the row machinery expects a signal. The per-record converters bridge both
+   directions: __serItem reads .value, __desItem re-wraps in signal(). *@
+
+<p id="out">@snapshot</p>
+<ul id="list">@foreach (Item t in visible)
+{
+    <li @key="t.Id" class="row @(t.Done ? "done" : "open")"><span>@t.Label</span><button class="toggle" @onclick="() => Toggle(t.Id)">t</button></li>
+}</ul>
+<button id="save" @onclick="Save">save</button>
+<button id="load" @onclick="Load">load</button>
+
+@code {
+    record Item
+    {
+        public int Id { get; set; }
+        public string Label { get; set; } = "";
+        public bool Done { get; set; }
+    }
+
+    private List<Item> tasks = new List<Item>();
+    private List<Item> visible = new List<Item>();
+    private string snapshot = "";
+
+    void Toggle(int id)
+    {
+        for (int i = 0; i < tasks.Count; i++)
+        {
+            if (tasks[i].Id == id) { tasks[i].Done = !tasks[i].Done; }
+        }
+        visible = tasks.Where(x => true).ToList();
+    }
+
+    void Save()
+    {
+        snapshot = System.Text.Json.JsonSerializer.Serialize(tasks);
+    }
+
+    void Load()
+    {
+        var data = System.Text.Json.JsonSerializer.Deserialize<List<Item>>(snapshot);
+        if (data != null)
+        {
+            tasks = data;
+            visible = tasks.Where(x => true).ToList();
+        }
+    }
+}

@@ -2658,6 +2658,16 @@ public sealed class TemplateCompiler
             }
         }
 
+        if (_code.JsonHelperLines.Count > 0)
+        {
+            // Local JSON (decision 157): the per-record converters between the runtime shape
+            // (camelCase, signal-wrapped mutated props) and the DECLARED JSON shape C#'s default
+            // JsonSerializer writes -- derived from the record declaration, emitted once each.
+            sb.Append("// -- JSON: per-record converters to/from the declared wire shape (decision 157)\n");
+            foreach (var line in _code.JsonHelperLines) sb.Append(line).Append('\n');
+            sb.Append('\n');
+        }
+
         if (module.Count > 0)
         {
             // rows.js mapping decision (4): immutable literal lists are inert DATA, and hoisting

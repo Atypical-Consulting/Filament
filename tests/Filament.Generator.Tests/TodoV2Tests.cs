@@ -145,4 +145,32 @@ public class TodoV2Tests
         Assert.Contains("[unsupported-handler]", stderr);
         Assert.Contains("@onkeydown", stderr);
     }
+
+    // ---- W2: local JSON (decision 157) --------------------------------------
+
+    /// <summary>
+    /// Serialize/Deserialize are shape-aware per record: __serItem writes the DECLARED PascalCase
+    /// names reading `.value` off the signal-wrapped mutated prop (Done); __desItem reads declared
+    /// names case-sensitively and RE-WRAPS Done in signal() — both directions of the trap the
+    /// probe exposed. Scalars and lists of scalars need no converter.
+    /// </summary>
+    [Fact]
+    public void JsonRoundTrip_EmitsShapeAwareConverters()
+    {
+        var js = Emit("JsonRoundTrip");
+        Assert.Contains("JSON.stringify(tasks.map(__serItem))", js);
+        Assert.Contains("JSON.parse(snapshot.value).map(__desItem)", js);
+        Assert.Contains("function __serItem(v) {", js);
+        Assert.Contains("return { Id: v.id, Label: v.label, Done: v.done.value };", js);
+        Assert.Contains("function __desItem(o) {", js);
+        Assert.Contains("return { id: o.Id, label: o.Label, done: signal(o.Done) };", js);
+    }
+
+    /// <summary>BOUNDARY: an options argument changes the wire shape — default options only.</summary>
+    [Fact]
+    public void JsonWithOptions_IsRefused()
+    {
+        var stderr = Refused("JsonOptions");
+        Assert.Contains("DEFAULT options", stderr);
+    }
 }

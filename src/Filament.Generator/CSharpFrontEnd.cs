@@ -3436,6 +3436,11 @@ public sealed class CSharpFrontEnd
                 "System.Net.Http.Json.HttpClientJsonExtensions" or "System.Net.Http.HttpClient")
             return HttpInvocation(inv, symbol);
 
+        // LOCAL JSON (decision 157). Serialize/Deserialize on System.Text.Json.JsonSerializer,
+        // default options only, T through the SAME shape gate the network uses (decision 147).
+        if (symbol is not null && symbol.ContainingType?.ToDisplayString() == "System.Text.Json.JsonSerializer")
+            return JsonInvocation(inv, symbol);
+
         // FocusAsync() on an @ref'd element (decision 132). ElementReference's ONLY faithful surface: Blazor
         // needs the reference because it hands an id across the .NET/JS boundary, while the emitted module
         // already holds the node in a const, so this is just `.focus()`.
@@ -3764,6 +3769,95 @@ public sealed class CSharpFrontEnd
             "GetFromJsonAsync<T>(url), GetStringAsync(url) and PostAsJsonAsync(url, value) -- the shapes fetch " +
             "maps faithfully (decision 147). Delete/Put/headers/HttpResponseMessage handling are deferred. " +
             "Refusing to emit.", inv.SpanStart);
+    }
+
+    /// <summary>
+    /// LOCAL JSON (decision 157): JsonSerializer.Serialize(value) / .Deserialize&lt;T&gt;(json), default
+    /// options only, T through the SAME shape gate the network uses (decision 147). The part the probe
+    /// exposed: the runtime shape is camelCase with SIGNAL-wrapped mutated props, while C#'s default
+    /// serializer writes the DECLARED PascalCase names, case-sensitively, in declaration order. So the
+    /// conversion is SHAPE-AWARE per record, derived from RecordInfo: __serR writes declared names
+    /// reading `.value` off signal props; __desR reads declared names and re-wraps mutated props in
+    /// signal(). Scalars and lists of scalars need no converter at all. DISCLOSED divergence: STJ's
+    /// default encoder escapes HTML-sensitive characters ('&lt;' -> <) where JSON.stringify does
+    /// not -- ASCII-alphanumeric content is byte-identical, angle-bracketed content is not.
+    /// </summary>
+    string JsonInvocation(InvocationExpressionSyntax inv, IMethodSymbol m)
+    {
+        var args = inv.ArgumentList.Arguments;
+        var records = _recordsByName.Values.Select(r => r.Symbol).ToArray();
+        switch (m.Name)
+        {
+            case "Serialize" when args.Count == 1:
+            {
+                var t = _model.GetTypeInfo(args[0].Expression).Type;
+                if (Filament.Subset.TypeSubset.JsonUnfaithful(t, records) is { } offender)
+                    return Refuse("unsupported-type",
+                        $"JsonSerializer.Serialize serializes {offender}, whose JSON shape is not its Filament " +
+                        "shape (decision 157; the network's gate, decision 147). JSON-faithful types are int, " +
+                        "double, bool, string, records of those, and List<T>/T[] of those. Refusing to emit.",
+                        inv.SpanStart);
+                return $"JSON.stringify({JsonConvertJs(t!, Expr(args[0].Expression), ser: true)})";
+            }
+            case "Deserialize" when m.TypeArguments.Length == 1 && args.Count == 1:
+            {
+                var t = m.TypeArguments[0];
+                if (Filament.Subset.TypeSubset.JsonUnfaithful(t, records) is { } offender)
+                    return Refuse("unsupported-type",
+                        $"JsonSerializer.Deserialize<{t.ToDisplayString()}> deserializes {offender}, whose JSON " +
+                        "shape is not its Filament shape (decision 157; the network's gate, decision 147). " +
+                        "JSON-faithful types are int, double, bool, string, records of those, and List<T>/T[] " +
+                        "of those. Refusing to emit.",
+                        inv.SpanStart);
+                return JsonConvertJs(t, $"JSON.parse({Expr(args[0].Expression)})", ser: false);
+            }
+        }
+        return Refuse("unsupported-call",
+            $"'{Trunc(inv.ToString())}' is not a JsonSerializer operation in the subset. Section 5 admits " +
+            "Serialize(value) and Deserialize<T>(json) with DEFAULT options -- an options argument changes " +
+            "the wire shape this compiler mirrors (decision 157). Refusing to emit.", inv.SpanStart);
+    }
+
+    /// <summary>The converter EXPRESSION between the runtime shape and the declared JSON shape:
+    /// identity for scalars and lists of scalars, __serR/__desR for a record, .map(__serR) for a
+    /// list/array of records. Also serves nested record-typed props (no parse/stringify here).</summary>
+    string JsonConvertJs(ITypeSymbol t, string expr, bool ser)
+    {
+        if (t is INamedTypeSymbol && _recordsByName.TryGetValue(t.Name, out var ri))
+            return $"{EnsureJsonHelper(ri, ser)}({expr})";
+        if ((Filament.Subset.TypeSubset.ListElement(t) ?? Filament.Subset.TypeSubset.ArrayElement(t)) is { } el
+            && _recordsByName.TryGetValue(el.Name, out var eri))
+            return $"{expr}.map({EnsureJsonHelper(eri, ser)})";
+        return expr;
+    }
+
+    /// <summary>Per-record JSON helpers (decision 157), emitted once each into the module.</summary>
+    public readonly List<string> JsonHelperLines = [];
+    readonly HashSet<string> _jsonHelpersDone = new(StringComparer.Ordinal);
+
+    string EnsureJsonHelper(RecordInfo ri, bool ser)
+    {
+        var name = (ser ? "__ser" : "__des") + ri.Name;
+        if (!_jsonHelpersDone.Add(name)) return name;
+        var fields = new List<string>();
+        foreach (var p in ri.Props)
+        {
+            if (ser)
+            {
+                var v = $"v.{p.Js}" + (p.IsSignal ? ".value" : "");
+                fields.Add($"{p.Name}: {JsonConvertJs(p.Symbol.Type, v, ser: true)}");
+            }
+            else
+            {
+                var v = JsonConvertJs(p.Symbol.Type, $"o.{p.Name}", ser: false);
+                if (p.IsSignal) { _primitives.Add("signal"); v = $"signal({v})"; }
+                fields.Add($"{p.Js}: {v}");
+            }
+        }
+        JsonHelperLines.Add($"function {name}({(ser ? "v" : "o")}) {{");
+        JsonHelperLines.Add($"  return {{ {string.Join(", ", fields)} }};");
+        JsonHelperLines.Add("}");
+        return name;
     }
 
     /// <summary>`new Random(seed)` / `new Random()` -> `__rnd(seed)` / `__rnd(null)` (decision 146). The seed

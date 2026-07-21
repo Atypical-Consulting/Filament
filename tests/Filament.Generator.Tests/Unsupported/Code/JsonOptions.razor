@@ -1,0 +1,16 @@
+@* BOUNDARY for decision 157: an options argument changes the wire shape this compiler mirrors
+   (naming policy, encoder, indentation) -- default options only. *@
+
+<p id="out">@snapshot</p>
+<button id="save" @onclick="Save">save</button>
+
+@code {
+    private string snapshot = "";
+    private int n = 1;
+
+    void Save()
+    {
+        n++;
+        snapshot = System.Text.Json.JsonSerializer.Serialize(n, new System.Text.Json.JsonSerializerOptions());
+    }
+}
