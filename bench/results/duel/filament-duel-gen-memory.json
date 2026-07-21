@@ -1,0 +1,494 @@
+{
+  "schemaVersion": 3,
+  "mode": "memory",
+  "label": "filament-duel-gen",
+  "app": "duel",
+  "url": "http://127.0.0.1:57224/",
+  "servedDir": "/Users/phmatray/Repositories/dotnet/Filament/.claude/worktrees/reflective-wobbling-anchor/bench/publish/filament-duel-gen",
+  "startedAt": "2026-07-21T12:22:37.153Z",
+  "finishedAt": "2026-07-21T12:25:04.561Z",
+  "ok": true,
+  "contractCheck": {
+    "problems": [],
+    "observed": {
+      "initial": {
+        "rows": [],
+        "stats": "0/0",
+        "empty": true
+      },
+      "afterAdds": {
+        "rows": [
+          {
+            "label": "alpha",
+            "state": "todo"
+          },
+          {
+            "label": "beta",
+            "state": "todo"
+          }
+        ],
+        "stats": "2/2",
+        "empty": false,
+        "inputCleared": true
+      },
+      "afterToggle": {
+        "rows": [
+          {
+            "label": "alpha",
+            "state": "todo"
+          },
+          {
+            "label": "beta",
+            "state": "done"
+          }
+        ],
+        "stats": "1/2"
+      },
+      "afterRemove": {
+        "rows": [
+          {
+            "label": "beta",
+            "state": "done"
+          }
+        ],
+        "stats": "0/1"
+      },
+      "nav": {
+        "path": "/about",
+        "about": true,
+        "noReload": true
+      },
+      "aboutCount": "clicked 1",
+      "remounted": {
+        "rows": [],
+        "stats": "0/0",
+        "empty": true
+      },
+      "back": {
+        "path": "/about",
+        "about": true,
+        "aboutFresh": "clicked 0"
+      }
+    }
+  },
+  "memory": {
+    "api": "performance.measureUserAgentSpecificMemory",
+    "repsCount": 5,
+    "reps": [
+      {
+        "afterLoad": {
+          "breakdown": [
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            },
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/"
+                }
+              ],
+              "bytes": 290709,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 29368,
+              "types": [
+                "DOM"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 450665,
+              "types": [
+                "Shared"
+              ]
+            }
+          ],
+          "bytes": 770742
+        },
+        "afterBurst": {
+          "breakdown": [
+            {
+              "attribution": [],
+              "bytes": 459159,
+              "types": [
+                "Shared"
+              ]
+            },
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/about"
+                }
+              ],
+              "bytes": 392820,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 27344,
+              "types": [
+                "DOM"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            }
+          ],
+          "bytes": 879323
+        }
+      },
+      {
+        "afterLoad": {
+          "breakdown": [
+            {
+              "attribution": [],
+              "bytes": 452485,
+              "types": [
+                "Shared"
+              ]
+            },
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/"
+                }
+              ],
+              "bytes": 290761,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            },
+            {
+              "attribution": [],
+              "bytes": 29368,
+              "types": [
+                "DOM"
+              ]
+            }
+          ],
+          "bytes": 772614
+        },
+        "afterBurst": {
+          "breakdown": [
+            {
+              "attribution": [],
+              "bytes": 931834,
+              "types": [
+                "Shared"
+              ]
+            },
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/about"
+                }
+              ],
+              "bytes": 300832,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 27344,
+              "types": [
+                "DOM"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            }
+          ],
+          "bytes": 1260010
+        }
+      },
+      {
+        "afterLoad": {
+          "breakdown": [
+            {
+              "attribution": [],
+              "bytes": 450025,
+              "types": [
+                "Shared"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 29368,
+              "types": [
+                "DOM"
+              ]
+            },
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/"
+                }
+              ],
+              "bytes": 290581,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            }
+          ],
+          "bytes": 769974
+        },
+        "afterBurst": {
+          "breakdown": [
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/about"
+                }
+              ],
+              "bytes": 300760,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 27344,
+              "types": [
+                "DOM"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 510023,
+              "types": [
+                "Shared"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            }
+          ],
+          "bytes": 838127
+        }
+      },
+      {
+        "afterLoad": {
+          "breakdown": [
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            },
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/"
+                }
+              ],
+              "bytes": 245019,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 29368,
+              "types": [
+                "DOM"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 496311,
+              "types": [
+                "Shared"
+              ]
+            }
+          ],
+          "bytes": 770698
+        },
+        "afterBurst": {
+          "breakdown": [
+            {
+              "attribution": [],
+              "bytes": 27344,
+              "types": [
+                "DOM"
+              ]
+            },
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/about"
+                }
+              ],
+              "bytes": 379136,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            },
+            {
+              "attribution": [],
+              "bytes": 461839,
+              "types": [
+                "Shared"
+              ]
+            }
+          ],
+          "bytes": 868319
+        }
+      },
+      {
+        "afterLoad": {
+          "breakdown": [
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/"
+                }
+              ],
+              "bytes": 290809,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            },
+            {
+              "attribution": [],
+              "bytes": 493518,
+              "types": [
+                "Shared"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 29368,
+              "types": [
+                "DOM"
+              ]
+            }
+          ],
+          "bytes": 813695
+        },
+        "afterBurst": {
+          "breakdown": [
+            {
+              "attribution": [],
+              "bytes": 963140,
+              "types": [
+                "Shared"
+              ]
+            },
+            {
+              "attribution": [
+                {
+                  "scope": "Window",
+                  "url": "http://127.0.0.1:57224/about"
+                }
+              ],
+              "bytes": 293995,
+              "types": [
+                "JavaScript"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 27344,
+              "types": [
+                "DOM"
+              ]
+            },
+            {
+              "attribution": [],
+              "bytes": 0,
+              "types": []
+            }
+          ],
+          "bytes": 1284479
+        }
+      }
+    ],
+    "medianBytes": {
+      "afterLoad": 770742,
+      "afterBurst": 879323
+    },
+    "burst": "driveLoadedApp -- the same interactions verifyContract asserts, on the same contract"
+  },
+  "environment": {
+    "machine": {
+      "hostname": "Mac",
+      "model": "Mac17,6",
+      "cpu": "Apple M5 Max",
+      "cpuCount": 18,
+      "arch": "arm64",
+      "totalMemBytes": 68719476736
+    },
+    "os": {
+      "platform": "darwin",
+      "release": "25.5.0",
+      "version": "Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050",
+      "productVersion": "26.5.1"
+    },
+    "chrome": {
+      "channel": "chrome",
+      "version": "150.0.7871.129",
+      "headless": true
+    },
+    "dotnetSdk": "10.0.301",
+    "node": "v26.5.0",
+    "playwright": "1.61.1",
+    "aot": null,
+    "aotDeclared": null,
+    "aotObserved": null,
+    "aotVerification": null,
+    "harnessVersion": "1.54.0",
+    "harness": {
+      "version": "1.54.0",
+      "sha256": "9bcffa9eafd72ecbee1d3c979e3686c5b24939848eec700d63a9373f83bb98a5",
+      "files": {
+        "bench.mjs": "4d4409dd6cf0e41f5cbd08752fbb9ee1dbd61aa07f10cf225d2edea9e4ab3ffb",
+        "expected-labels.json": "877b14615b32f85a5d9826ee43558f63a1dda59eaae85d42813f7ad3070d51d5",
+        "server.mjs": "892c9d6cbc9e3061b113038d0ed0eeb9da170b05740e06342b03ea394d9af714"
+      },
+      "note": "sha256 is taken over the sorted \"name:sha256\" lines of the files in `files`. Two results are like-for-like comparable IFF this value matches. HARNESS_VERSION is hand-maintained and has already been observed to go stale across a breaking harness change; it is a label, not evidence. Compare the hash."
+    }
+  }
+}
