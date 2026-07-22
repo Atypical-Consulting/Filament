@@ -5712,3 +5712,98 @@ citation app-level de cette tranche.
 Câbler un label que personne n'a jamais construit ni mesuré le ferait passer pour un membre de
 l'ensemble mesuré alors qu'il ne l'est pas — ce serait contredire la réserve ci-dessus d'une ligne plus
 bas. Le label s'ajoute AVEC la première exécution navigateur des deux côtés, pas avant.
+
+## Entrée n°70 — 2026-07-22 — Phase 4 : la frontière d'erreur — ce que Blazor attrape VRAIMENT, et le coût, qui est zéro
+
+**Ce qui est mesuré.** Trois choses, séparées exprès : (1) ce que la frontière de **Blazor** attrape,
+mesuré chez Blazor **avant** que quoi que ce soit soit mappé ; (2) le COMPORTEMENT des octets émis,
+exécuté dans un DOM ; (3) le coût, qui est **zéro octet de runtime**. Décision 164.
+
+**Pourquoi il n'y a PAS de label de bench.** La tranche est **générateur-seul** — `git diff --
+src/filament-runtime` est **VIDE** — et n'ajoute d'octets qu'à une app qui écrit effectivement une
+frontière. Il n'y a donc ni C1 ni C4 à re-mesurer : aucune app mesurée (`Counter`, `Rows`, `Duel`,
+`Todo`) n'en contient une. Dire cela vaut mieux que câbler un label dont le delta serait nul par
+construction et qu'on citerait ensuite comme une mesure.
+
+### 1. L'oracle : ce que Blazor attrape, et ce n'est pas ce qu'on croit
+
+Le catch vit dans `Renderer.HandleExceptionViaErrorBoundary`, du .NET ordinaire. **Aucun navigateur
+n'est requis**, et c'est ce qui rend cette tranche mesurable ici alors que Playwright n'est toujours pas
+installable (réserve de BENCH n°69, toujours ouverte).
+
+```
+dotnet run --project tools/error-boundary-oracle
+# Microsoft.AspNetCore.Components 10.0.0.0 — vrai Renderer, vrai ErrorBoundary, vraie dispatch
+```
+
+| témoin | qui lève | Blazor | atteignable en Filament ? |
+|---|---|---|---|
+| W1 | un gestionnaire que le PARENT possède, écrit DANS la frontière | **PAS attrapé** | oui — donc **non attrapé ici non plus** |
+| W2 | le gestionnaire d'un composant ENFANT | attrapé | non (`[composition-out-of-subset]`) |
+| W3 | le `OnInitialized` d'un composant ENFANT | attrapé | non (idem) |
+| W4 | le parent, en ÉVALUANT le contenu | attrapé | **oui — c'est la tranche** |
+| W5 | idem au RE-RENDU | attrapé, verrou **collant**, extérieur **vivant** | partiellement (voir réserve) |
+| W6 | sans `ErrorContent` | `<div class="blazor-error-boundary">` | oui |
+
+**W1 est le résultat qui compte.** C'est la forme que tout le monde attend d'une frontière, et Blazor ne
+l'attrape pas : une frontière attrape ce que ses DESCENDANTS lèvent, et un gestionnaire écrit dans son
+contenu appartient au composant qui a écrit le fragment — un ancêtre. **W2 est le contrôle de W1** : même
+throw, même endroit à l'écran, levé par un descendant, et attrapé. Le harnais distingue donc bien les
+deux issues ; « attrapé » n'est pas une réponse qu'il rend inconditionnellement.
+
+### 2. Le comportement des octets émis, exécuté
+
+`canon` décide les octets : **ALPHA-ÉQUIVALENT** à `samples/ErrorBoundary/errorboundary.js`,
+**760 B minifiés / 272 tokens des deux côtés**. Il ne décide pas le comportement, d'où la seconde porte :
+
+```
+node tools/error-boundary-contract.mjs <ErrorBoundary.g.js>
+```
+
+| étape | contrôle | verdict du contrôle |
+|---|---|---|
+| le throw du contenu est ATTRAPÉ, pas propagé | la garde re-lève au lieu de verrouiller | casse l'étape |
+| le contenu n'est PAS rendu (`#in` absent) | le contenu ne lève plus | casse l'étape |
+| `ErrorContent` porte le message attrapé | la bascule est gelée | casse l'étape |
+| ce qui est HORS de la frontière survit | `#outside` déplacé dans la branche gardée | casse l'étape |
+| le verrou est COLLANT (`??=`) | `=` au lieu de `??=` | **INAPPLICABLE, déclaré** |
+
+Rendu final, des deux côtés :
+`<div id="wrap"><p id="outside">outside</p><p id="err">Sorry: the content could not be rendered</p></div>`
+(plus l'ancre commentaire, la divergence +1 nœud déjà disclosée pour `@if`, décisions 81/82).
+
+**Deux contrôles ont été CORRIGÉS par le contrat lui-même.** Le premier cassait la syntaxe : il faisait
+échouer l'étape en ne compilant plus, donc il mesurait la regex et non le mapping. Le second gelait la
+bascule pour prouver « `#in` absent » — mais avec la bascule gelée le contenu lève quand même et rend
+quand même le nœud vide, donc `#in` était absent **dans les deux cas** et l'étape passait sans rien
+prouver. Le cinquième est déclaré **inapplicable** : ce témoin ne lève qu'une fois, il ne peut pas
+distinguer `=` de `??=`. Un contrôle qui ne peut pas échouer n'est pas une preuve, et le dire est moins
+cher que de l'encaisser.
+
+### 3. Le coût
+
+| | |
+|---|---|
+| `git diff -- src/filament-runtime` | **VIDE** |
+| primitives runtime nouvelles | **0** (`signal`, `list`, `insert`, `document.createComment` préexistent) |
+| module émis pour le témoin | 1 872 B bruts, **760 B minifiés** |
+| gate de taille du runtime | inchangé, non re-mesuré (aucun octet touché) |
+
+**La S16 du registre d'honnêteté est répondue par le clétage, pas par le gel.** Elle était la seule
+tranche signalée comme pouvant exiger un changement du runtime gelé — « un fragment est N nœuds de
+premier niveau, une ligne de `list()` en possède UN ». Chaque nœud de premier niveau devient sa propre
+clé feuille dans le même `list()`, ce qu'un corps de `@if` multi-nœuds fait déjà (décision 120).
+
+**Suite : 571 tests** (487 générateur / 60 sous-ensemble / 24 analyzer) + 214 runtime.
+
+**RÉSERVES OUVERTES, DISCLOSÉES.**
+1. **Un throw passant par un `computed` n'est PAS attrapé, et il est REFUSÉ plutôt que livré.** Mesuré :
+   `flush -> checkDirty -> refresh -> recompute -> Computed.fn -> throw`, verrou toujours nul — le
+   rafraîchissement d'un computed se produit AVANT que la liaison gardée soit entrée. Blazor attrape ce
+   cas (W5). Le fermer demanderait une propriété d'erreur par effet dans le runtime, c'est-à-dire le
+   gel. Un contenu lisant un computed est donc refusé, avec localisation.
+2. **L'oracle n'est pas un navigateur.** Ce qu'une app WASM PEINT après un W1 non attrapé, et le
+   `site.css` qui style `.blazor-error-boundary`, ne sont pas mesurés.
+3. **`@context.Message` n'est fidèle que pour une exception que l'AUTEUR lève.** Une exception levée par
+   le runtime porte un message .NET et un message JS différents ; cité comme divergence, pas comme
+   équivalence.

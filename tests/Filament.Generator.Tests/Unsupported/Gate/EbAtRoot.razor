@@ -1,0 +1,8 @@
+@* A boundary emits no element, so at the template ROOT its anchor is laid down with the tree while
+   its root-level siblings attach afterwards -- the content would render ahead of markup written
+   before it. Refused rather than reordered. Decision 164. *@
+<p id="before">before</p><ErrorBoundary><ChildContent><p id="in">hi</p></ChildContent></ErrorBoundary>
+
+@code {
+    private int n = 0;
+}

@@ -1,0 +1,11 @@
+<div id="wrap"><p id="outside">outside</p><ErrorBoundary><ChildContent><p id="in">@Risky()</p></ChildContent><ErrorContent><p id="err">Sorry: @context.Message</p></ErrorContent></ErrorBoundary></div>
+
+@code {
+    private bool fail = true;
+
+    private string Risky()
+    {
+        if (fail) throw new InvalidOperationException("the content could not be rendered");
+        return "ok";
+    }
+}

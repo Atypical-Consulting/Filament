@@ -1,0 +1,16 @@
+@* W4 on RE-RENDER, and it pins two further claims: the latch is STICKY (ErrorContent keeps showing
+   the FIRST exception though the message would differ each pass, and the logger fires once), and
+   markup OUTSIDE the boundary stays mounted and keeps updating. *@
+<div id="outside">outside=@n</div>
+<ErrorBoundary>
+    <ChildContent><p id="in">@Kaboom()</p></ChildContent>
+    <ErrorContent>
+        @{ Probe.Say("error-content:" + context.Message); }
+    </ErrorContent>
+</ErrorBoundary>
+<button @onclick="Bump">bump</button>
+@code {
+    int n = 0;
+    void Bump() { n++; }
+    string Kaboom() => n > 0 ? throw new InvalidOperationException($"boom at n={n}") : "ok";
+}

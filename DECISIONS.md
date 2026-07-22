@@ -5521,3 +5521,108 @@ divergences citées (réutilisation n=3, plage Int32, normalisation guid, préfi
 mesures que le registre avait DÉJÀ prises contre du Blazor réel ; ce qui n'a pas été re-mesuré en
 navigateur, c'est le contrat des 20 étapes CÔTÉ BLAZOR. À faire avant de citer cette tranche comme
 app-level.
+
+## 164. La frontière d'erreur — un VERROU plus une conditionnelle, et ce qu'elle n'attrape PAS, mesuré chez Blazor d'abord
+
+**Décision.** `<ErrorBoundary>` est admis comme quatrième composant de framework, aux côtés de
+`<CascadingValue>`, `<EditForm>` et `<InputText>`. Il n'émet **aucun élément à lui** : il devient un
+`signal(null)` — le verrou — et **UN `list()`** au-dessus d'une ancre commentaire dont le jeu de clés
+actif est le contenu tant que le verrou est nul, l'UI d'erreur ensuite. C'est **la forme même de
+`@if`/`@else`** (décisions 81/82), clé 0/1 sur le verrou au lieu d'une condition d'auteur.
+`git diff -- src/filament-runtime` **VIDE** : zéro primitive nouvelle.
+
+**CE QU'UNE FRONTIÈRE ATTRAPE A ÉTÉ MESURÉ AVANT D'ÊTRE MAPPÉ, et le résultat retourne l'intuition.**
+Le catch vit dans `Renderer.HandleExceptionViaErrorBoundary` — du .NET ordinaire — donc
+`tools/error-boundary-oracle` héberge le VRAI renderer, le VRAI composant `ErrorBoundary` et une VRAIE
+dispatch d'événement, **sans navigateur** : il tourne là où Playwright n'est pas installable, ce qui est
+précisément la réserve que BENCH n°69 avait disclosée.
+
+| témoin | qui lève | Blazor |
+|---|---|---|
+| W1 | un gestionnaire que le PARENT possède, écrit DANS la frontière | **PAS attrapé** |
+| W2 | le gestionnaire d'un composant ENFANT | attrapé |
+| W3 | le `OnInitialized` d'un composant ENFANT | attrapé |
+| W4 | le parent, en ÉVALUANT le contenu | attrapé |
+
+**W1 EST LA FORME QUE TOUT LE MONDE ATTEND, ET BLAZOR NE L'ATTRAPE PAS.** Une frontière attrape ce que
+ses **DESCENDANTS** lèvent ; un gestionnaire écrit dans le contenu enfant appartient au composant qui a
+**ÉCRIT** le fragment — un ANCÊTRE de la frontière, pas un descendant. Donc ici non plus un `@onclick`
+dans une frontière n'est pas attrapé : l'attraper afficherait une page d'erreur là où Blazor démolit
+l'app. W2 et W3 sont **structurellement inatteignables** dans ce sous-ensemble — un enfant portant la
+moindre méthode est refusé par `[composition-out-of-subset]`, le même argument qui a clos `IDisposable`.
+**W4 est donc la TOTALITÉ de ce qu'une frontière Filament peut fidèlement attraper**, et c'est ce que le
+verrou et les liaisons gardées attrapent.
+
+**LE VERROU EST COLLANT, ET `??=` EST LA RAISON.** Mesuré côté Blazor (W5) : avec un contenu qui lève un
+message DIFFÉRENT à chaque re-rendu, ErrorContent continue d'afficher **le PREMIER**, et
+`IErrorBoundaryLogger` n'est appelé **qu'une fois**. Écraser afficherait le plus récent — une autre page.
+Le collant tombe aussi **structurellement** : basculer le verrou change le jeu de clés, ce qui démonte
+les lignes du contenu et dispose leurs effets, donc le contenu n'est **plus jamais** évalué. Mesuré
+également : ce qui est **HORS** de la frontière reste monté et continue de se mettre à jour.
+
+**LA CONSTRUCTION EST GARDÉE À L'INTÉRIEUR DE LA FONCTION DE BRANCHE, pas autour.** Le throw survient
+pendant que le `reconcile` de `list()` appelle `create()`, en plein milieu de la reconstruction du
+tableau de lignes ; le laisser s'échapper corromprait la liste. Attraper DEDANS préserve le contrat de
+`create()` — il retourne TOUJOURS un nœud — et convertit le throw en l'écriture du verrou qui bascule la
+frontière. Le nœud texte vide retourné sur ce chemin vit exactement un flush. Mesuré contre le vrai
+runtime : **une construction, aucun emballement**.
+
+**LA B3/S16 DU REGISTRE EST RÉPONDUE, ET PAR LE CLÉTAGE — PAS PAR LE GEL.** S16 était la seule tranche
+signalée comme pouvant exiger un changement du runtime gelé, au motif qu'« un fragment est N nœuds de
+premier niveau alors qu'une ligne de `list()` en possède exactement UN ». Elle n'en a pas eu besoin :
+**chaque nœud de premier niveau d'un slot devient sa PROPRE clé feuille dans le même `list()`**, ce qui
+est déjà la façon dont un corps de `@if` multi-nœuds compile (décision 120). Le contrat de ligne est
+réutilisé, pas élargi.
+
+**UN DÉFAUT DE CONCEPTION TROUVÉ EN EXÉCUTANT, PAS EN RAISONNANT — ET IL A REDESSINÉ LA TRANCHE.** La
+garde a d'abord été posée **dans la clôture de l'effet**, pour attraper aussi le throw au RE-RENDU (W5).
+Elle ne l'attrape pas. Un `computed` est rafraîchi par `checkDirty()` **DEPUIS `flush()`** — le runtime
+décide encore si la liaison est sale et n'y est **pas entré** — donc le throw ne franchit **aucune**
+garde enroulée autour de cette liaison et est **re-levé au site d'écriture** (décision 38). Trace
+mesurée : `flush -> checkDirty -> refresh -> recompute -> Computed.fn -> throw`, **verrou toujours
+nul**. Le test unitaire qui « validait » le dessin passait parce qu'il n'avait **pas de computed dans la
+chaîne** ; l'app compilée, elle, en avait un. **Blazor ATTRAPE ce cas.** Livrer cela aurait donc été une
+frontière qui **ressemble** à une garde et n'en est pas une — le mal-compilé silencieux que la section 10
+interdit, dans la seule construction dont le but ENTIER est d'être digne de confiance quand quelque
+chose tourne mal.
+
+**Donc un contenu qui lit un `computed` est REFUSÉ**, avec un diagnostic localisé qui dit pourquoi. La
+fermer autrement demanderait une **propriété d'erreur par effet dans le runtime**, c'est-à-dire le gel
+des octets — une décision à part, non prise ici.
+
+**Refusés, chacun pour une raison mesurée, aucun ignoré :** un contenu lisant un `computed` ; une
+frontière IMBRIQUÉE (l'arbitrage « à qui appartient ce throw » n'est pas mesuré) ; une frontière à la
+RACINE du template (elle n'émet aucun élément, donc son ancre est posée avec l'arbre tandis que ses
+frères de racine sont attachés après — le contenu passerait AVANT du markup écrit avant lui ; c'est le
+réordonnancement que `<CascadingValue>` refuse déjà à la racine) ; une SECONDE frontière dans un
+composant (`context` est lié AVANT la traduction, à un verrou nommé d'avance : deux frontières feraient
+dire au même nom C# deux choses selon l'ordre d'écriture) ; `MaximumErrorCount` (il compte les erreurs
+à travers les re-rendus, et cette frontière verrouille la PREMIÈRE et ne ré-évalue plus rien — il n'y a
+pas de seconde erreur à compter) ; `Context="…"` ; un `@context` NU (Blazor rend `Exception.ToString()`
+— nom de type CLR, message et pile CLR — là où une `Error` JS se stringifie « Error: boom » ; ce n'est
+pas le même texte) ; tout membre d'`Exception` autre que `.Message`, seul à avoir un jumeau JS direct ;
+et un membre d'auteur nommé `context` (il serait lu à la place de l'exception, silencieusement, et
+seulement dans la frontière — refusé à la DÉCLARATION, comme la collision de paramètre de route de 163).
+
+**DEUX PORTES, ET AUCUNE NE SUBSUME L'AUTRE.** `canon` décide les OCTETS : **ALPHA-ÉQUIVALENT** à
+`samples/ErrorBoundary/errorboundary.js`, **760 B minifiés / 272 tokens des deux côtés**. Il ne peut pas
+décider le COMPORTEMENT, donc `tools/error-boundary-contract.mjs` **EXÉCUTE** les octets émis dans un
+DOM : 5 étapes, et **chaque affirmation a un contrôle qui la fait ÉCHOUER**.
+
+**ET LE CONTRAT A CORRIGÉ DEUX DE SES PROPRES CONTRÔLES, ce qui est exactement à quoi ils servent.** Le
+premier contrôle supprimait la garde et cassait la SYNTAXE : il « faisait échouer » l'étape en ne
+compilant plus, donc il mesurait la regex et non le mapping ; il re-lève désormais. Le second gelait la
+bascule pour prouver « `#in` est absent » — or avec la bascule gelée le contenu lève quand même et rend
+quand même le nœud vide, donc `#in` était absent **dans les deux cas** et l'étape était passée par un
+contrôle qui ne changeait rien. Il fait maintenant RÉUSSIR le contenu. Un cinquième contrôle est déclaré
+**INAPPLICABLE** plutôt que compté : ce témoin ne lève qu'une fois, donc il ne peut pas distinguer `=` de
+`??=`. Le dire vaut mieux que l'encaisser.
+
+**RÉSERVE OUVERTE, DISCLOSÉE.** L'oracle est le VRAI renderer Blazor mais **pas un navigateur** : ce qui
+n'a pas été mesuré, c'est ce qu'une app WASM PEINT après une exception non attrapée (W1), et le
+`site.css` qui style `.blazor-error-boundary`. Playwright n'est toujours pas installable ici. Par
+ailleurs `@context.Message` n'est fidèle que pour une exception que l'AUTEUR lève : `new
+InvalidOperationException("boom")` devient `new Error('boom')` et `.message` vaut « boom » des deux
+côtés, mais une exception levée par le RUNTIME (index hors bornes) porte un message .NET et un message
+JS différents — cité comme divergence, pas comme équivalence. Aucun bench label n'est câblé : la tranche
+est générateur-seul et n'ajoute d'octets qu'à une app qui écrit une frontière.

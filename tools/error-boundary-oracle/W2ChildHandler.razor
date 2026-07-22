@@ -1,0 +1,7 @@
+@* W1's control: same throw, same place on screen, but raised by a DESCENDANT component. Caught. *@
+<ErrorBoundary>
+    <ChildContent><Thrower /></ChildContent>
+    <ErrorContent>
+        @{ Probe.Say("error-content:" + context.Message); }
+    </ErrorContent>
+</ErrorBoundary>

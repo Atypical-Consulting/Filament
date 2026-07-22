@@ -1,0 +1,17 @@
+@* An <ErrorBoundary> whose content reads a COMPUTED. The computed refreshes from inside
+   flush()/checkDirty(), BEFORE the binding that reads it runs, so the boundary's guard never sees
+   the throw -- and Blazor's boundary DOES catch it. Refused rather than shipped as a guard that
+   is not one. Decision 164. *@
+<div id="wrap"><ErrorBoundary><ChildContent><p id="in">@Label</p></ChildContent><ErrorContent><p id="err">@context.Message</p></ErrorContent></ErrorBoundary></div>
+
+@code {
+    private int n = 0;
+
+    private string Label => Risky();
+
+    private string Risky()
+    {
+        if (n > 0) throw new InvalidOperationException("boom");
+        return "ok";
+    }
+}

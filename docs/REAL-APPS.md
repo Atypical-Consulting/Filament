@@ -195,6 +195,47 @@ O(n) per write. UI lists are fine; a 10,000-row grid edited cell-by-cell in a ho
 this compiler's use case, and we would rather tell you that here than have you measure it in
 production.
 
+## Error boundaries — and the part that will surprise you
+
+`<ErrorBoundary>` compiles. It costs **no runtime bytes**: it becomes a `signal(null)` holding the
+caught exception plus one `list()` — the same conditional `@if` already uses — so the content is
+mounted while the latch is null and `ErrorContent` after.
+
+```razor
+<ErrorBoundary>
+    <ChildContent><p>@RenderTheThing()</p></ChildContent>
+    <ErrorContent><p class="oops">Sorry: @context.Message</p></ErrorContent>
+</ErrorBoundary>
+```
+
+Omit `ErrorContent` and you get Blazor's own default, `<div class="blazor-error-boundary"></div>`.
+
+**A boundary does not catch a `@onclick` written inside it — and neither does Blazor.** This is the
+one thing worth knowing before you rely on one. A boundary catches what its *descendants* raise, and
+a handler written in the boundary's child content belongs to the component that *wrote* that content
+— an ancestor of the boundary, not a descendant. We measured this against the real Blazor renderer
+rather than repeating the documentation, and Filament reproduces it:
+
+| what throws | Blazor | Filament |
+|---|---|---|
+| a `@onclick` handler you wrote inside the boundary | **not caught** | **not caught** |
+| the content, while it is being evaluated | caught | **caught** |
+| a child component's handler or lifecycle | caught | n/a — stateful children are refused |
+
+So a boundary here protects **rendering**, not **clicking**. For a handler, use `try`/`catch` in the
+method itself, which is in the subset. In the browser an uncaught handler exception logs to the
+console and the page keeps running — unlike a torn-down .NET circuit.
+
+What is refused, each with a located diagnostic: content that reads a computed property (a computed
+is refreshed before the guarded binding runs, so the boundary genuinely cannot catch it — and rather
+than look like a guard and not be one, it says so), nested boundaries, a second boundary in one
+component, a boundary at the template root, `MaximumErrorCount`, `Context="…"`, a bare `@context`,
+and any `Exception` member other than `.Message`.
+
+> One honest edge: `@context.Message` matches Blazor exactly for an exception *you* threw
+> (`new InvalidOperationException("boom")` → `new Error('boom')`). An exception raised by the
+> runtime carries a .NET message on one side and a JS message on the other.
+
 ## Deliberate non-goals (and why)
 
 - **SSR / prerendering** — not implemented. The compile-time model is well placed for it
@@ -204,9 +245,6 @@ production.
   ordinary selectors reach it.
 - **HMR beyond `dotnet watch`** — the rebuild is the reload; modules this small make watch
   loops fast enough that finer-grained HMR has not earned its complexity.
-- **Error boundaries** — an uncaught exception in a JS event handler logs to the console and
-  the app keeps running; the platform default *is* the boundary (unlike a torn-down .NET
-  circuit). Wrap risky work in `try`/`catch` (in the subset) where you want recovery logic.
 - **Form validation** — refused, not ignored: without validators every submit *is* valid, and
   silently accepting an invalid model would be the wrong answer dressed as the right one.
 - **A general DI container** — `@inject` admits the two services with a compile-time meaning

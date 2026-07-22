@@ -1,0 +1,4 @@
+<button @onclick="Boom">Boom</button>
+@code {
+    void Boom() => throw new InvalidOperationException("thrown by the CHILD's handler");
+}

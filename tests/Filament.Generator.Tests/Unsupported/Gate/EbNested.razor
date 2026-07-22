@@ -1,0 +1,7 @@
+@* Nested boundaries: an inner one would have to arbitrate whether a throw belongs to it or to its
+   parent, and nothing has measured that. Decision 164. *@
+<div id="wrap"><ErrorBoundary><ChildContent><div id="mid"><ErrorBoundary><ChildContent><p id="in">hi</p></ChildContent></ErrorBoundary></div></ChildContent></ErrorBoundary></div>
+
+@code {
+    private int n = 0;
+}

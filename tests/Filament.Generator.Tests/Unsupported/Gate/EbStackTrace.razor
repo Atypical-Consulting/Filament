@@ -1,0 +1,7 @@
+@* Only Exception.Message has a direct JS twin. StackTrace names CLR machinery a JS Error does not
+   carry, and an approximation would render text .NET never produced. Decision 164. *@
+<div id="wrap"><ErrorBoundary><ChildContent><p id="in">hi</p></ChildContent><ErrorContent><p id="err">@context.StackTrace</p></ErrorContent></ErrorBoundary></div>
+
+@code {
+    private int n = 0;
+}

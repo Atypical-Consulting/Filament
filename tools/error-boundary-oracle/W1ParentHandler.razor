@@ -1,0 +1,13 @@
+@* The shape everyone expects a boundary to catch. Blazor does NOT: the handler belongs to THIS
+   component, which is the boundary's ANCESTOR, and a boundary catches what its DESCENDANTS raise. *@
+<ErrorBoundary>
+    <ChildContent>
+        <button @onclick="Boom">Boom</button>
+    </ChildContent>
+    <ErrorContent>
+        @{ Probe.Say("error-content:" + context.Message); }
+    </ErrorContent>
+</ErrorBoundary>
+@code {
+    void Boom() => throw new InvalidOperationException("thrown by the PARENT's handler");
+}

@@ -248,6 +248,37 @@ public sealed class TemplateCompiler
     IntermediateNode? _consumedKey;
 
     /// <summary>
+    /// The latch signal of the &lt;ErrorBoundary&gt; whose ChildContent is being emitted, or null
+    /// (decision 164). Every reactive binding laid down while this is set is wrapped, so a throw on
+    /// ANY run -- not merely the first -- lands in the latch and swaps the boundary.
+    ///
+    /// THE RE-RUN IS THE WHOLE POINT, and it is measured, not assumed. Blazor's boundary catches a
+    /// throw raised while the parent RE-RENDERS the fragment (witness W5: `n` moves 0 -> 1, the
+    /// content throws, ErrorContent appears, and the markup OUTSIDE the boundary keeps updating).
+    /// A guard wrapped around the effect's CONSTRUCTION would catch only the first run: every later
+    /// one is raised from flush(), where decision 38 re-throws it at the write site instead. So the
+    /// guard goes INSIDE the closure, which is the only place both runs pass through.
+    /// </summary>
+    string? _guard;
+
+    /// <summary>
+    /// One reactive binding statement. Outside a boundary this is `effect(() =&gt; BODY);` character
+    /// for character -- every answer key and the canon gate depend on that, so the guarded form is
+    /// new bytes an app pays ONLY where it wrote a boundary.
+    /// </summary>
+    string Fx(string arrowBody)
+    {
+        if (_guard is null) return $"effect(() => {arrowBody});";
+        var stmts = arrowBody.StartsWith('{') && arrowBody.EndsWith('}')
+            ? arrowBody[1..^1].Trim()
+            : arrowBody + ";";
+        // `??=` and not `=`: the latch is STICKY. Blazor holds the FIRST exception and re-renders
+        // ErrorContent with it on every later pass (W5 shows "boom at n=1" at n=2 and n=3), and it
+        // logs once. Overwriting would show the newest instead, which is a different page.
+        return $"effect(() => {{ try {{ {stmts} }} catch (_e) {{ {_guard}.value ??= _e; }} }});";
+    }
+
+    /// <summary>
     /// The containers whose children held template C#. Their emission comes from OpsFor.
     /// A root @foreach/@if makes the METHOD a container (decision 89), so this can hold it too.
     /// </summary>
@@ -395,6 +426,13 @@ public sealed class TemplateCompiler
         }
 
         code.BindUsings(_authorUsings);
+
+        // `context` must be bound BEFORE Compile (decision 164): the template's slots are translated in
+        // ONE pass, so a binding registered afterwards has nothing left to affect -- the same ordering
+        // BindParameters and BindRouteParameters obey. The latch's name is fixed rather than generated
+        // for exactly this reason; EmitErrorBoundary refuses a second ErrorContent to keep it true.
+        if (HasErrorContent(method)) code.BindErrorContext($"{ErrorLatch}0.value");
+
         code.Compile(codeNodes, plan);
         _diagnostics.AddRange(code.Diagnostics);
 
@@ -1277,10 +1315,17 @@ public sealed class TemplateCompiler
             case ComponentIntermediateNode c when c.TagName == "InputText":
                 return EmitInputText(c);
 
+            // <ErrorBoundary> (decision 164) -- a resolved framework component like <CascadingValue>,
+            // and like it emitting no element of its own.
+            case ComponentIntermediateNode c when c.TagName == "ErrorBoundary":
+                EmitErrorBoundary(c, parent);
+                return null;
+
             case ComponentIntermediateNode c:
                 Diag("component-composition",
-                    $"<{c.TagName}> resolved to a framework component, and it is not one of the three the " +
-                    "subset admits (<CascadingValue>, <EditForm>, <InputText>). Composition otherwise resolves " +
+                    $"<{c.TagName}> resolved to a framework component, and it is not one of the four the " +
+                    "subset admits (<CascadingValue>, <EditForm>, <InputText>, <ErrorBoundary>). Composition " +
+                    "otherwise resolves " +
                     "a child as a sibling .razor file. Validation components in particular are refused rather " +
                     "than ignored: without them every submit IS valid (Blazor's own behaviour), so ignoring " +
                     "one would let an invalid model submit silently. Refusing to emit.",
@@ -1421,18 +1466,18 @@ public sealed class TemplateCompiler
         {
             case "bool":
                 // A checkbox: the .checked PROPERTY is the two-way surface, already a bool -- no parsing.
-                _bindings.Add($"effect(() => {{ {v}.checked = {js}.value; }});");
+                _bindings.Add(Fx($"{{ {v}.checked = {js}.value; }}"));
                 _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.checked; }});");
                 break;
             case "string":
-                _bindings.Add($"effect(() => {{ {v}.value = {js}.value; }});");
+                _bindings.Add(Fx($"{{ {v}.value = {js}.value; }}"));
                 _events.Add($"listen({v}, 'change', (e) => {{ {js}.value = e.target.value; }});");
                 break;
             case "int":
                 // int/int32: format as a string; parse the change back mirroring int.TryParse (invariant,
                 // NumberStyles.Integer) -- regex for the accepted shape, int32 range, and revert-on-invalid
                 // so an unparseable/overflowing entry keeps the field and re-renders the old value (Blazor).
-                _bindings.Add($"effect(() => {{ {v}.value = String({js}.value); }});");
+                _bindings.Add(Fx($"{{ {v}.value = String({js}.value); }}"));
                 _events.Add(
                     $"listen({v}, 'change', (e) => {{\n" +
                     "    const _s = e.target.value;\n" +
@@ -1615,6 +1660,210 @@ public sealed class TemplateCompiler
         _cascades = saved;
     }
 
+    /// <summary>The JS latch an ErrorContent's `context` reads (decision 164). The index is fixed at 0
+    /// because CSharpFrontEnd must bind `context` BEFORE the emit walk runs -- the slots are translated in
+    /// one pass -- and exactly one boundary per component may carry an ErrorContent, which is what makes
+    /// one predictable name enough. Boundaries WITHOUT an ErrorContent read no context and are unlimited.</summary>
+    const string ErrorLatch = "_ebErr";
+
+    /// <summary>A &lt;ErrorBoundary&gt;'s named content slot, or null. Razor lowers BOTH ChildContent and
+    /// ErrorContent to a ComponentChildContentIntermediateNode; the unnamed form carries no AttributeName
+    /// and is ChildContent, which is Blazor's own default.</summary>
+    static ComponentChildContentIntermediateNode? BoundarySlot(ComponentIntermediateNode n, string name) =>
+        n.Children.OfType<ComponentChildContentIntermediateNode>()
+            .FirstOrDefault(c => (c.AttributeName ?? "ChildContent") == name);
+
+    /// <summary>Every node under this one, itself excluded.</summary>
+    static IEnumerable<IntermediateNode> Descendants(IntermediateNode n) =>
+        n.Children.SelectMany(c => Descendants(c).Prepend(c));
+
+    /// <summary>Does this subtree declare an &lt;ErrorBoundary&gt; carrying an ErrorContent? Asked before
+    /// Compile, so `context` can be bound while the slots are still untranslated.</summary>
+    static bool HasErrorContent(IntermediateNode n) =>
+        (n is ComponentIntermediateNode { TagName: "ErrorBoundary" } c && BoundarySlot(c, "ErrorContent") is not null)
+        || n.Children.Any(HasErrorContent);
+
+    int _eb;
+
+    /// <summary>
+    /// &lt;ErrorBoundary&gt;…&lt;/ErrorBoundary&gt; (decision 164). Emits NO element of its own: it is a
+    /// LATCH plus the conditional the latch drives, which is `@if`/`@else`'s own shape -- one list()
+    /// over a comment anchor, whose active key set is the content while the latch is null and the
+    /// error UI once it is not. ZERO new runtime primitives; `git diff -- src/filament-runtime` stays
+    /// empty, which is the answer this slice owed the register's S16.
+    ///
+    /// WHAT IT CATCHES IS NOT WHAT AUTHORS EXPECT, AND THAT IS BLAZOR'S ANSWER, NOT A SHORTCUT.
+    /// Measured against the real Blazor renderer (Renderer.HandleExceptionViaErrorBoundary, headless,
+    /// no browser required -- tools/error-boundary-oracle):
+    ///
+    ///   W1  a throw from an event handler the PARENT owns, written inside the boundary  NOT caught
+    ///   W2  a throw from a CHILD COMPONENT's handler                                    caught
+    ///   W3  a throw from a CHILD COMPONENT's OnInitialized                               caught
+    ///   W4  a throw raised while the parent EVALUATES the content                        caught
+    ///
+    /// W1 is uncaught because the boundary catches what its DESCENDANTS raise, and a handler written in
+    /// the boundary's child content belongs to the component that WROTE the fragment -- an ancestor. So
+    /// a `@onclick` inside a boundary is deliberately left to propagate here too; catching it would
+    /// render an error page where Blazor tears the app down. W2 and W3 are structurally unreachable in
+    /// this subset, because a child with any method is refused by [composition-out-of-subset]. W4 is
+    /// therefore the whole of what a Filament boundary can faithfully catch -- and it is exactly what
+    /// the latch and the guarded bindings do catch, at create time and on every later re-run.
+    /// </summary>
+    void EmitErrorBoundary(ComponentIntermediateNode node, string? parent)
+    {
+        if (_guard is not null)
+        {
+            Diag("unsupported-boundary",
+                "a nested <ErrorBoundary> is not in the subset. Blazor's boundaries nest because each is a " +
+                "component with its own instance state; here a boundary is a latch plus one list(), and an " +
+                "inner one would have to decide whether a throw belongs to it or to its parent -- an " +
+                "arbitration nothing has measured. Refusing to emit.",
+                node.Source);
+            return;
+        }
+
+        // ONE PER COMPONENT. `context` is bound before Compile, to a latch named ahead of the emit walk,
+        // and a second boundary would need a second JS binding for the one C# name -- so the ambiguity is
+        // removed rather than resolved by declaration order, which is not something an author can see.
+        if (_eb > 0)
+        {
+            Diag("unsupported-boundary",
+                "a second <ErrorBoundary> in one component is not in the subset. An ErrorContent's caught " +
+                "exception is named `context`, and that name is bound to ONE latch before the template is " +
+                "translated; two boundaries would make the same name mean different things depending on " +
+                "which was written first. Put the second boundary in its own component. Refusing to emit.",
+                node.Source);
+            return;
+        }
+
+        if (node.Children.OfType<ComponentAttributeIntermediateNode>().FirstOrDefault() is { } attr)
+        {
+            Diag("unsupported-boundary",
+                $"<ErrorBoundary {attr.AttributeName}> is not in the subset. MaximumErrorCount counts errors " +
+                "across re-renders, and this boundary latches the FIRST exception and never re-evaluates its " +
+                "content, so there is no second error for it to count; Context renames the caught value, and " +
+                "the name is what binds it at compile time here. Refusing to emit rather than accept a " +
+                "parameter that would do nothing.",
+                attr.Source ?? node.Source);
+            return;
+        }
+
+        if (BoundarySlot(node, "ChildContent") is not { } child) return;   // no content: Blazor renders none
+
+        // A boundary emits no element, so at the template ROOT its anchor would be inserted during
+        // create() while its root-level SIBLINGS attach afterwards -- the boundary's content would render
+        // ahead of markup the author wrote before it. That is the reordering <CascadingValue> refuses at
+        // the root for the same reason, and it is refused here for the same reason.
+        if (parent is null)
+        {
+            Diag("unsupported-boundary",
+                "an <ErrorBoundary> at the template ROOT cannot be positioned: it emits no element of its " +
+                "own, so its anchor is laid down with the tree while its root-level siblings are attached " +
+                "after it, and its content would render ahead of markup written before it. Wrap the page in " +
+                "an element (`<div>…</div>`), which gives the boundary a container. Refusing to emit rather " +
+                "than reorder.",
+                node.Source);
+            return;
+        }
+
+        var region = BoundarySlot(node, "ErrorContent");
+        if (_regions.Contains(child) || (region is not null && _regions.Contains(region)))
+        {
+            Diag("unsupported-boundary",
+                "an <ErrorBoundary> whose content is template C# (`@if`/`@foreach`) directly is not in the " +
+                "subset: the boundary's own list() owns the slot those rows would be laid into, and the two " +
+                "have no measured composition. Wrap the content in an element (`<div>@if …</div>`), which " +
+                "gives the control flow its own container and compiles. Refusing to emit.",
+                node.Source);
+            return;
+        }
+
+        // A COMPUTED IN THE CONTENT IS REFUSED, AND THE REASON IS MEASURED RATHER THAN ARGUED.
+        // A boundary's guard is wrapped around the binding's own body. A computed, though, is refreshed
+        // by checkDirty() from INSIDE flush() -- the runtime is still deciding whether the binding is
+        // dirty, and has not entered it -- so a throw raised in the computed passes NO guard and is
+        // re-thrown at the write site instead (decision 38). Measured: `flush -> checkDirty -> refresh ->
+        // recompute -> Computed.fn -> throw`, with the latch still null afterwards. Blazor CATCHES that
+        // case (witness W5), so admitting it would ship a boundary that looks like it guards the content
+        // and silently does not -- section 10's silent mis-compile, in the one construct whose entire
+        // purpose is to be trustworthy when something goes wrong. Routing it would take error ownership
+        // in the runtime, which is a change to the frozen bytes and a decision of its own.
+        foreach (var slot in Descendants(child).OfType<CSharpExpressionIntermediateNode>())
+        {
+            if (!_code.SlotReadsComputed(slot)) continue;
+            Diag("unsupported-boundary",
+                $"'@{Trunc(RawText(slot))}' reads a computed property, and an <ErrorBoundary> cannot guard " +
+                "one. A computed is refreshed while the runtime decides whether a binding is dirty -- " +
+                "before that binding runs -- so a throw inside it never reaches the boundary's guard and " +
+                "surfaces at the write that triggered it. Blazor's boundary DOES catch that, so admitting " +
+                "it here would look like a guard and silently not be one. Read the state directly in the " +
+                "boundary's content, or move the computed's work behind the boundary. Refusing to emit.",
+                slot.Source ?? node.Source);
+            return;
+        }
+
+        var id = _eb++;
+        var latch = $"{ErrorLatch}{id}";
+        var anchor = $"_ebAnchor{id}";
+        _used.Add("signal");
+        _used.Add("insert");
+        _used.Add("list");
+        // THE LATCH IS DECLARED WITH THE TREE, not with the bindings: list() reads it, and bindings run
+        // after create(). null is "no exception yet", which is also Blazor's CurrentException.
+        _create.Add($"const {latch} = signal(null);");
+        _create.Add($"const {anchor} = document.createComment('');");
+        _create.Add($"insert({parent}, {anchor});");
+
+        // Each TOP-LEVEL node of a slot is its own leaf key in the ONE list, which is how a multi-node
+        // @if body already compiles (decision 120). That is what lets a fragment of N nodes ride a list()
+        // whose rows own exactly one node each -- the register's B3 blocker, answered by keying rather
+        // than by widening the row contract.
+        var fns = new List<string>();
+        var contentKeys = new List<int>();
+        var errorKeys = new List<int>();
+
+        var savedGuard = _guard;
+        _guard = latch;
+        foreach (var n in child.Children)
+        {
+            var fn = Unique($"_ebBody{id}_{fns.Count}");
+            if (!EmitBranchFn(n, fn)) { _guard = savedGuard; return; }
+            contentKeys.Add(fns.Count);
+            fns.Add(fn);
+        }
+        // THE ERROR CONTENT IS NOT GUARDED. Blazor does not catch a throw from ErrorContent either -- the
+        // boundary that would catch it is the one already showing it -- and latching from inside the error
+        // branch would re-run the list that is building it.
+        _guard = savedGuard;
+
+        if (region is not null)
+            foreach (var n in region.Children)
+            {
+                var fn = Unique($"_ebError{id}_{fns.Count}");
+                if (!EmitBranchFn(n, fn)) return;
+                errorKeys.Add(fns.Count);
+                fns.Add(fn);
+            }
+        else
+        {
+            // Blazor's OWN default, measured (W6): with no ErrorContent, ErrorBoundary renders exactly
+            // `<div class="blazor-error-boundary"></div>` -- the element the standard site.css styles.
+            var fn = Unique($"_ebError{id}_{fns.Count}");
+            var v = $"_el{_el++}";
+            _used.Add("setAttr");
+            _bindings.Add($"function {fn}() {{\n  const {v} = document.createElement('div');\n"
+                + $"  setAttr({v}, 'class', 'blazor-error-boundary');\n  return {v};\n}}");
+            errorKeys.Add(fns.Count);
+            fns.Add(fn);
+        }
+
+        if (contentKeys.Count == 0 && errorKeys.Count == 0) return;
+
+        _bindings.Add(
+            $"list({parent}, () => {latch}.value === null ? [{string.Join(", ", contentKeys)}] : " +
+            $"[{string.Join(", ", errorKeys)}], (i) => i, {IfCreate(fns)}, {anchor});");
+    }
+
     /// <summary>
     /// &lt;EditForm Model="@m" OnValidSubmit="Save"&gt; -&gt; a &lt;form&gt; whose submit calls Save
     /// (decision 138). preventDefault() is not decoration: without it the browser navigates on submit
@@ -1791,7 +2040,7 @@ public sealed class TemplateCompiler
 
         _used.Add("effect");
         _used.Add("listen");
-        _bindings.Add($"effect(() => {{ {v}.value = {js}; }});");
+        _bindings.Add(Fx($"{{ {v}.value = {js}; }}"));
         _events.Add($"listen({v}, 'change', (e) => {{ {AssignTo(js, "e.target.value")} }});");
         return v;
     }
@@ -2213,6 +2462,23 @@ public sealed class TemplateCompiler
 
         if (root is null) return false;
         lines.Add($"return {root};");
+
+        // INSIDE AN <ErrorBoundary>, BUILDING IS ITSELF GUARDED (decision 164). Blazor's W4 is a throw
+        // raised while the parent BUILDS the fragment -- `<p>@Kaboom()</p>` -- and it is caught. Here that
+        // throw happens in this function, called by list()'s reconcile, so it must not escape: reconcile
+        // is midway through rebuilding its row array and an exception through it corrupts the list.
+        // Catching HERE keeps list()'s contract intact (create always returns a node) and turns the throw
+        // into the latch write that swaps the boundary. The placeholder is an empty text node, and it
+        // lives for one flush: the write re-runs the list, whose new key set unmounts it. Measured
+        // against the real runtime -- one build, no spin.
+        if (_guard is { } g)
+        {
+            _bindings.Add($"function {fnName}() {{\n  try {{\n"
+                + string.Join("\n", lines.Select(l => "    " + l))
+                + $"\n  }} catch (_e) {{\n    {g}.value ??= _e;\n    return document.createTextNode('');\n  }}\n}}");
+            return true;
+        }
+
         _bindings.Add($"function {fnName}() {{\n" + string.Join("\n", lines.Select(l => "  " + l)) + "\n}");
         return true;
     }
@@ -2378,7 +2644,7 @@ public sealed class TemplateCompiler
                 if (reactive)
                 {
                     _used.Add("effect");
-                    _bindings.Add($"effect(() => setAttr({v}, {JsString(name)}, {js}));");
+                    _bindings.Add(Fx($"setAttr({v}, {JsString(name)}, {js})"));
                 }
                 else
                 {
@@ -2404,7 +2670,7 @@ public sealed class TemplateCompiler
                 if (_code.SlotIsReactive(boolNode))
                 {
                     _used.Add("effect");
-                    _bindings.Add($"effect(() => setAttr({v}, {JsString(name)}, {js} ? '' : null));");
+                    _bindings.Add(Fx($"setAttr({v}, {JsString(name)}, {js} ? '' : null)"));
                 }
                 else
                 {
@@ -2524,7 +2790,7 @@ public sealed class TemplateCompiler
         _create.Add($"const {t} = document.createTextNode('');");
         _used.Add("setText");
         _used.Add("effect");
-        _bindings.Add($"effect(() => setText({t}, {js}));");
+        _bindings.Add(Fx($"setText({t}, {js})"));
         return t;
     }
 
