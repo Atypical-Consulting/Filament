@@ -1,0 +1,7 @@
+@* A bare @context renders Exception.ToString() in Blazor -- CLR type name, message and CLR stack --
+   where a JS Error carries none of that shape. Only @context.Message is admitted. Decision 164. *@
+<div id="wrap"><ErrorBoundary><ChildContent><p id="in">hi</p></ChildContent><ErrorContent><p id="err">@context</p></ErrorContent></ErrorBoundary></div>
+
+@code {
+    private int n = 0;
+}

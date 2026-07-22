@@ -22,6 +22,13 @@ public static class RepoPaths
     /// <summary>The @if SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
     public static string IfAnswerKey => Path.Combine(Root, "samples", "If", "if.js");
 
+    public static string ErrorBoundaryRazor =>
+        Path.Combine(Root, "samples", "ErrorBoundary", "ErrorBoundary.razor");
+
+    /// <summary>The &lt;ErrorBoundary&gt; SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
+    public static string ErrorBoundaryAnswerKey =>
+        Path.Combine(Root, "samples", "ErrorBoundary", "errorboundary.js");
+
     public static string IfElseRazor => Path.Combine(Root, "samples", "IfElse", "IfElse.razor");
 
     /// <summary>The @else SPEC (decisions 21/51). Never edited to make a gate pass.</summary>
@@ -283,6 +290,16 @@ public static class RepoPaths
 
     /// <summary>The behavioural contract driver — what canon cannot decide (decision 163).</summary>
     public static string RouteContract => Path.Combine(Root, "tools", "route-contract.mjs");
+
+    /// <summary>The BEHAVIOURAL gate for &lt;ErrorBoundary&gt; (decision 164): canon decides the bytes,
+    /// this runs them in a DOM and asks whether the boundary actually catches.</summary>
+    public static string ErrorBoundaryContract =>
+        Path.Combine(Root, "tools", "error-boundary-contract.mjs");
+
+    /// <summary>The BLAZOR-side oracle for &lt;ErrorBoundary&gt; (decision 164). A dotnet project, not a
+    /// script: it hosts the real Renderer, so it needs no browser and runs where Playwright cannot.</summary>
+    public static string ErrorBoundaryOracle =>
+        Path.Combine(Root, "tools", "error-boundary-oracle");
 
     public static string FormsRazor => Path.Combine(Root, "baseline", "Forms.Blazor", "App.razor");
 

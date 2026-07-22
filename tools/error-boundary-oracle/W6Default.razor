@@ -1,0 +1,7 @@
+@* No ErrorContent. Blazor's own default error UI, measured rather than quoted. *@
+<ErrorBoundary>
+    <p id="in">@Kaboom()</p>
+</ErrorBoundary>
+@code {
+    string Kaboom() => throw new InvalidOperationException("boom");
+}

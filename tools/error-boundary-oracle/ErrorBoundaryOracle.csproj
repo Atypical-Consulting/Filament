@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- THE BLAZOR ORACLE FOR <ErrorBoundary>, AND IT NEEDS NO BROWSER.
+
+       Every other slice in this repo measures Blazor through Playwright. This one cannot: the
+       harness is not installable in the environment decision 164 was written in (the same reserve
+       BENCH n°69 disclosed). It does not have to be. What an <ErrorBoundary> catches is decided by
+       Renderer.HandleExceptionViaErrorBoundary walking the component hierarchy — ordinary .NET, in
+       Microsoft.AspNetCore.App, running the SAME code path a WASM app runs. So this drives the real
+       renderer directly, with a real ErrorBoundary and real event dispatch, and reports what it did.
+
+       This is an ORACLE, not a test of Filament: it says what BLAZOR does. It is a GATE because it
+       pins those answers — if a future framework version changes one, this fails and decision 164's
+       mapping has to be re-argued rather than silently drifting. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ErrorBoundaryOracle</RootNamespace>
+    <!-- BL0006: RenderTree types are "not recommended outside the framework". Reading render batches
+         is exactly what an oracle must do, and the alternative is asserting from documentation. -->
+    <NoWarn>$(NoWarn);BL0006</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+</Project>

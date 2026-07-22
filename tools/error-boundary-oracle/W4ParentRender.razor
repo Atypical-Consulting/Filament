@@ -1,0 +1,11 @@
+@* The parent throws while the boundary is INVOKING its ChildContent. Caught -- and this is the one
+   shape Filament can also reach, so it is the case decision 164's mapping is built on. *@
+<ErrorBoundary>
+    <ChildContent><p>@Kaboom()</p></ChildContent>
+    <ErrorContent>
+        @{ Probe.Say("error-content:" + context.Message); }
+    </ErrorContent>
+</ErrorBoundary>
+@code {
+    string Kaboom() => throw new InvalidOperationException("thrown while the PARENT builds the fragment");
+}

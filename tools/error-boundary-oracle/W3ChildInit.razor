@@ -1,0 +1,8 @@
+@* A descendant's LIFECYCLE, not its handler. Also caught. Unreachable in Filament: a child with any
+   method is refused by [composition-out-of-subset]. *@
+<ErrorBoundary>
+    <ChildContent><InitThrower /></ChildContent>
+    <ErrorContent>
+        @{ Probe.Say("error-content:" + context.Message); }
+    </ErrorContent>
+</ErrorBoundary>

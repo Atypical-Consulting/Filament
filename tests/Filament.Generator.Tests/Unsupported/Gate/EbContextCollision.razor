@@ -1,0 +1,12 @@
+@* @code declares `context`, and the ErrorContent's caught exception is also named `context`. Inside
+   the boundary the two are one name. Refused at the author's declaration. Decision 164. *@
+<div id="wrap"><ErrorBoundary><ChildContent><p id="in">hi</p></ChildContent><ErrorContent><p id="err">@context.Message</p></ErrorContent></ErrorBoundary></div>
+
+@code {
+    private string context = "mine";
+
+    private string Read()
+    {
+        return context;
+    }
+}

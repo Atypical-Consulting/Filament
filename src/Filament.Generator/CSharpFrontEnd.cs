@@ -96,6 +96,24 @@ public sealed class CSharpFrontEnd
     /// from the parent's SlotIsReactive; consulted by IsReactive when it meets a bound [Parameter].</summary>
     readonly HashSet<string> _paramReactive = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The `context` an &lt;ErrorBoundary&gt;'s ErrorContent reads, or null (decision 164). Blazor's
+    /// ErrorContent is a `RenderFragment&lt;Exception&gt;`, so its one context value is the caught
+    /// exception; here that value is the boundary's latch signal, and `@context.Message` reads it.
+    ///
+    /// DECLARED SO THE NAME BINDS, exactly like the @inject'd IJSRuntime below: Roslyn must resolve
+    /// `context` to a real symbol or Identifier() refuses it as undeclared. The declaration is at CLASS
+    /// scope because that is the scope every template slot is compiled in (see Slot), which is also
+    /// why exactly ONE boundary per component may carry an ErrorContent -- two would need two different
+    /// JS bindings for one C# name, and TemplateCompiler refuses the second rather than pick.
+    /// </summary>
+    string? _errorContextJs;
+
+    /// <summary>Bind `context` to the boundary's latch read (decision 164). Call BEFORE Compile, exactly
+    /// like BindParameters -- the slots are translated in one pass, so a binding registered after it has
+    /// nothing left to affect.</summary>
+    public void BindErrorContext(string js) => _errorContextJs = js;
+
     /// <summary>EventCallback [Parameter]s, mapped to the PARENT's C# METHOD NAME (`"OnBump" -> "Inc"`,
     /// decision 130). Deliberately the C# name and not the JS one: the callback is an ALIAS, and naming
     /// the parent's method is what lets the emit walk record `Inc` in _handlers, so every downstream
@@ -481,6 +499,11 @@ public sealed class CSharpFrontEnd
         /// (decision 131). It has no JS: the template compiler inlines the composing parent's markup here
         /// instead of binding anything.</summary>
         public bool IsFragment;
+
+        /// <summary>The slot reads a computed property (decision 160). Only an &lt;ErrorBoundary&gt; asks:
+        /// a computed refreshes from inside flush()/checkDirty(), which is BEFORE the binding's own body
+        /// runs, so a throw raised there passes no guard the boundary can place (decision 164).</summary>
+        public bool ReadsComputed;
     }
 
     /// <summary>The decimal helpers this module actually used (`decAdd`, `decStr`, …). A `decimal` value is a
@@ -551,6 +574,21 @@ public sealed class CSharpFrontEnd
 
     /// <summary>The JS for one @expression / @key, translated in the scope it is written in.</summary>
     public string SlotJs(IntermediateNode node) => Get(node).Js;
+
+    /// <summary>Does this slot read a computed property (decision 160)? Asked by &lt;ErrorBoundary&gt; only,
+    /// and the reason is measured: a computed is refreshed by checkDirty() from INSIDE flush(), before the
+    /// binding that reads it is entered, so a throw raised in the computed passes no guard the boundary
+    /// wraps around that binding -- it is re-thrown at the write site instead (decision 38). The boundary
+    /// refuses such content rather than appear to guard it.</summary>
+    public bool SlotReadsComputed(IntermediateNode node) => Get(node).ReadsComputed;
+
+    /// <summary>Does this expression read a computed property this component declares? Asked of the
+    /// SEMANTIC MODEL rather than of the text, so an alias or a nested read counts the same.</summary>
+    bool ReadsAComputed(ExpressionSyntax e) =>
+        e.DescendantNodesAndSelf().OfType<IdentifierNameSyntax>().Any(id =>
+            _model.GetSymbolInfo(id).Symbol is IPropertySymbol ps &&
+            _computedsByName.ContainsKey(ps.Name) &&
+            SymbolEqualityComparer.Default.Equals(ps.ContainingType, _component));
 
     /// <summary>
     /// Whether one @expression READS reactive state -- i.e. whether its binding needs an
@@ -685,6 +723,16 @@ public sealed class CSharpFrontEnd
         // nothing (the service is erased into fetch at its call sites).
         if (_httpClient is not null)
             _src.Literal($"System.Net.Http.HttpClient {_httpClient} = null!;\n");
+
+        // The <ErrorBoundary>'s ErrorContent context (decision 164), declared so `context` BINDS -- the
+        // same mechanics as the two services above: a field is enough for C# to resolve it, it is skipped
+        // by the member walk (FieldDecl), and it emits nothing. Its VALUE is the latch read, registered in
+        // _paramEnv so Identifier() folds `context` to it.
+        if (_errorContextJs is not null)
+        {
+            _src.Literal("System.Exception context = null!;\n");
+            _paramEnv["context"] = _errorContextJs;
+        }
 
         void Slot(IntermediateNode n)
         {
@@ -2380,6 +2428,7 @@ public sealed class CSharpFrontEnd
             {
                 Js = Expr(e),
                 Reactive = IsReactive(e),
+                ReadsComputed = ReadsAComputed(e),
                 IsFloat = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Single,
                 IsDecimal = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Decimal,
                 IsDateTime = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_DateTime,
@@ -3316,6 +3365,23 @@ public sealed class CSharpFrontEnd
     {
         switch (_model.GetSymbolInfo(id).Symbol)
         {
+            // The <ErrorBoundary> ErrorContent context (decision 164). Admitted ONLY as the receiver of
+            // `.Message`. Blazor renders a bare `@context` as Exception.ToString() -- the CLR type name,
+            // the message, and the CLR stack trace -- where a JS Error stringifies to "Error: boom". The
+            // shapes are not the same text, so the bare read is REFUSED rather than approximated; this is
+            // the same rule the type-directed text position applies everywhere else (decision 149).
+            case IFieldSymbol { Name: "context" } ec when _errorContextJs is not null &&
+                    ec.Type.ToDisplayString() == "System.Exception" && Field(ec) is null:
+                return id.Parent is MemberAccessExpressionSyntax { Name.Identifier.Text: "Message" } acc
+                       && acc.Expression == id
+                    ? _errorContextJs
+                    : Refuse("unsupported-expression",
+                        "a bare `@context` inside an <ErrorBoundary>'s ErrorContent is not mapped. Blazor " +
+                        "renders it as Exception.ToString() -- the CLR type name, the message and the CLR " +
+                        "stack trace -- and a JS Error carries none of that shape, so the text would differ " +
+                        "from Blazor's. Write `@context.Message`, which IS `Error.message`. Refusing to emit.",
+                        id.SpanStart);
+
             case IFieldSymbol fs when Field(fs) is { } f:
                 // The read protocol is decision 22's: `s.Value` in C# is `s.value` in JS,
                 // character for character. A field this compiler did NOT lift is a plain binding
@@ -3387,6 +3453,24 @@ public sealed class CSharpFrontEnd
                     $"KeyboardEventArgs.{ma.Name.Identifier.Text} is not mapped. Key, Code, CtrlKey, ShiftKey, " +
                     "AltKey and MetaKey are -- each a direct DOM event property. Refusing to emit.",
                     ma.SpanStart);
+        }
+
+        // The <ErrorBoundary> context's members (decision 164). `context` IS the caught value, and in a
+        // Filament module that value is a JS Error, so `.Message` IS `.message` -- the same direct
+        // projection `e.Key` is. Allowlisted for the same reason KeyboardEventArgs is: every other
+        // Exception member names CLR machinery with no JS twin (StackTrace's format, InnerException's
+        // chain, the CLR type name) and approximating one would render text .NET never produced.
+        if (_errorContextJs is not null &&
+            _model.GetTypeInfo(ma.Expression).Type is { } rt && rt.ToDisplayString() == "System.Exception")
+        {
+            if (ma.Name.Identifier.Text == "Message") return $"{Expr(ma.Expression)}.message";
+            return Refuse("unsupported-expression",
+                $"Exception.{ma.Name.Identifier.Text} is not mapped on an <ErrorBoundary> context. Only " +
+                ".Message is -- it is the one member with a direct JS twin (`Error.prototype.message`). " +
+                "StackTrace, InnerException, Data, HResult and GetType() name CLR machinery a JS Error " +
+                "does not carry, and rendering an approximation would show text .NET never produced. " +
+                "Refusing to emit.",
+                ma.SpanStart);
         }
 
         // `_rows.Count` -- the List's length. A JS array's own property, so no call and no
@@ -4200,6 +4284,23 @@ public sealed class CSharpFrontEnd
         var all = _fields.Select(f => (f.Name, f.Js, f.At))
             .Concat(_methods.Select(m => (m.Name, m.Js, m.At)))
             .Concat(_routeSignals.Select(r => (r.Name, r.Js, r.At)));
+        // An ErrorContent puts `context` in the SAME class scope every slot is compiled in (decision 164),
+        // so an author member of that name would be read by the ErrorContent instead of the caught
+        // exception -- silently, and only inside the boundary. Refused at the author's declaration, which
+        // is the one place a reader can act on it. Same rule, same reason, as the route parameter that
+        // collides with a field (decision 163).
+        if (_errorContextJs is not null &&
+            all.FirstOrDefault(x => string.Equals(x.Name, "context", StringComparison.Ordinal)) is { Name: not null } clash)
+        {
+            Refuse("name-collision",
+                $"@code declares '{clash.Name}', and this component's <ErrorBoundary> declares an ErrorContent, " +
+                "whose caught exception Blazor also names `context`. Inside the ErrorContent the two are one " +
+                "name, so `@context.Message` would read the declared member rather than the exception -- " +
+                "silently, and only there. Rename the member. Refusing to emit.",
+                clash.At);
+            return false;
+        }
+
         var dup = all.GroupBy(x => x.Js, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
         if (dup is null) return true;
 

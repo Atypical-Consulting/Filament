@@ -1,0 +1,36 @@
+@* ERROR BOUNDARY (decision 164). <ErrorBoundary> shows ErrorContent instead of its ChildContent
+   once the content has thrown, and leaves everything OUTSIDE it mounted and live.
+
+   WHAT IT CATCHES WAS MEASURED, NOT ASSUMED, against this very framework build — the catch lives in
+   Renderer.HandleExceptionViaErrorBoundary, which is ordinary .NET, so tools/error-boundary-oracle
+   drives it headless and reports:
+
+     W1  a throw from an event handler the PARENT owns, written inside the boundary   NOT caught
+     W2  a throw from a CHILD COMPONENT's event handler                                   caught
+     W3  a throw from a CHILD COMPONENT's OnInitialized                                    caught
+     W4  a throw raised while the parent EVALUATES the content                             caught
+
+   W1 is the shape everyone expects and Blazor does NOT catch it: a boundary catches what its
+   DESCENDANTS raise, and a handler written in the boundary's child content belongs to the component
+   that WROTE the fragment — an ancestor. W2/W3 need a stateful child, which Filament's composition
+   subset refuses. So W4 is the case this baseline pins, because it is the one both sides can reach.
+
+   The lowering: everything inlines into one mount(), so no boundary component survives. What
+   remains is a `signal(null)` latch — null IS CurrentException — and ONE list() over a comment
+   anchor whose active key set is the content while the latch is null and the error UI after, which
+   is @if/@else's own shape. Zero new runtime primitives.
+
+   DOM contract: Risky() throws while the content is being evaluated, so #in is NEVER rendered;
+   #err carries the caught message, and #outside stays mounted. That is the measurement. *@
+
+<div id="wrap"><p id="outside">outside</p><ErrorBoundary><ChildContent><p id="in">@Risky()</p></ChildContent><ErrorContent><p id="err">Sorry: @context.Message</p></ErrorContent></ErrorBoundary></div>
+
+@code {
+    private bool fail = true;
+
+    private string Risky()
+    {
+        if (fail) throw new InvalidOperationException("the content could not be rendered");
+        return "ok";
+    }
+}

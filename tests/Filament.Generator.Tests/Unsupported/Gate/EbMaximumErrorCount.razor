@@ -1,0 +1,8 @@
+@* MaximumErrorCount counts errors across re-renders; this boundary latches the FIRST exception and
+   never re-evaluates its content, so there is no second error to count. Refused rather than
+   accepted-and-ignored. Decision 164. *@
+<div id="wrap"><ErrorBoundary MaximumErrorCount="3"><ChildContent><p id="in">hi</p></ChildContent></ErrorBoundary></div>
+
+@code {
+    private int n = 0;
+}

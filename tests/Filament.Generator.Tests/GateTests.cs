@@ -260,6 +260,8 @@ public static class Generate
 
     public static string IfElseToTemp() => ToTemp(RepoPaths.IfElseRazor, "IfElse");
 
+    public static string ErrorBoundaryToTemp() => ToTemp(RepoPaths.ErrorBoundaryRazor, "ErrorBoundary");
+
     public static string DivideToTemp() => ToTemp(RepoPaths.DivideRazor, "Divide");
 
     public static string DivideIntToTemp() => ToTemp(RepoPaths.DivideIntRazor, "DivideInt");
@@ -449,6 +451,11 @@ public static class Run
     }
 
     public static (int exit, string stdout, string stderr) Node(params string[] args) => Exec("node", args);
+
+    /// <summary>`dotnet run --project …`. The &lt;ErrorBoundary&gt; oracle (decision 164) is a project
+    /// rather than a script because it hosts the real Blazor Renderer.</summary>
+    public static (int exit, string stdout, string stderr) DotnetRun(string project) =>
+        Exec("dotnet", ["run", "--project", project, "-v", "q", "--nologo"]);
 
     const string Configuration =
 #if DEBUG

@@ -1,0 +1,4 @@
+<p>never rendered</p>
+@code {
+    protected override void OnInitialized() => throw new InvalidOperationException("thrown in CHILD OnInitialized");
+}
