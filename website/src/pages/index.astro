@@ -57,11 +57,11 @@ const subset = [
   },
   {
     title: "Collections",
-    items: "List<T>, T[], Dictionary<K,V> — read, reassign, and element write (copy-on-write signals)",
+    items: "List<T>, T[], Dictionary<K,V>: read, reassign, and element write (copy-on-write signals)",
   },
   {
     title: "LINQ",
-    items: "Where / Select / OrderBy / GroupBy / Sum / First / Skip / Take — the whole common surface",
+    items: "Where / Select / OrderBy / GroupBy / Sum / First / Skip / Take: the whole common surface",
   },
   {
     title: "Reactivity & events",
@@ -70,7 +70,7 @@ const subset = [
   {
     title: "The framework layer",
     items:
-      "@page routing, @inject, @inherits, RenderFragment / ChildContent, EventCallback, @ref, CascadingParameter, generics, JS interop, EditForm — all eleven closed and measured",
+      "@page routing, @inject, @inherits, RenderFragment / ChildContent, EventCallback, @ref, CascadingParameter, generics, JS interop, EditForm: all eleven closed and measured",
   },
   {
     title: "Real-world I/O",
@@ -86,11 +86,11 @@ const nonGoals = [
   "SSR / prerendering",
   "CSS isolation (.razor.css)",
   "Error boundaries",
-  "Form validation — refused, not ignored",
+  "Form validation (refused, not ignored)",
   "A general DI container",
   "OnAfterRender / OnParametersSet / IDisposable",
   "Templated components (RenderFragment<T>)",
-  'Route parameters — :guid, catch-all {*Rest}, and optional {id?}',
+  'Route parameters (:guid, catch-all {*Rest}, and optional {id?})',
 ];
 ---
 
@@ -128,9 +128,9 @@ const nonGoals = [
         <p class="mt-6 max-w-2xl text-lg leading-relaxed text-mist-300 md:text-xl">
           Filament turns Blazor-style <code class="rounded bg-ink-800 px-1.5 py-0.5 text-mist-100"
             >.razor</code
-          > components — template <em>and</em> C# <code
+          > components (template <em>and</em> C# <code
             class="rounded bg-ink-800 px-1.5 py-0.5 text-mist-100">@code</code
-          > — into lean static HTML + JS and a tiny signals runtime. No .NET in the browser.
+          >) into lean static HTML + JS and a tiny signals runtime. No .NET in the browser.
           No megabyte download. No virtual DOM.
         </p>
 
@@ -188,7 +188,7 @@ const nonGoals = [
         <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
           The component model is excellent. The delivery isn't. To render a counter, a Blazor
           WASM app downloads and boots the .NET runtime in the browser before a single pixel
-          appears — an interpreter or AOT payload to warm, and a render tree that diffs on every
+          appears: an interpreter or AOT payload to warm, and a render tree that diffs on every
           change.
         </p>
 
@@ -253,7 +253,7 @@ const nonGoals = [
         </h2>
         <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
           Filament reads the same <code class="text-mist-100">.razor</code> file Blazor compiles
-          and lowers it — with Roslyn — to plain, imperative JavaScript. Static structure becomes
+          and lowers it, with Roslyn, to plain, imperative JavaScript. Static structure becomes
           create-once DOM calls. State becomes a <span class="text-filament-400">signal</span>. Each
           binding becomes one <span class="text-filament-400">effect</span>. There is no template to
           parse at runtime and no virtual DOM to diff.
@@ -290,7 +290,7 @@ const nonGoals = [
           {
             [
               { n: "1", h: "create", p: "The element tree is built once, imperatively. Static markup is static code." },
-              { n: "2", h: "signal", p: "private int currentCount lifts to signal(0) at compile time — you never wrote it." },
+              { n: "2", h: "signal", p: "private int currentCount lifts to signal(0) at compile time. You never wrote it." },
               { n: "3", h: "effect", p: "One effect per binding. @currentCount → one node updated, nothing diffed." },
               { n: "4", h: "listen", p: "@onclick maps to a single event listener. The handler body is translated, not spliced." },
             ].map((s) => (
@@ -313,12 +313,12 @@ const nonGoals = [
           Four criteria. Measured, not asserted.
         </h2>
         <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
-          Two demo apps — <code class="text-mist-100">Counter</code> and a 1,000-row
-          <code class="text-mist-100">Rows</code> — compiled from pure <code class="text-mist-100"
+          Two demo apps, <code class="text-mist-100">Counter</code> and a 1,000-row
+          <code class="text-mist-100">Rows</code>, compiled from pure <code class="text-mist-100"
             >.razor</code
           > and benchmarked against the same apps built with Blazor WASM (interpreted and AOT).
-          For the app-level head-to-head — a routed task board with a form, a keyed list and
-          per-row handlers, measured on weight, time-to-interactive and memory — see
+          For the app-level head-to-head (a routed task board with a form, a keyed list and
+          per-row handlers, measured on weight, time-to-interactive and memory), see
           <a
             class="font-semibold text-filament-400 underline decoration-filament-500/40 underline-offset-4 hover:decoration-filament-400"
             href={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/benchmark`}>the Duel</a
@@ -343,13 +343,13 @@ const nonGoals = [
             value="3.10"
             unit="ms"
             label="C4 · Create-warm"
-            sub="Rows-gen vs 7.90 ms for the faster Blazor/AOT — and it wins on update, swap, and clear too."
+            sub="Rows-gen vs 7.90 ms for the faster Blazor/AOT, and it wins on update, swap, and clear too."
           />
           <StatCard
             value="≥11×"
             unit=""
             label="C4 · Increment"
-            sub="A conservative floor — the real figure is below the performance.now() quantum, so it isn't quoted higher."
+            sub="A conservative floor: the real figure is below the performance.now() quantum, so it isn't quoted higher."
             accent="spark"
           />
         </div>
@@ -359,10 +359,10 @@ const nonGoals = [
         >
           <span class="font-semibold text-mist-100">The honest ceiling.</span> C1 (weight) and C4
           (speed) pass for both apps, including the full 1,000-row DOM work. These are
-          <em>provisional research measurements</em> — coarse ratios are not cited to three
+          <em>provisional research measurements</em>: coarse ratios are not cited to three
           significant figures, and every figure carries a disclosed reserve in
-          <code class="text-mist-300">BENCH.md</code>. Demo apps — plus a persisted todo app and a
-          head-to-head task board — show the architecture is <em>viable</em>; they do not, by
+          <code class="text-mist-300">BENCH.md</code>. Demo apps, plus a persisted todo app and a
+          head-to-head task board, show the architecture is <em>viable</em>; they do not, by
           themselves, prove it out as a whole framework. What remains untested is scale, not surface.
         </div>
       </div>
@@ -373,11 +373,11 @@ const nonGoals = [
       <div class="mx-auto max-w-6xl px-6 py-20 md:py-28">
         <p class="text-sm font-semibold uppercase tracking-widest text-spark-400">What compiles</p>
         <h2 class="mt-3 max-w-3xl text-3xl font-bold tracking-tight md:text-4xl">
-          A wide C# subset — and a compiler that refuses the rest, loudly.
+          A wide C# subset, and a compiler that refuses the rest, loudly.
         </h2>
         <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
           Across 161 recorded decisions and 67 measured entries, the compilable surface has grown to
-          cover most of everyday C# — and, since ADR 0003, the framework layer too. Anything outside
+          cover most of everyday C# and, since ADR 0003, the framework layer too. Anything outside
           it raises a located diagnostic and writes no file.
         </p>
 
@@ -399,7 +399,7 @@ const nonGoals = [
 
         <p class="mt-8 text-sm text-mist-500">
           Backed by <span class="font-mono text-mist-300">528</span> .NET tests and
-          <span class="font-mono text-mist-300">214</span> runtime tests — every slice verified
+          <span class="font-mono text-mist-300">214</span> runtime tests, every slice verified
           byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser.
         </p>
       </div>
@@ -452,7 +452,7 @@ const nonGoals = [
                 <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-spark-400"></span>
                 <span
                   ><span class="font-semibold text-spark-300">Banked.</span> The hand-written
-                  <code class="text-mist-300">Rows</code> bundle was re-measured on the wire — 4,373 B,
+                  <code class="text-mist-300">Rows</code> bundle was re-measured on the wire: 4,373 B,
                   byte-identical to the generated one.</span
                 >
               </li>
@@ -460,7 +460,7 @@ const nonGoals = [
                 <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-spark-400"></span>
                 <span
                   ><span class="font-semibold text-spark-300">Banked.</span> The comment-anchor node
-                  debt was re-measured inside a conditional app — Filament renders 4 nodes to Blazor's
+                  debt was re-measured inside a conditional app: Filament renders 4 nodes to Blazor's
                   5. It never flips sign; it stays an advantage.</span
                 >
               </li>
@@ -468,7 +468,7 @@ const nonGoals = [
                 <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-filament-500"></span>
                 <span
                   ><span class="font-semibold text-mist-100">Open, mitigated.</span> The generator pins
-                  a frozen, out-of-support Razor toolchain — now contained to one seam, hardened to
+                  a frozen, out-of-support Razor toolchain, now contained to one seam, hardened to
                   fail loud, and mapped for migration. An architectural liability the thesis carries as
                   its price.</span
                 >
@@ -483,7 +483,7 @@ const nonGoals = [
           <p class="text-lg leading-relaxed text-mist-200">
             <span class="font-semibold text-spark-300">Why say all this?</span> Because the project's
             one non-negotiable rule is that it never claims more than it measured. The evidence says
-            the architecture is <em>viable</em> — smaller and faster on real work. It does not yet
+            the architecture is <em>viable</em>: smaller and faster on real work. It does not yet
             say it replaces Blazor. That distinction is the whole point.
           </p>
         </div>

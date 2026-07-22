@@ -3,7 +3,7 @@ import Layout from "../layouts/Layout.astro";
 import Nav from "../components/Nav.astro";
 import Footer from "../components/Footer.astro";
 
-// The examples are REAL repo fixtures, imported at build time — the same files the test suite
+// The examples are REAL repo fixtures, imported at build time: the same files the test suite
 // gates. The refusal example is a genuine Unsupported witness: refusals are a feature, and the
 // playground shows them with the CLI's own wording.
 import counterRazor from "../../../baseline/Counter.Blazor/App.razor?raw";
@@ -14,17 +14,17 @@ import refusalRazor from "../../../tests/Filament.Generator.Tests/Unsupported/Ga
 
 const base = import.meta.env.BASE_URL.replace(/\/$/, "");
 const examples = [
-  { key: "counter", label: "Counter — the flagship witness", source: counterRazor },
-  { key: "foreachlist", label: "ForeachList — keyed list over a reassigned List<T>", source: foreachListRazor },
-  { key: "rowactions", label: "RowActions — per-row captured-lambda handlers", source: rowActionsRazor },
-  { key: "forms", label: "Forms — EditForm + @bind-Value", source: formsRazor },
-  { key: "refusal", label: "ForeachStatic — an honest refusal (FIL0001)", source: refusalRazor },
+  { key: "counter", label: "Counter: the flagship witness", source: counterRazor },
+  { key: "foreachlist", label: "ForeachList: keyed list over a reassigned List<T>", source: foreachListRazor },
+  { key: "rowactions", label: "RowActions: per-row captured-lambda handlers", source: rowActionsRazor },
+  { key: "forms", label: "Forms: EditForm + @bind-Value", source: formsRazor },
+  { key: "refusal", label: "ForeachStatic: an honest refusal (FIL0001)", source: refusalRazor },
 ];
 ---
 
 <Layout
-  title="Playground — the Filament compiler, in your browser | Filament"
-  description="Type Razor, get the generated JavaScript and a running component — or the compiler's honest refusal. The unchanged Filament generator, compiled to WebAssembly."
+  title="Playground: the Filament compiler, in your browser | Filament"
+  description="Type Razor, get the generated JavaScript and a running component, or the compiler's honest refusal. The unchanged Filament generator, compiled to WebAssembly."
 >
   <Nav />
   <main id="main" class="mx-auto max-w-6xl px-6">
@@ -34,8 +34,8 @@ const examples = [
         The compiler itself, <span class="text-filament-400">in your browser</span>.
       </h1>
       <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
-        This page runs the <strong class="text-mist-100">unchanged</strong> Filament generator —
-        the same Roslyn-and-Razor pipeline the test suite gates — compiled to WebAssembly. Type
+        This page runs the <strong class="text-mist-100">unchanged</strong> Filament generator
+        (the same Roslyn-and-Razor pipeline the test suite gates) compiled to WebAssembly. Type
         Razor on the left; the emitted JavaScript, or the compiler's verbatim refusal, appears on
         the right; a supported component runs below. The irony is deliberate:
         <em class="text-mist-100">you downloaded a .NET runtime to run a compiler whose output
@@ -104,7 +104,7 @@ const examples = [
       ></iframe>
       <p class="mt-3 max-w-2xl text-sm leading-relaxed text-mist-500">
         The preview mounts the emitted module against the same 1.9 KB signals runtime every
-        Filament app ships. A refused component renders nothing — refusing beats silently-wrong
+        Filament app ships. A refused component renders nothing. Refusing beats silently-wrong
         JavaScript, and that guarantee is the point of the whole project.
       </p>
     </section>
@@ -142,24 +142,24 @@ const examples = [
         lastBlob = URL.createObjectURL(new Blob([r.js], { type: "text/javascript" }));
         preview.srcdoc = `<!doctype html><meta charset="utf-8"><style>body{font-family:system-ui;margin:1rem}</style><div id="app"></div><script type="module">import { mount } from '${lastBlob}'; const app = document.getElementById('app'); app.textContent = ''; mount(app);<\/script>`;
       } else {
-        out.textContent = "// refused — see the diagnostics below. Refusing beats silently-wrong JS.";
+        out.textContent = "// refused. See the diagnostics below. Refusing beats silently-wrong JS.";
         diag.hidden = false;
         diag.textContent = (r.diagnostics || []).join("\n");
         stats.textContent = `${r.ms} ms · refused`;
-        preview.srcdoc = "<!doctype html><p style='font-family:system-ui;color:#666;margin:1rem'>nothing runs — the component was refused</p>";
+        preview.srcdoc = "<!doctype html><p style='font-family:system-ui;color:#666;margin:1rem'>nothing runs: the component was refused</p>";
       }
     }
 
     window.addEventListener("filament-playground-ready", () => {
       btn.disabled = false;
       // The LIVE irony banner: wire bytes actually transferred for the engine, from the
-      // browser's own resource timing — never a hardcoded number.
+      // browser's own resource timing, never a hardcoded number.
       const wire = performance
         .getEntriesByType("resource")
         .filter((e) => e.name.includes("/playground-engine/"))
         .reduce((a, e) => a + (e.transferSize || 0), 0);
       const mb = (n) => `${(n / 1024 / 1024).toFixed(1)} MB`;
-      engineStats.textContent = ` — engine on the wire: ${mb(wire)} (cached after first visit); its output: bytes.`;
+      engineStats.textContent = ` · engine on the wire: ${mb(wire)} (cached after first visit); its output: bytes.`;
       compileNow();
     });
 
@@ -172,7 +172,7 @@ const examples = [
     // Boot the engine (published by deploy: _framework + refpack + main.js under playground-engine/).
     import(`${base}/playground-engine/main.js`).catch((e) => {
       document.getElementById("status").textContent =
-        "the engine failed to load — the editor stays readable, nothing half-works. See the console.";
+        "the engine failed to load. The editor stays readable, nothing half-works. See the console.";
       console.error(e);
     });
   </script>

@@ -41,7 +41,7 @@ async function boot() {
   }
   const ready = JSON.parse(api.Ready());
   if (!ready.ok) {
-    status('engine failed its own probe — see console');
+    status('engine failed its own probe. See console.');
     console.error('Filament playground probe refused:', ready.diagnostics);
     throw new Error('playground engine probe failed');
   }
@@ -49,7 +49,7 @@ async function boot() {
   const compile = (razor, runtimeSpecifier) => JSON.parse(api.CompileRazor(razor, runtimeSpecifier));
   window.filamentPlayground = { compile, manifestBytes: manifest.totalBytes, probeMs: ready.ms };
   window.dispatchEvent(new CustomEvent('filament-playground-ready'));
-  status(`ready — probe compiled in ${ready.ms} ms`);
+  status(`ready · probe compiled in ${ready.ms} ms`);
   return compile;
 }
 

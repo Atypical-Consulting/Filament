@@ -3,7 +3,7 @@
   "type": "module",
   "version": "0.1.0",
   "private": true,
-  "description": "Marketing + evidence site for Filament — the Razor→JS compiler.",
+  "description": "Marketing + evidence site for Filament, the Razor→JS compiler.",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",

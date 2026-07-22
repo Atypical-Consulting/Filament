@@ -6,7 +6,7 @@ import Footer from "../components/Footer.astro";
 // EVERY number on this page is read from the committed measurement artifacts in
 // bench/results/duel/ at build time. Nothing is typed in by hand: a re-run of
 // bench/run-duel.sh re-commits the JSONs and this page follows. The bench never runs
-// in CI (thermal discipline, DECISIONS #47) — these are the artifacts of a real,
+// in CI (thermal discipline, DECISIONS #47); these are the artifacts of a real,
 // sequential, mirrored-pass run on a quiet machine.
 import filGz from "../../../bench/results/duel/filament-duel-gen-gzip.json";
 import filBr from "../../../bench/results/duel/filament-duel-gen-br.json";
@@ -28,7 +28,7 @@ const section = (rows: Row[]) => {
   return rows.map((r) => ({ ...r, pct: Math.max((r.value / max) * 100, 0.35) }));
 };
 
-// WEIGHT — cold-cache wire bytes to interactive, brotli negotiation (the production-like
+// WEIGHT: cold-cache wire bytes to interactive, brotli negotiation (the production-like
 // encoding); the gzip pass is reported in the table below.
 const weight = section([
   { name: "Blazor WASM (no JIT)", value: nojitBr.weight.toInteractive.median, display: fmtBytes(nojitBr.weight.toInteractive.median) },
@@ -36,14 +36,14 @@ const weight = section([
   { name: "Filament", value: filBr.weight.toInteractive.median, display: fmtBytes(filBr.weight.toInteractive.median), filament: true },
 ]);
 
-// TIME TO INTERACTIVE — navigation to ready-selector-present, observed in-page, brotli pass.
+// TIME TO INTERACTIVE: navigation to ready-selector-present, observed in-page, brotli pass.
 const tti = section([
   { name: "Blazor WASM (no JIT)", value: nojitBr.weight.msToInteractive.median, display: fmtMs(nojitBr.weight.msToInteractive.median) },
   { name: "Blazor WASM (AOT)", value: aotBr.weight.msToInteractive.median, display: fmtMs(aotBr.weight.msToInteractive.median) },
   { name: "Filament", value: filBr.weight.msToInteractive.median, display: fmtMs(filBr.weight.msToInteractive.median), filament: true },
 ]);
 
-// MEMORY — performance.measureUserAgentSpecificMemory (includes WASM linear memory), after the
+// MEMORY: performance.measureUserAgentSpecificMemory (includes WASM linear memory), after the
 // full contract-drive burst, median of 5 cold pages.
 const memory = section([
   { name: "Blazor WASM (no JIT)", value: nojitMem.memory.medianBytes.afterBurst, display: fmtBytes(nojitMem.memory.medianBytes.afterBurst) },
@@ -71,7 +71,7 @@ const table = [
 ---
 
 <Layout
-  title="The Duel — one app, two compilers | Filament"
+  title="The Duel: one app, two compilers | Filament"
   description="The same routed task-board app, built from the same .razor sources by Blazor WebAssembly and by Filament, measured on weight, time-to-interactive and memory."
 >
   <Nav />
@@ -82,14 +82,14 @@ const table = [
         One app. The same <span class="text-filament-400">.razor</span> sources. Two compilers.
       </h1>
       <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
-        A routed task board — <code class="text-mist-100">EditForm</code> add, keyed list with
-        per-row toggle/remove, filters, LINQ stats, a second page — compiled once by
+        A routed task board (<code class="text-mist-100">EditForm</code> add, keyed list with
+        per-row toggle/remove, filters, LINQ stats, a second page), compiled once by
         <strong class="text-mist-100">Blazor WebAssembly</strong> and once by
         <strong class="text-mist-100">Filament</strong>, from the
         <a class="text-filament-400 underline decoration-filament-500/40 underline-offset-4 hover:decoration-filament-400" href={`${repo}/tree/main/baseline/Duel.Blazor`}>same page files</a>.
         Every number below was taken only after a
-        <strong class="text-mist-100">10-step behavioural contract</strong> — add, toggle a
-        persisting row, all three filters, per-row remove, navigate, remount afresh, Back —
+        <strong class="text-mist-100">10-step behavioural contract</strong> (add, toggle a
+        persisting row, all three filters, per-row remove, navigate, remount afresh, Back)
         passed <em>identically</em> on both sides.
       </p>
     </header>
@@ -122,11 +122,11 @@ const table = [
     <section aria-labelledby="h-tti" class="border-t border-ink-800 py-12">
       <div class="flex flex-wrap items-baseline justify-between gap-4">
         <h2 id="h-tti" class="text-2xl font-bold text-mist-100">Time to interactive</h2>
-        <p class="font-mono text-sm text-filament-400">{ttiX}× sooner — over localhost</p>
+        <p class="font-mono text-sm text-filament-400">{ttiX}× sooner (over localhost)</p>
       </div>
       <p class="mt-2 max-w-2xl text-sm leading-relaxed text-mist-500">
         Navigation to the app answering its ready probe, the instant observed in-page by a
-        MutationObserver — never a frame boundary. Median of 10 cold loads. Localhost flatters
+        MutationObserver, never a frame boundary. Median of 10 cold loads. Localhost flatters
         the heavier side: on a real network, the megabytes above arrive first.
       </p>
       <div class="mt-6 space-y-3" role="img" aria-label={`Time to interactive: ${tti.map((r) => `${r.name} ${r.display}`).join(", ")}`}>
@@ -152,7 +152,7 @@ const table = [
       </div>
       <p class="mt-2 max-w-2xl text-sm leading-relaxed text-mist-500">
         <code class="text-mist-300">performance.measureUserAgentSpecificMemory()</code> on a
-        cross-origin-isolated page — the one instrument that attributes
+        cross-origin-isolated page: the one instrument that attributes
         <strong class="text-mist-100">WebAssembly linear memory</strong> to the page, so
         Blazor's .NET heap is counted, not hidden. Measured after the full interaction burst;
         median of 5 cold pages; per-run attribution breakdowns kept in the committed JSON.
@@ -209,8 +209,8 @@ const table = [
         </li>
         <li>
           <strong class="text-mist-300">Contract first, numbers second.</strong> The harness
-          refuses to report any number for an app that fails the shared 10-step DOM contract —
-          an app doing less work can never read as fast.
+          refuses to report any number for an app that fails the shared 10-step DOM contract.
+          An app doing less work can never read as fast.
         </li>
         <li>
           <strong class="text-mist-300">Mirrored passes.</strong> Three labels × two encodings,
@@ -219,7 +219,7 @@ const table = [
         </li>
         <li>
           <strong class="text-mist-300">Environment, recorded.</strong> Chrome {env.chrome.version},
-          .NET SDK {env.dotnetSdk}, harness v{env.harnessVersion} — pinned inside every committed JSON in
+          .NET SDK {env.dotnetSdk}, harness v{env.harnessVersion}, all pinned inside every committed JSON in
           <a class="text-filament-400 hover:underline" href={`${repo}/tree/main/bench/results/duel`}>bench/results/duel/</a>.
         </li>
         <li>
