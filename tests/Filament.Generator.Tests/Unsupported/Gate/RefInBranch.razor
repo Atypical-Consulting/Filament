@@ -1,0 +1,36 @@
+@* THE SECOND HALF of decision 168's defect (register defect A8): a region is not only a @foreach.
+
+   @ref on an element inside an @if BODY used to compile at exit 0 with NO diagnostic, for the same
+   reason and with the same shape -- the branch is its own local function:
+
+     function ifBody() { const box = document.createElement('input'); box.id = 'field'; return box; }
+     …
+     listen(_el1, 'click', async () => { await box.focus(); });     <-- FREE VARIABLE
+
+   Driven under happy-dom with listen() wrapped so the swallowed rejection is visible:
+
+     {"active":"","err":"ReferenceError: box is not defined"}
+
+   THE ELEMENT IS DELIBERATELY NOT NAMED AFTER THE FIELD. The register's probe found that an
+   `id="box"` element makes this shape appear to pass, because HTML named window access puts a global
+   `box` in scope and the free variable resolves to the element by pure coincidence. `id="field"` with
+   a field called `box` removes the coincidence, so the witness measures the mapping and not the DOM's
+   legacy globals.
+
+   HOISTING IS OUT OF SCOPE HERE TOO (see Gate/RefInRow.razor): a branch that is not taken creates no
+   element at all, so the hoisted name would be `undefined` where Blazor's field is `default`.
+
+   VALID BLAZOR: dotnet build of this source in a real Blazor WebAssembly project succeeds. *@
+<button id="toggle" @onclick="Toggle">toggle</button>@if (show)
+{
+    <input id="field" @ref="box" />
+}<button id="go" @onclick="Focus">go</button>
+
+@code {
+    private bool show = true;
+    private ElementReference box;
+
+    void Toggle() { show = !show; }
+
+    async Task Focus() { await box.FocusAsync(); }
+}

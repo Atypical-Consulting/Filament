@@ -1,0 +1,40 @@
+@* THE CONTROL FOR decision 168, AND IT IS THE SAME FILE WITH THE @ref MOVED ONE ELEMENT.
+
+   Unsupported/Gate/RefInRow.razor captures the row's own <li>; this file captures an <li> that sits
+   OUTSIDE the @foreach, in the same <ul>, with the same field name and the same handler. It compiles
+   clean and emits `const row = document.createElement('li');` at MOUNT scope, where
+   `listen(_el4, 'click', async () => { await row.focus(); })` can see it -- so the refusal next door
+   is located on the region and on NOTHING else: not on @ref, not on the list, not on @key, not on the
+   async handler.
+
+   It is also the WORKAROUND the diagnostic names: move the @ref onto an element outside the
+   @foreach/@if.
+
+   VALID BLAZOR: dotnet build of this source in a real Blazor WebAssembly project succeeds. *@
+<ul id="list"><li id="head" @ref="row">head</li><button id="add" @onclick="Add">add</button>@foreach (Row r in _rows)
+{
+    <li @key="r.Id"><span class="lbl">@r.Label</span></li>
+}</ul><button id="go" @onclick="Focus">go</button>
+
+@code {
+    record Row
+    {
+        public int Id { get; set; }
+        public string Label { get; set; } = "";
+    }
+
+    private List<Row> _rows = new List<Row>();
+    private int _next = 1;
+    private ElementReference row;
+
+    private void Add()
+    {
+        Row r = new Row();
+        r.Id = _next;
+        r.Label = "task " + _next;
+        _next = _next + 1;
+        _rows.Add(r);
+    }
+
+    async Task Focus() { await row.FocusAsync(); }
+}

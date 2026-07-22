@@ -296,6 +296,20 @@ public sealed class TemplateCompiler
     /// </summary>
     HashSet<IntermediateNode> _regions = [];
 
+    /// <summary>
+    /// THE REGION BEING EMITTED, named in English, or null at mount scope (decision 168).
+    ///
+    /// `_regions` above says which containers HAVE a region; this says whether the walk is INSIDE one
+    /// right now. The two are different questions and only the second one can answer "does the const I
+    /// am about to emit exist at mount scope?". A row body and an @if branch are each compiled into
+    /// their own local function (EmitList / EmitBranchFn), so every const they declare is scoped to that
+    /// function and dies with it; a mount-level handler naming one names a FREE VARIABLE. Set and
+    /// restored around the region body with the same save/restore idiom those two already use for
+    /// _create/_bindings, so it follows the DYNAMIC scope -- a composition inlined under a row, or a
+    /// fragment emitted into a branch, is still under a region and still sees it.
+    /// </summary>
+    string? _region;
+
     string _file = "";
     int _el, _tx;
     int _if;
@@ -1629,6 +1643,17 @@ public sealed class TemplateCompiler
     /// The JS const an @ref names, or null (refused). The target must be an ElementReference FIELD that
     /// @code declares: that is what makes `box` mean this node in the compiled C#, and it is checked
     /// against the compiler's own table rather than against the spelling (decision 57's rule again).
+    ///
+    /// AND IT MUST BE AT MOUNT SCOPE (decision 168). Decision 132's whole mapping is "the reference IS
+    /// the element's name", which holds exactly while the name and the reader share a scope. Under a
+    /// region they do not: the row/branch body is its own local function, so `const row = …` inside it
+    /// is invisible to a mount-level handler, which then reads a FREE VARIABLE. The generator used to
+    /// emit that at exit 0 -- measured `ReferenceError: row is not defined` -- which is the one thing
+    /// this project forbids. Refused here rather than hoisted: a hoist (`let row;` at mount scope,
+    /// assigned inside the body) is LAST-ASSIGNED-WINS, and list() never re-runs create() for a
+    /// persisting key, so after a reorder the name would point at a different element than Blazor's
+    /// capture does. That is a subtler divergence than the one being fixed, and it needs a Blazor
+    /// reorder oracle before it can ship.
     /// </summary>
     string? RefTargetJs(ReferenceCaptureIntermediateNode capture)
     {
@@ -1644,6 +1669,20 @@ public sealed class TemplateCompiler
                 "An @ref captures the element into a field the component declares (`private ElementReference " +
                 $"{name};`); without one there is nothing for the capture to name, and a capture wired to " +
                 "nothing is a handle that silently refers to no node. Refusing to emit.",
+                capture.Source);
+            return null;
+        }
+
+        if (_region is not null)
+        {
+            Diag("ref-under-region",
+                $"@ref=\"{name}\" is inside {_region}. A region's body is compiled into its own local " +
+                $"function, so the element would be named by a `const {name}` that only exists while that " +
+                "function runs -- and the component-scope code reading the reference would read a free " +
+                "variable (measured: `ReferenceError`). The element does not exist until the region runs, " +
+                "and there may be many of it or none, so there is no single node for the name to mean. " +
+                "Move the @ref onto an element OUTSIDE the @foreach/@if, or drive the row from the event " +
+                "argument instead of from a captured reference. Refusing to emit.",
                 capture.Source);
             return null;
         }
@@ -2457,11 +2496,13 @@ public sealed class TemplateCompiler
         var outerCreate = _create;
         var outerBindings = _bindings;
         var outerKey = _consumedKey;
+        var outerRegion = _region;
         var eventsBefore = _events.Count;
         var handlersBefore = _handlers.Count;
         _create = [];
         _bindings = [];
         _consumedKey = fe.Key;
+        _region = "a @foreach row";
 
         var root = EmitNode(fe.Body, parent: null);
         var body = new List<string>();
@@ -2473,6 +2514,7 @@ public sealed class TemplateCompiler
         _create = outerCreate;
         _bindings = outerBindings;
         _consumedKey = outerKey;
+        _region = outerRegion;
 
         // A NAMED-method handler inside a row records into the DEFERRED mount-level pass (its site
         // count decides inlining), which would emit its listen() where the row's element const does
@@ -2610,6 +2652,7 @@ public sealed class TemplateCompiler
         var outerCreate = _create;
         var outerBindings = _bindings;
         var outerKey = _consumedKey;
+        var outerRegion = _region;
         // Same scooping as a row's (decision 141): a listener on a branch-local element must be wired
         // inside the branch function, where its const exists -- not in the mount events section.
         var eventsBefore = _events.Count;
@@ -2617,6 +2660,7 @@ public sealed class TemplateCompiler
         _create = [];
         _bindings = [];
         _consumedKey = null;
+        _region = "an @if branch";
 
         var root = EmitNode(bodyNode, parent: null);
         var lines = new List<string>();
@@ -2628,6 +2672,7 @@ public sealed class TemplateCompiler
         _create = outerCreate;
         _bindings = outerBindings;
         _consumedKey = outerKey;
+        _region = outerRegion;
 
         if (_handlers.Count > handlersBefore)
         {
