@@ -5807,3 +5807,690 @@ clé feuille dans le même `list()`, ce qu'un corps de `@if` multi-nœuds fait d
 3. **`@context.Message` n'est fidèle que pour une exception que l'AUTEUR lève.** Une exception levée par
    le runtime porte un message .NET et un message JS différents ; cité comme divergence, pas comme
    équivalence.
+
+---
+
+## Entrée n°71 — 2026-07-21 — Phase 4 : le contrat de submit mesuré contre Blazor — deux divergences silencieuses fermées
+
+**Ce qui est mesuré.** `baseline/Submit.Blazor` : QUATRE formulaires, quatre chemins différents vers
+un écouteur `submit` — un `<form @onsubmit="Save">` nu sur une méthode `@code` (défaut de registre
+**A1**), un `<EditForm Model>` SANS `OnValidSubmit` (**A2**), un `<form @onsubmit @onkeydown>` dont
+les DEUX handlers sont sur le MÊME élément, et un `<form @onsubmit="() => lamHits++">` dont le
+handler est une lambda en ligne (105). Trois d'entre eux NAVIGUAIENT : le document se rechargeait,
+le module était remonté à partir de rien, et tout ce que l'auteur venait de saisir revenait vide —
+à exit 0, sans aucun diagnostic. Contrat `submit`, HARNESS **1.61.0 → 1.62.0**, divulgué.
+
+**Ceci est du travail d'HONNÊTETÉ, pas de surface, et les deux défauts ont été REJOUÉS avant d'être
+corrigés.** Ils viennent du sondage des onze non-buts §3 fermés par l'ADR 0003. L'autorité n'est pas
+une intuition : `blazor.webassembly.js` porte `_={submit:!0}` et
+`hasOwnProperty.call(_,t.type)&&t.preventDefault()`, donc TOUT submit muni d'un handler enregistré
+voit son défaut annulé — inconditionnellement, sans modificateur `:preventDefault`, sans dépendance
+au callback. Filament lisait cette table dans `EmitEditForm` seulement. Décision 165.
+
+**LA MESURE EST UNE ABSENCE, ET UNE ABSENCE NE SE LIT PAS DANS LA TÂCHE DU CLIC.** Une navigation
+est mise en file, pas immédiate : `location.href` rend encore l'ancienne valeur et chaque lecture du
+DOM trouve encore les anciens nœuds. C'est exactement ainsi que le contrat `forms` (1.50.0)
+affirmait déjà la non-navigation et laissait pourtant passer A1 et A2. Chaque submit PLANTE donc
+`window.__submitMarker`, attend 300 ms, puis le relit dans un `evaluate` SÉPARÉ : un reload détruit
+le contexte JS et le marqueur revient `null` — le seul signal qu'un reload ne peut pas simuler. Un
+espion `submit` posé sur `window` (phase bouillonnante, donc APRÈS le répartiteur délégué de Blazor
+comme après l'écouteur de Filament sur le `<form>`) dit la même chose depuis l'autre bord.
+
+```
+dotnet publish baseline/Submit.Blazor -c Release -o bench/publish/blazor-submit
+./bench/build-filament.sh filament-submit-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-submit/wwwroot --app submit --label blazor-submit       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-submit-gen   --app submit --label filament-submit-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | plain `<form>` | `<EditForm>` sans callback | submit+keydown (1 élément) | lambda | final |
+|---|---|---|---|---|---|
+| **blazor-submit** (autorité) | marqueur `alive`, url figée, `defaultPrevented:true`, `#out` `ok` | marqueur `alive`, url figée, `defaultPrevented:true`, `#live` `kept` | marqueur `alive`, `defaultPrevented:true`, `#hits` `1`, puis `#key` `a` | marqueur `alive`, `defaultPrevented:true`, `#lam` `1` | `ok`/`kept`/`1`/`a`/`1` |
+| **filament-submit-gen** (générateur) | idem | idem | idem | idem | idem |
+
+**Les vingt champs observés coïncident, à l'octet.** JSON identique des deux côtés (`diff` vide,
+runs relancés indépendamment) :
+`{"initial":{"out":"","live":"","hits":"0","key":"","lam":"0"},`
+`"plainForm":{"marker":"alive","hrefUnchanged":true,"spy":[{"defaultPrevented":true,"target":"FORM"}],"out":"ok"},`
+`"callbacklessEditForm":{"marker":"alive","hrefUnchanged":true,"spy":[{"defaultPrevented":true,"target":"FORM"}],"live":"kept"},`
+`"twoHandlerForm":{"marker":"alive","hrefUnchanged":true,"spy":[{"defaultPrevented":true,"target":"FORM"}],"hits":"1","key":""},`
+`"afterKeydown":{"key":"a","hits":"1"},`
+`"lambdaForm":{"marker":"alive","hrefUnchanged":true,"spy":[{"defaultPrevented":true,"target":"FORM"}],"lam":"1"},`
+`"final":{"out":"ok","live":"kept","hits":"1","key":"a","lam":"1"}}`. Contract met des deux côtés
+(`--contract-only`). `hrefUnchanged` plutôt que l'URL brute : le serveur du harness prend un port
+ÉPHÉMÈRE, donc l'URL absolue diffère entre les deux coquilles pour une raison qui n'appartient à
+aucun des deux frameworks — l'affirmation est que l'URL n'a pas BOUGÉ.
+
+**LE POUVOIR DISCRIMINANT DU CONTRAT, PROUVÉ CONTRE LE GÉNÉRATEUR D'AVANT.** Le compilateur a été
+remis à HEAD, reconstruit, la coquille re-bâtie, et l'oracle relancé — il tombe dès la première
+affirmation :
+
+```
+[bench] DOM CONTRACT NOT MET — refusing to report numbers:
+  - plain <form @onsubmit>: the page RELOADED -- a marker planted before the click is gone (marker=null)
+[bench] observed: {"initial":{…},"plainForm":{"marker":null,"hrefUnchanged":false,"spy":null,"out":""}}
+```
+
+A2 échoue INDÉPENDAMMENT (le run ci-dessus s'arrête avant de l'atteindre) : sonde dédiée sur la même
+coquille d'avant, ne pilotant que `#quiet-save` →
+`{"marker":null,"spy":null,"href":"http://127.0.0.1:50633/?","live":""}` — le `?` est la navigation
+GET du formulaire, et `#live` a perdu le « kept » qui venait d'être saisi.
+
+**Divulgué, pas contourné : A16.** Un `<InputText>` de Blazor rend `class="valid"`, puis
+`class="modified valid"` après une frappe ; Filament n'émet AUCUNE classe. Vérifié sur l'app mesurée
+elle-même — Blazor `<input id="quiet" class="valid" _bl_2="">` → `class="modified valid"`, Filament
+`<input id="quiet">` → `<input id="quiet">`. L'état par champ vient de l'`EditContext`, que la 138
+refuse en bloc plutôt que de le mimer ; le contrat `submit` n'affirme rien autour de cette classe et
+la divergence reste ouverte, écrite ici.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive :
+`preventDefault()` est une méthode du DOM et `listen()` est à bord depuis le compteur ; runtime gelé
+à 1 943 B. Suite : **545 tests** (461 générateur / 60 subset / 24 analyzer) + 214 runtime, dont HUIT
+neufs (gate canon verte au premier essai, snapshot `Submit.approved.js` neuf, un témoin par chemin
+d'émission, le contraste submit/keydown sur un élément, le refus `OnSubmit`) et UNE assertion
+RETOURNÉE (`GateSubsetTests` épinglait `Assert.DoesNotContain("listen(", js)` sur un formulaire sans
+callback — elle épinglait A2). Baseline `dotnet build baseline/Submit.Blazor` VERTE avant toute
+autre chose, et les cinq fixtures bâties une à une comme `App.razor` d'un projet Blazor réel — une
+fixture qui n'est pas du Blazor valide n'est pas un témoin (RZ9979). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°71. Ne pas modifier — ajouter une entrée n°72 pour toute rectification.*
+
+---
+
+## Entrée n°72 — 2026-07-21 — Les portes de l'`@inject` : du REFUS, donc AUCUN run de navigateur inventé
+
+**Ce qui est mesuré, et ce qui ne l'est pas.** La décision 166 ferme trois défauts de registre sur
+la directive `@inject` — **A11** (une divergence silencieuse de classe A), **C1** et **C7** (deux
+diagnostics qui mentaient). Aucun d'eux ne fait rendre quoi que ce soit de NEUF : deux sources qui
+compilaient sont désormais refusées, et deux messages changent de texte. **Il n'y a donc rien qu'un
+navigateur puisse observer, et il n'y a pas de contrat neuf : HARNESS reste à 1.62.0, aucun run
+n'est inventé.** La preuve est le diagnostic LOCALISÉ, plus l'identité à l'octet des témoins de
+contrôle. Trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 — travail d'honnêteté.
+
+**LA SEULE MESURE QUI COMPTE POUR A11 EST AU NIVEAU HTTP, ET ELLE A ÉTÉ PRISE SUR LE FIL.** Ce qui
+fait d'A11 une divergence et non une préférence, c'est QUELLE URL part. Un client typé
+(`class WrapperHttpClient(HttpClient inner)`) enregistré par
+`AddHttpClient<WrapperHttpClient>(c => c.BaseAddress = new Uri("http://127.0.0.1:8791/api/"))`,
+piloté contre un `HttpListener` réel, avec l'appel du témoin mot pour mot
+(`await api.GetStringAsync("weather")`) :
+
+```
+BODY: sunny
+SERVER SAW: http://127.0.0.1:8791/api/weather
+```
+
+Filament, AVANT, admettait la même source à exit 0 (1583 B) et émettait
+`val.value = await __getText('weather')` — un `fetch` relatif au DOCUMENT, donc `<origine>/weather`.
+Deux URL différentes, aucun diagnostic. Après : refus localisé en `(1,1)`, aucun fichier écrit.
+
+**LA MESURE DE NON-RÉGRESSION : LE VRAI CHEMIN `HttpClient` N'A PAS BOUGÉ.** Le contrat `httpjson`
+(1.57.0) existe depuis la 147 ; la coquille Filament a été REBÂTIE avec le compilateur corrigé, et
+les deux coquilles ont été rejouées :
+
+```
+./bench/build-filament.sh filament-httpjson-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-httpjson/wwwroot --app httpjson --label blazor-httpjson       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-httpjson-gen   --app httpjson --label filament-httpjson-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#status` initial | lignes initiales | après `#load` | lignes |
+|---|---|---|---|---|
+| **blazor-httpjson** (autorité) | `idle` | 0 | `loaded 3` | `alpha: 1` / `beta: 2` / `gamma: 3` |
+| **filament-httpjson-gen** (générateur) | idem | idem | idem | idem |
+
+**JSON identique des deux côtés, à l'octet :**
+`{"initialStatus":"idle","initialRows":0,"status":"loaded 3","rows":["alpha: 1","beta: 2","gamma: 3"]}`.
+Contract met des deux côtés (`--contract-only`). Le module généré est lui-même inchangé à l'octet —
+`HttpJson.approved.js` et `JsInterop.approved.js`, les deux instantanés qui épinglent les
+orthographes NUES `HttpClient` et `IJSRuntime`, passent sans être retouchés.
+
+### Les trois défauts, AVANT et APRÈS, verbatim
+
+```
+A11  AVANT  .../W1TypedHttpClient.razor -> W1TypedHttpClient.g.js (1583 B)      [exit 0]
+              val.value = await __getText('weather');
+     APRÈS  W1TypedHttpClient.razor(1,1): FIL0003: [unsupported-directive]
+              @inject WrapperHttpClient is not in the subset. …                 [exit 1, aucun fichier]
+
+A11  AVANT  .../W2SuffixJsRuntime.razor -> W2SuffixJsRuntime.g.js (891 B)       [exit 0]
+              await localStorage.setItem('fil', 'hello');
+     APRÈS  W2SuffixJsRuntime.razor(1,1): FIL0003: [unsupported-directive]
+              @inject MyIJSRuntime is not in the subset. …                      [exit 1, aucun fichier]
+
+C1   AVANT  W3ThreeRefusedLast.razor(2,1): … @inject NavigationManager …    (elle est ligne 4)
+     APRÈS  W3ThreeRefusedLast.razor(4,1): … @inject NavigationManager …
+
+C7   AVANT  W4ServiceAsValue.razor(4,14): FIL0001: [unresolved-name] 'JS' is not declared in this
+              component. … no injected services to reach for.
+     APRÈS  W4ServiceAsValue.razor(4,14): FIL0001: [unsupported-expression] 'JS' is an @inject'd
+              IJSRuntime read as a VALUE. … admitted in ONE position, as the receiver of the calls
+              that erase -- InvokeVoidAsync("path", …) and InvokeAsync<T>("path", …) …
+```
+
+Sur trois injects refusés (`P_ThreeReal`), les trois carets lisaient `(2,1)` et sortaient en ordre
+INVERSE de la source ; ils lisent maintenant `(2,1)`, `(3,1)`, `(4,1)`, dans l'ordre.
+
+**Un quatrième silence, tombé avec eux : DEUX `@inject` du MÊME service.** Blazor le bâtit
+(`Build succeeded. 0 Warning(s) 0 Error(s)`) ; Filament ne tient qu'un NOM par service effacé, donc
+la seconde liaison écrasait la première :
+
+```
+AVANT  .../InjectTwiceSameService.razor -> w7c.js (1303 B)   [exit 0] -- `Backup` mort, silencieux
+AVANT  (les DEUX noms utilisés) W7b.razor(14,23): FIL0001: [unsupported-call]
+         'Backup.GetStringAsync("data/hello.txt")' is not a call to a method declared in this component.
+APRÈS  InjectTwiceSameService.razor(2,1): FIL0003: [unsupported-directive]
+         @inject HttpClient Backup is a SECOND @inject of HttpClient in this component. …
+```
+
+Lequel des deux était jeté dépendait de l'ordre de parcours que C1 vient de corriger : le refuser est
+ce qui empêche la correction de C1 d'être elle-même un changement de comportement silencieux.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive ; runtime
+gelé à 1 943 B. Suite : **551 tests** (467 générateur / 60 subset / 24 analyzer) + 214 runtime,
+dont SIX neufs — cinq témoins de refus (client typé, suffixe `IJSRuntime`, trois injects dont le
+refusé est le DERNIER, service lu comme valeur, double `@inject` du même service) et UN témoin de
+l'autre côté de la ligne
+(`Supported/Gate/InjectQualified.razor` : formes qualifiée et `global::`-qualifiée, qui compilent et
+s'effacent toujours), afin que la correction exacte ne devienne pas un sur-refus. Les six fixtures
+ont été bâties une à une comme l'`App.razor` d'un projet Blazor réel — `Build succeeded.
+0 Warning(s) 0 Error(s)` — parce qu'une fixture qui n'est pas du Blazor valide n'est pas un témoin
+(RZ9979). HARNESS **inchangé, 1.62.0** : aucun contrat n'a été ajouté ni étendu. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°72. Ne pas modifier — ajouter une entrée n°73 pour toute rectification.*
+
+---
+
+## Entrée n°73 — 2026-07-21 — `<CascadingValue IsFixed>` : du REFUS, donc AUCUN run de navigateur inventé
+
+**Ce qui est mesuré, et ce qui ne l'est pas.** La décision 167 ferme le défaut de registre **A12**,
+une divergence silencieuse de classe A : `<CascadingValue IsFixed="true">` compilait à exit 0 sans
+un mot. Après, il est REFUSÉ. **Rien de neuf ne se rend donc : il n'y a pas de contrat neuf, HARNESS
+reste à 1.62.0, et aucun run n'est inventé.** La preuve est le diagnostic LOCALISÉ, plus l'identité
+à l'octet du témoin de contrôle. Trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 —
+travail d'honnêteté, pas de surface.
+
+**MAIS LE DÉFAUT LUI-MÊME EST UNE DIVERGENCE DE DOM, ET IL A ÉTÉ REJOUÉ DE PREMIÈRE MAIN.** Ce qui
+fait d'A12 une divergence et non une préférence, c'est ce que les deux frameworks RENDENT. Le
+témoin : deux consommateurs sous UNE cascade fixe, ne différant que par le fait que leur propre
+`[Parameter]` change ou non — `<GaugeA Tag="static" />` (`#a`), `<GaugeB Tag="@tick" />` (`#b`),
+tous deux ne rendant que `@Level`. Trois lectures : au montage, après un clic sur `#inc`, après
+deux. Coquille Blazor publiée en Release depuis `baseline/Cascade.Blazor` avec ce témoin pour
+`App.razor` ; coquille Filament bâtie par esbuild à partir du module que le générateur d'AVANT
+émettait pour ce même témoin. Chrome 150.0.7871.129, headless, Playwright du dépôt
+(`bench/harness/node_modules`) — une SONDE, pas l'oracle.
+
+### Résultat — les trois lectures
+
+| Coquille | initial | après 1 clic | après 2 clics |
+|---|---|---|---|
+| **BLAZOR** (autorité) | `a=1` `b=1` | `a=1` **`b=2`** | `a=1` **`b=3`** |
+| **FILAMENT** (avant, exit 0) | `a=1` `b=1` | **`a=2`** `b=2` | **`a=3`** `b=3` |
+| **FILAMENT** (capture gelée — l'implémentation RÉFUTÉE) | `a=1` `b=1` | `a=1` **`b=1`** | `a=1` **`b=1`** |
+
+JSON verbatim :
+
+```
+BLAZOR              : {"initial":{"a":"1","b":"1"},"afterClick1":{"a":"1","b":"2"},"afterClick2":{"a":"1","b":"3"}}
+FILAMENT (avant)    : {"initial":{"a":"1","b":"1"},"afterClick1":{"a":"2","b":"2"},"afterClick2":{"a":"3","b":"3"}}
+FILAMENT (gelée)    : {"initial":{"a":"1","b":"1"},"afterClick1":{"a":"1","b":"1"},"afterClick2":{"a":"1","b":"1"}}
+```
+
+**LES DEUX MAPPAGES CANDIDATS DIVERGENT, ET C'EST TOUT L'ARGUMENT.** `IsFixed` ne veut pas dire
+« lire la valeur une fois » : une cascade fixe n'enregistre aucun abonnement, donc `#a`, que rien ne
+re-paramètre, reste à 1 — mais `#b`, re-paramétré parce que son propre `Tag` change, se voit
+re-fournir la valeur VIVANTE et avance 1 → 2 → 3 SOUS UNE CASCADE FIXE. La cascade vivante de
+Filament était juste sur `#b` et fausse sur `#a` ; la capture gelée (`const _casc0 = level.value;`,
+les deux `effect` remplacés par un `setText` unique — construite à la main et pilotée, ligne 3 du
+tableau) est juste sur `#a` et fausse sur `#b`. Aucune des deux n'est fidèle, donc la tranche est un
+REFUS et non une fonctionnalité.
+
+### L'effacement, prouvé à l'octet
+
+Avec le générateur d'AVANT, sur le témoin même, le module émis pour la source AVEC `IsFixed="true"`
+est **identique caractère pour caractère** à celui émis pour la même source SANS l'attribut :
+
+```
+$ dotnet Filament.Generator.dll CascadeIsFixed.razor      App.g.js    ->  1710 B   [exit 0]
+$ diff <module avec IsFixed> <module du contrôle sans IsFixed>        ->  (vide)
+```
+
+L'attribut n'était pas implémenté : il était effacé.
+
+### Le refus, AVANT et APRÈS, verbatim
+
+```
+AVANT  .../CascadeIsFixed.razor -> App.g.js (1710 B)                            [exit 0]
+         effect(() => setText(_tx0, level.value));
+         effect(() => setText(_tx1, level.value));
+
+APRÈS  CascadeIsFixed.razor(26,56): FIL0003: [unsupported-cascade]
+         <CascadingValue IsFixed="…"> changes the UPDATE SEMANTICS of the cascade for its
+         consumers, and this compiler will not approximate it. … measured on two consumers under
+         one fixed cascade, Blazor renders 1,1,1 and 1,2,3. … freezing the value at mount was
+         measured and renders 1,1,1 for BOTH, right for the first consumer and wrong for the
+         second. Drop IsFixed: the live cascade is faithful and costs nothing to keep. Refusing
+         to emit rather than ignore it.                              [exit 1, aucun fichier écrit]
+```
+
+`(26,56)` est le `true` lui-même — colonne 56 de la ligne de markup, quatre caractères : le caret
+est sur l'ATTRIBUT, pas sur l'élément.
+
+### La non-régression : le chemin ordinaire n'a pas bougé
+
+Le contrat `cascade` (1.47.0) existe depuis la 134 ; la coquille Filament a été REBÂTIE avec le
+compilateur corrigé, la coquille Blazor publiée depuis `baseline/Cascade.Blazor`, et les deux
+rejouées :
+
+```
+./bench/build-filament.sh filament-cascade-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-cascade/wwwroot --app cascade --label blazor-cascade       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-cascade-gen   --app cascade --label filament-cascade-gen --headless --contract-only
+```
+
+| Label | `#depth` initial | après 1 `#inc` | après 2 |
+|---|---|---|---|
+| **blazor-cascade** (autorité) | `1` | `2` | `3` |
+| **filament-cascade-gen** (générateur) | idem | idem | idem |
+
+**JSON identique des deux côtés, à l'octet :** `{"initial":"1","afterFirst":"2","afterSecond":"3"}`.
+Contract met des deux côtés (`--contract-only`). L'instantané `Cascade.approved.js` n'a pas été
+retouché.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive ; runtime
+gelé à 1 943 B. Suite : **553 tests** (469 générateur / 60 subset / 24 analyzer) + 214 runtime, dont
+DEUX neufs — un témoin de refus (`Unsupported/Gate/CascadeIsFixed.razor`, avec ses deux
+consommateurs `GaugeA`/`GaugeB`) et UN témoin de l'autre côté de la ligne
+(`Supported/Gate/CascadeTwoConsumers.razor` : le même fichier moins ` IsFixed="true"`, qui compile,
+donc le refus porte sur `IsFixed` et sur rien d'autre). Les deux fixtures ont été bâties comme
+l'`App.razor` d'un projet Blazor réel — `Build succeeded. 0 Warning(s) 0 Error(s)` — parce qu'une
+fixture qui n'est pas du Blazor valide n'est pas un témoin (RZ9979). HARNESS **inchangé, 1.62.0** :
+aucun contrat n'a été ajouté ni étendu. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°73. Ne pas modifier — ajouter une entrée n°74 pour toute rectification.*
+
+---
+
+## Entrée n°74 — 2026-07-22 — `@ref` sous une région : du REFUS, donc AUCUN run de navigateur inventé
+
+**Ce qui est mesuré, et ce qui ne l'est pas.** La décision 168 ferme le défaut de registre **A8**,
+une divergence silencieuse de classe A : un `@ref` posé sur un élément DANS une ligne de `@foreach`
+ou dans un corps d'`@if` compilait à exit 0 sans un mot. Après, il est REFUSÉ. **Rien de neuf ne se
+rend donc : il n'y a pas de contrat neuf, HARNESS reste à 1.62.0, et aucun run n'est inventé.** La
+preuve est le diagnostic LOCALISÉ, plus l'identité à l'octet du témoin de contrôle. Trouvé en
+SONDANT les onze non-buts §3 fermés par l'ADR 0003 — travail d'honnêteté, pas de surface.
+
+**MAIS LE DÉFAUT LUI-MÊME EST UN PLANTAGE À L'EXÉCUTION, ET IL A ÉTÉ REJOUÉ DE PREMIÈRE MAIN.** Ce
+qui fait d'A8 une divergence et non une préférence, c'est que le module émis LANCE. Les deux témoins
+ont été passés par le générateur d'AVANT, puis pilotés sous node + happy-dom
+(`src/filament-runtime/node_modules`) contre le VRAI runtime bâti (`dist/filament.dev.js`), avec
+`listen()` enveloppé pour faire remonter le rejet qu'un handler `async` avale silencieusement. Une
+SONDE, pas l'oracle — l'oracle Playwright n'a rien à observer sur une tranche de refus.
+
+### Résultat — les trois lectures, JSON verbatim
+
+| Coquille | après clic sur `#go` |
+|---|---|
+| **`@foreach`** (`Unsupported/Gate/RefInRow.razor`, générateur d'AVANT) | `{"active":"","err":"ReferenceError: row is not defined"}` |
+| **`@if`** (`Unsupported/Gate/RefInBranch.razor`, générateur d'AVANT) | `{"active":"","err":"ReferenceError: box is not defined"}` |
+| **contrôle** (`baseline/ElemRef.Blazor/App.razor`, inchangé) | `{"active":"box","err":null}` |
+
+La seule différence entre les deux premières lignes et la troisième est la PORTÉE D'ÉMISSION. Les
+deux sources sont du Blazor valide, et Blazor les rend : `dotnet build` d'un vrai projet
+WebAssembly les accepte, `Build succeeded. 0 Warning(s) 0 Error(s)`.
+
+**L'ÉLÉMENT N'EST PAS NOMMÉ COMME LE CHAMP, ET C'EST LA CONDITION DE VALIDITÉ DU TÉMOIN.** Le
+sondage du registre a montré qu'un `id="box"` fait passer cette forme pour bonne : l'accès nommé
+hérité du HTML met un `box` global dans la portée et la variable libre se résout par coïncidence.
+`RefInBranch.razor` porte donc `id="field"` pour un champ `box`.
+
+### Le refus, AVANT et APRÈS, verbatim
+
+```
+AVANT  RefInRow.razor    -> out.js (1983 B)                                     [exit 0]
+         function createR(r) { const row = document.createElement('li'); … }
+         listen(_el3, 'click', async () => { await row.focus(); });     <-- variable libre
+       RefInBranch.razor -> out.js (1611 B)                                     [exit 0]
+         function ifBody() { const box = document.createElement('input'); … }
+         listen(_el1, 'click', async () => { await box.focus(); });     <-- variable libre
+
+APRÈS  RefInRow.razor(31,27): FIL0003: [ref-under-region]
+         @ref="row" is inside a @foreach row. A region's body is compiled into its own
+         local function, so the element would be named by a `const row` that only exists
+         while that function runs -- and the component-scope code reading the reference
+         would read a free variable (measured: `ReferenceError`). The element does not
+         exist until the region runs, and there may be many of it or none, so there is no
+         single node for the name to mean. Move the @ref onto an element OUTSIDE the
+         @foreach/@if, or drive the row from the event argument instead of from a captured
+         reference. Refusing to emit.                        [exit 1, aucun fichier écrit]
+
+       RefInBranch.razor(26,29): FIL0003: [ref-under-region]
+         @ref="box" is inside an @if branch. …                [exit 1, aucun fichier écrit]
+```
+
+`(31,27)` et `(26,29)` sont les NOMS capturés eux-mêmes — la convention que `Ref.razor(1,22)` tient
+depuis la décision 132, et non l'élément ni la ligne de markup.
+
+### Le hissage n'a pas été livré, et la raison est une mesure à faire, pas une opinion
+
+`let row;` au niveau de `mount()`, assigné dans le corps de la région, compile — mais il est
+DERNIER-ASSIGNÉ-GAGNANT, et `list()` ne rejoue jamais `create()` pour une clef qui persiste (c'est
+exactement le fait que la décision 125 a mesuré). Après une réorganisation, le nom hissé
+désignerait un autre élément que la capture de Blazor ; sur une branche non prise il vaudrait
+`undefined` là où le champ de Blazor vaut `default`. Cela demande un ORACLE DE RÉORGANISATION côté
+Blazor, qui n'existe pas encore dans `bench/`. Livrer le hissage sans cet oracle échangerait un
+plantage bruyant contre une divergence silencieuse : le contraire du contrat de ce dépôt.
+
+### La non-régression : le chemin ordinaire n'a pas bougé d'un octet
+
+```
+$ diff <ElemRef émis AVANT> <ElemRef émis APRÈS>     ->  (vide)       1121 B des deux côtés
+```
+
+`ElemRef.approved.js` n'a pas été retouché, la porte canon (alpha-équivalence à
+`samples/ElemRef/elemref.js`, BENCH n°51) est verte, et le contrôle repiloté sous happy-dom avec le
+générateur CORRIGÉ rend toujours `{"active":"box","err":null}`. Le témoin neuf de l'autre côté de la
+ligne, `Supported/Gate/RefOutsideRow.razor` — le fichier refusé avec le `@ref` déplacé sur un `<li>`
+HORS du `@foreach` — compile, émet `const row` au niveau de `mount()` (textuellement AVANT la
+fonction de ligne) et rend `{"active":"head","err":null}`.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive ; runtime
+gelé à 1 943 B. Suite : **556 tests** (472 générateur / 60 subset / 24 analyzer) + 214 runtime, dont
+TROIS neufs — deux témoins de refus (`Unsupported/Gate/RefInRow.razor`,
+`Unsupported/Gate/RefInBranch.razor`) et UN témoin de l'autre côté de la ligne
+(`Supported/Gate/RefOutsideRow.razor`, le même fichier avec le `@ref` déplacé d'un élément, qui
+compile — donc le refus porte sur la région et sur rien d'autre). Les trois fixtures ont été bâties
+comme composants d'un projet Blazor WebAssembly réel — `Build succeeded. 0 Warning(s) 0 Error(s)` —
+parce qu'une fixture qui n'est pas du Blazor valide n'est pas un témoin (RZ9979). HARNESS
+**inchangé, 1.62.0** : aucun contrat n'a été ajouté ni étendu. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°74. Ne pas modifier — ajouter une entrée n°75 pour toute rectification.*
+
+---
+
+## Entrée n°75 — 2026-07-22 — le cycle de composition : un REFUS localisé là où il y avait un SIGABRT
+
+**Ce qui est mesuré, et ce qui ne l'est pas.** La décision 169 ferme le défaut de registre **B4**,
+classe B. Avant, le générateur **mourait** sur une source Blazor valide ; après, il REFUSE en nommant
+le cycle. **Rien de neuf ne se rend : il n'y a pas de contrat neuf, HARNESS reste à 1.62.0, et aucun
+run de navigateur n'est inventé.** La preuve est le diagnostic LOCALISÉ, plus l'identité à l'octet
+des deux témoins de contrôle. Trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 — travail
+d'honnêteté, pas de surface.
+
+### Le défaut, rejoué de première main
+
+Les trois fixtures livrées, passées par le générateur de HEAD (`git show HEAD:…TemplateCompiler.cs`,
+rebâti) :
+
+| fixture | EXIT | `stderr` | `out.js` | trames `EmitComposition` / `EmitNode` |
+|---|---|---|---|---|
+| `Unsupported/Gate/CycleSelf.razor` (auto-récursion) | **134** (SIGABRT) | 1 271 340 o, commençant par `Stack overflow.` | **ABSENT** | 1 218 / 2 436 |
+| `Unsupported/Gate/CycleMutual.razor` (récursion mutuelle) | **134** | 1 271 340 o, idem | **ABSENT** | 1 218 / 2 436 |
+| `Unsupported/Gate/CycleContent.razor` (cycle par le markup d'un conteneur) | **134** | 1 011 779 o, idem | **ABSENT** | 1 498 / 2 996 |
+
+Aucun diagnostic, aucun fichier, aucune ligne, aucun nom de fichier.
+
+### Les deux sources sont du Blazor valide, et Blazor les REND
+
+```
+$ dotnet build CycleProbe.Blazor.csproj
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+$ dotnet run  (HtmlRenderer sur les mêmes .razor)
+RENDERED: <div id="host"><div id="wrap"><span class="node">x<span class="node">done</span></span></div>
+          <div id="wrap"><span class="alpha">x<em class="beta">b</em></span></div>
+          <div id="wrap"><span class="left"><b class="leaf">l</b></span><em class="right"><b
+          class="leaf">r</b></em><b class="leaf">c</b><b class="leaf">d</b></div>
+          <div id="wrap"><div class="card"><div class="card"><b>x</b></div></div></div></div>
+```
+
+Blazor instancie un enfant par niveau et évalue la garde **à l'exécution** ; l'inlineur n'a ni
+instance ni exécution, et un `@if` y devient un `list()` dont le corps est parcouru de toute façon.
+D'où l'absence de mappage fidèle, et d'où le refus.
+
+### Le refus, AVANT et APRÈS, verbatim
+
+```
+AVANT  (les deux témoins)   Stack overflow. / EXIT=134 / aucun out.js / aucun diagnostic
+
+APRÈS  CycleSelf.razor: refusing to emit (1 diagnostic(s)):
+         error CycleNode.razor(9,47): FIL0003: [composition-cycle] <CycleNode> re-enters a
+         component that is already being inlined: CycleNode.razor -> CycleNode.razor.
+         Composition is COMPILE-TIME INLINING (decision 88): the child has no runtime instance,
+         its markup is spliced into this mount(), and an @if guard around the recursive use
+         becomes a runtime list() whose body is walked either way -- so the compiler cannot know
+         where the recursion stops, and a cycle has no finite expansion here. Blazor instantiates
+         the child at RUN time and evaluates the guard, so a guarded recursion does terminate
+         there; the subset has no faithful mapping for that. Cut one edge of the cycle -- a
+         recursive component tree needs a runtime instance per level, which is the spec 3
+         non-goal. Refusing to emit rather than descend until the process aborts.
+                                                          [exit 1, aucun fichier écrit]
+
+       CycleMutual.razor: refusing to emit (1 diagnostic(s)):
+         error CycleBeta.razor(4,50): FIL0003: [composition-cycle] <CycleAlpha> re-enters a
+         component that is already being inlined:
+         CycleAlpha.razor -> CycleBeta.razor -> CycleAlpha.razor. …
+                                                          [exit 1, aucun fichier écrit]
+
+       CycleContent.razor: refusing to emit (1 diagnostic(s)):
+         error CycleCard.razor(7,19): FIL0003: [composition-cycle] <CycleCard> re-enters a
+         component that is already being inlined: CycleCard.razor -> CycleCard.razor. …
+                                                          [exit 1, aucun fichier écrit]
+```
+
+Le caret est sur l'USAGE récursif, dans l'enfant — l'arête à couper. Et le message nomme le CHEMIN
+ENTIER : sur la récursion mutuelle, « CycleAlpha est récursif » serait faux, aucun des deux fichiers
+ne se nommant lui-même.
+
+### Le sur-refus est le seul risque de cette tranche, et il est mesuré
+
+| Contrôle | avant la garde | après la garde |
+|---|---|---|
+| `Supported/Composition/Diamond.razor` (diamant + enfant utilisé deux fois, `DiamondLeaf` atteint **4 fois**) | 1 455 o, exit 0 | **1 455 o, exit 0, `diff` vide** |
+| `Supported/Composition/NestedSame.razor` (`<NestedCard><NestedCard><b>x</b></NestedCard></NestedCard>`) | 985 o, exit 0 | **985 o, exit 0, `diff` vide** |
+
+Les deux modules émis rendent exactement l'arbre que `HtmlRenderer` produit ci-dessus, balise pour
+balise. C'est pour ces deux fichiers que `_composing` est un **CHEMIN** (les fichiers ouverts
+au-dessus du site) et non un ensemble « visité » : un ensemble visité refuserait le diamant, et ce
+refus-là serait un défaut pire que le plantage réparé.
+
+### Le contre-exemple qui a rendu `Fragment.Composing` nécessaire
+
+La première coupe de la garde REFUSAIT `NestedSame.razor`. Mesuré en commentant la restauration et
+en repassant ce fichier exact :
+
+```
+error NestedSame.razor(1,22): FIL0003: [composition-cycle] <NestedCard> re-enters a component
+that is already being inlined: NestedCard.razor -> NestedCard.razor. …
+```
+
+Un fragment est compilé avec le contexte du PARENT restauré (décision 131) ; sa chaîne devait l'être
+aussi, parce que le contenu est écrit AU-DESSUS de l'enfant qui le place. Le cycle qui passe par le
+markup PROPRE d'un conteneur (`Unsupported/Gate/CycleCard.razor`) reste refusé — et celui-là, Blazor
+ne le termine pas non plus : `HtmlRenderer` toujours en vie à **60 s**, **0 octet** de sortie.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive ; runtime
+gelé à 1 943 B. Suite : **564 tests** (480 générateur / 60 subset / 24 analyzer) + 214 runtime, dont
+HUIT neufs — trois témoins de refus (`Unsupported/Gate/CycleSelf.razor`, `CycleMutual.razor`,
+`CycleContent.razor`), une assertion sur le contenu du message, et deux témoins de l'autre côté de la
+ligne (`Supported/Composition/Diamond.razor`, `NestedSame.razor`) épinglés en plus par deux snapshots
+neufs. Les treize fixtures ont été bâties comme composants d'un projet Blazor WebAssembly réel —
+`Build succeeded. 0 Warning(s) 0 Error(s)` — parce qu'une fixture qui n'est pas du Blazor valide
+n'est pas un témoin (RZ9979). HARNESS **inchangé, 1.62.0** : aucun contrat n'a été ajouté ni étendu.
+§8 inchangé.
+
+---
+
+*Fin de l'entrée n°75. Ne pas modifier — ajouter une entrée n°76 pour toute rectification.*
+
+---
+
+## Entrée n°76 — 2026-07-22 — Phase 4 : un trou de fragment a un NOM, et un fragment se transmet — trois divergences silencieuses fermées et mesurées
+
+**Ce qui est mesuré.** `baseline/FragmentSlots.Blazor` : les TROIS défauts de la décision 131 réunis
+sur une page, parce que tous trois sont des différences de RENDU et qu'une différence de rendu n'est
+une affirmation qu'une fois lue par un navigateur. (1) `<Card>` déclare `Header` ET `ChildContent`
+et le parent passe du contenu NU. (2) `<Slotted>` déclare un trou nommé `Body` **et** `Body.razor`
+existe à côté, rendant `#decoy`. (3) `<Middle>` rend `<Inner>@ChildContent</Inner>` — il ne place pas
+le contenu, il le TRANSMET. Contrat `fragmentslots`, HARNESS **1.62.0 → 1.63.0**, divulgué.
+
+**Ceci est du travail d'HONNÊTETÉ, pas de surface, et les trois défauts ont été SONDÉS, pas
+supposés.** Défauts de registre **A5**, **A6** et **A7**, trouvés en sondant les onze non-buts §3
+fermés par l'ADR 0003. Tous trois sortent d'UN champ — `Fragment? _fragment`, unique et SANS NOM —
+et tous trois émettaient un module **à exit 0, sans le moindre diagnostic**. Décision 170.
+
+**QUATRE affirmations, et elles échouent INDÉPENDAMMENT.** **DEUX SONT DES ABSENCES, DONC ELLES SONT
+COMPTÉES** — `querySelectorAll('#mark').length` doit valoir 1 et `querySelectorAll('#decoy').length`
+doit valoir 0 : chercher « un `#mark` » passe aussi sur le compilateur cassé, qui en émettait deux.
+**PLACEMENT** : `#mark` dans `#body`, `#head` VIDE ; `#slot` dans `#card2`, après `#title2` ; `#deep`
+dans `#inner`. **VIVACITÉ** : un seul `#inc` fait avancer les TROIS compteurs ensemble — un contenu
+nommé ou transmis qui a été rendu mais a perdu la portée où il fut ÉCRIT reste à « 0 » pour toujours,
+et aucune assertion structurelle ne le voit.
+
+```
+dotnet publish baseline/FragmentSlots.Blazor -c Release -o bench/publish/blazor-fragmentslots
+./bench/build-filament.sh filament-fragmentslots-gen
+node bench/harness/bench.mjs --dir bench/publish/blazor-fragmentslots/wwwroot --app fragmentslots --label blazor-fragmentslots       --headless --contract-only
+node bench/harness/bench.mjs --dir bench/publish/filament-fragmentslots-gen   --app fragmentslots --label filament-fragmentslots-gen --headless --contract-only
+```
+
+### Résultat
+
+| Label | `#mark` (compte) | `#head` | `#decoy` (compte) | `#slot`∈`#card2` | `#deep`∈`#inner` | `#mark`\|`#slot`\|`#deep` (init → ×2 `#inc`) |
+|---|---|---|---|---|---|---|
+| **blazor-fragmentslots** (autorité) | `1` | `""` | `0` | `true` | `true` | `0\|0\|0 → 1\|1\|1 → 2\|2\|2` |
+| **filament-fragmentslots-gen** (générateur) | `1` | `""` | `0` | `true` | `true` | `0\|0\|0 → 1\|1\|1 → 2\|2\|2` |
+
+**Les dix champs observés coïncident, à l'octet.** JSON identique des deux côtés :
+`{"marks":1,"headHTML":"","markInBody":true,"decoys":0,"slotInCard2":true,"slotAfterTitle2":true,`
+`"deepInInner":true,"initial":"0|0|0","afterFirst":"1|1|1","afterSecond":"2|2|2"}`. Contract met des
+deux côtés (`--contract-only`).
+
+### L'AVANT, lu dans le même Chrome, sur la même page
+
+Le module émis par le générateur de HEAD pour ce même `App.razor`, empaqueté dans la même coquille :
+
+```
+{"marks":2,"headHTML":"<span id=\"mark\">0</span>","decoys":1,"slotInDecoy":true,
+ "innerHTML":"","deep":false}
+```
+
+Le contrat, lui, s'arrête à la première porte : `DOM CONTRACT NOT MET — missing required element:
+#deep`. Les trois défauts sont visibles d'un seul coup dans le `#wrap` d'avant :
+
+```
+AVANT  <div id="card">…<div id="head"><span id="mark">0</span></div>
+                       <div id="body"><span id="mark">0</span></div></div>
+       <div id="card2">…<p id="decoy">DECOY <span id="slot">0</span></p></div>
+       <div id="inner"></div>
+
+APRÈS  <div id="card">…<div id="head"></div>
+                       <div id="body"><span id="mark">0</span></div></div>
+       <div id="card2">…<span id="slot">0</span></div>
+       <div id="inner"><span id="deep">0</span></div>
+
+BLAZOR même chose que APRÈS, aux marqueurs <!--!--> près (dette ouverte de la décision 20).
+```
+
+### L'autorité, lue dans la génération de Razor elle-même
+
+```
+App_razor.g.cs  OpenComponent<…Card>(2);     AddAttribute(4,  "ChildContent", …)   ← et AUCUN "Header"
+                OpenComponent<…Slotted>(8);  AddAttribute(10, "Body", …)           ← et AUCUN OpenComponent<…Body>
+                OpenComponent<…Middle>(14);  AddAttribute(15, "ChildContent", …)
+```
+
+**LA PREUVE LA PLUS TRANCHANTE pour A6 n'est pas le leurre, c'est l'INVARIANCE.** Un contre-factuel
+dont la SEULE différence est que l'enfant déclare `ChildContent` au lieu de `Slot` renverse le sens
+côté Blazor (`OpenComponent<…Slot>(4)` : le leurre EST instancié). Avant, les deux modules émis
+étaient **identiques à l'octet** — l'émission était invariante à la déclaration qui décide du sens.
+Après :
+
+| Fixture | l'enfant déclare | Blazor | Filament, sha1 |
+|---|---|---|---|
+| `Supported/Composition/SlotClash.razor` | `Slot` (un trou) | `AddAttribute("Slot", …)` | `711d8d01…` — pas de `#decoy` |
+| `Supported/Composition/SlotClashCfact.razor` | `ChildContent` | `OpenComponent<…Slot>` | `d3ee405e…` — `#decoy` présent |
+
+La profondeur suit la même règle que Blazor : le nom ne gagne que pour les enfants **IMMÉDIATS**.
+`<SlotCard><Slot><Slot>…` donne le trou puis le composant, donc **UN** leurre — avant, le
+mésalignement passait à l'échelle et en émettait deux.
+
+### Ce qui reste REFUSÉ, avec la raison et le verbatim
+
+Le défaut de registre **D9** — la forme générale des éléments de slot nommés — n'est **pas** fermé
+par cette tranche. Trois portes localisées l'y maintiennent, et chacune a sa fixture :
+
+```
+FragmentSlotWhitespace.razor   error (11,5): FIL0003: [composition-out-of-subset] <SlottedCard>
+  [Blazor : Build succeeded]   mixes named slots with WHITESPACE, and the two compilers disagree
+                               about what that whitespace is: Razor DISCARDS it between child
+                               content elements, while this compiler materialises whitespace
+                               between siblings as a real text node … Write the slots with no
+                               space between them …            [exit 1, aucun fichier écrit]
+
+FragmentSlotLoose.razor        error (5,16): … mixes named slots with loose content. Razor rejects
+  [Blazor : RZ9996]            the same source with RZ9996 … [exit 1, aucun fichier écrit]
+
+FragmentSlotAttr.razor         error (5,29): … <Head> … names a fragment [Parameter], not an
+  [Blazor : RZ9997]            element, so it cannot carry attributes -- Razor rejects the same
+                               source with RZ9997 … [exit 1, aucun fichier écrit]
+```
+
+```
+FragmentSlotTwice.razor        error (14,16): … <SlottedCard> names the slot 'Head' more than once,
+  [Blazor : Build succeeded]   and a fragment [Parameter] holds ONE value. Razor accepts this and
+                               assigns the parameter twice, so a Blazor app renders the LAST one and
+                               silently drops the earlier content. Merge them into a single <Head>
+                               element … [exit 1, aucun fichier écrit]
+```
+
+**Ce dernier a été MESURÉ, pas supposé, et une première rédaction du message était FAUSSE.** Elle
+annonçait un `RZ9995` ; la sonde a montré que Razor ne rejette rien du tout — il émet
+`AddAttribute(3, "Head", …)` PUIS `AddAttribute(5, "Head", …)`, et l'application Blazor publiée, lue
+dans Chrome, rend `<div id="card"><span id="h2">b</span></div>` : la DERNIÈRE gagne, la première
+disparaît en silence. Le message dit désormais cela. Le témoin épingle aussi l'ABSENCE de « RZ9995 »,
+pour qu'un code d'erreur inventé ne puisse pas revenir.
+
+Les deux autres refus sont des sources que **Razor lui-même rejette** (`RZ9996: Unrecognized child
+content inside component 'SlottedCard'.`, `RZ9997: Unrecognized attribute 'class' on child content
+element 'Head'.`, relevés verbatim sur un projet propre) : les admettre serait l'image en miroir de
+la divergence fermée ici. La première est du Blazor VALIDE et c'est un ajournement DÉLIBÉRÉ — le
+style d'écriture multi-ligne, celui qu'un auteur utilise vraiment, reste donc refusé. `RenderFragment<T>`
+n'entre toujours pas dans `FragmentParameterNames` et reste refusé en `[unresolved-component]`.
+
+**La frontière qu'un dictionnaire naïf aurait ratée.** Enfant déclarant `Header` et rien d'autre,
+parent passant du contenu nu : la clé `ChildContent` manque, la garde préexistante ne se déclenche
+que si l'enfant ne déclare AUCUN fragment, et le contenu aurait été **abandonné en silence**. Côté
+Blazor, `dotnet build` dit `Build succeeded. 0 Warning(s) 0 Error(s)`. Refusé, localisé, avec les
+deux orthographes qui corrigent :
+`<HeaderOnlyCard> was given bare content, which binds to a 'ChildContent' [Parameter] RenderFragment
+-- and HeaderOnlyCard.razor declares no such parameter. It declares: Header. …`
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive : nommer
+les trous et transmettre un fragment sont des décisions de COMPILATION, et le module émis importe
+exactement ce que celui de la décision 131 importait. Runtime gelé à 1 943 B. Les témoins déjà en
+place sont **inchangés à l'octet** — `Fragment.approved.js` et `ContentRegion.approved.js` intacts,
+car au niveau 1 la carte `Outer` est la carte vide. Suite : **585 tests** (501 générateur / 60 subset
+/ 24 analyzer) + 214 runtime, dont VINGT ET UN neufs (gate canon vert au premier essai, snapshot
+`FragmentSlots.approved.js` neuf plus six snapshots de fixtures, un témoin par défaut, le
+contre-factuel qui doit DIFFÉRER, la profondeur, et les cinq refus). Baseline
+`dotnet build baseline/FragmentSlots.Blazor` VERTE avant toute autre chose, et chaque fixture bâtie
+comme l'`App.razor` d'un vrai projet Blazor WebAssembly — une fixture qui n'est pas du Blazor valide
+n'est pas un témoin (RZ9979). §8 inchangé.
+
+---
+
+*Fin de l'entrée n°76. Ne pas modifier — ajouter une entrée n°75 pour toute rectification.*
