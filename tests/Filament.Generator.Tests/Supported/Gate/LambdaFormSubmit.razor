@@ -1,0 +1,14 @@
+@* THE OTHER EMISSION PATH (decision 165). An inline lambda handler (decision 105) is emitted DURING
+   the template walk, while a @code method name is RECORDED and rendered after it. Two paths, and the
+   preventDefault rule was written on neither -- but even after A1's repair it would have been written
+   on only one, because the paths do not share a line of code. They share SuppressingArrow now.
+
+   Without it this form navigated exactly like A1's, and for a reader the emitted module looked no
+   different from the <EditForm> that worked. *@
+
+<form @onsubmit="() => hits++"><button id="go" type="submit">go</button></form>
+<p id="out">@hits</p>
+
+@code {
+    private int hits = 0;
+}

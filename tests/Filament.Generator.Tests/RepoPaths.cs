@@ -361,6 +361,11 @@ public static class RepoPaths
     /// <summary>The content-region SPEC (decisions 51/162). Never edited to make a gate pass.</summary>
     public static string ContentRegionAnswerKey => Path.Combine(Root, "samples", "ContentRegion", "contentregion.js");
 
+    public static string SubmitRazor => Path.Combine(Root, "baseline", "Submit.Blazor", "App.razor");
+
+    /// <summary>The submit-contract SPEC (decisions 51/165). Never edited to make a gate pass.</summary>
+    public static string SubmitAnswerKey => Path.Combine(Root, "samples", "Submit", "submit.js");
+
     public static string TodoRazor => Path.Combine(Root, "baseline", "Todo.Blazor", "App.razor");
 
     /// <summary>The Tailwind todo-list SPEC (decisions 51/154). Never edited to make a gate pass.</summary>

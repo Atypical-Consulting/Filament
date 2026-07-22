@@ -1,0 +1,25 @@
+@* THE (ELEMENT, EVENT) KEY (decision 165). ONE element carrying TWO handlers -- @onsubmit and
+   @onkeydown -- which is the shape that decides how the preventDefault rule may be keyed.
+
+   The rule started life as a set of ELEMENT names. Repairing A1 by adding this form's element to that
+   set would have suppressed its KEYDOWN as well (Blazor's table is submit-only) and, worse, would have
+   handed the keydown arrow to a method that DECLARED a KeyboardEventArgs while passing it nothing:
+   `e.Key` reading undefined, rendering fine, comparing against nothing. Blazor keys on the EVENT TYPE
+   and so does this compiler now, so the two listeners on _el0 come out different on purpose:
+
+       listen(_el0, 'submit',  (e) => { e.preventDefault(); … });
+       listen(_el0, 'keydown', (e) => { lastKey.value = e.key; });   // untouched *@
+
+<form @onsubmit="Save" @onkeydown="OnKey"><input id="name" @bind="name" /><button id="save" type="submit">save</button></form>
+<p id="out">@saved</p>
+<p id="key">@lastKey</p>
+
+@code {
+    private string name = "";
+    private string saved = "";
+    private string lastKey = "";
+
+    void Save() { saved = name; }
+
+    void OnKey(KeyboardEventArgs e) { lastKey = e.Key; }
+}

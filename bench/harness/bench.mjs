@@ -69,7 +69,7 @@ import { startServer, ENCODING_CEILINGS } from './server.mjs';
 
 const require = createRequire(import.meta.url);
 
-export const HARNESS_VERSION = '1.61.0';   // 1.61.0: 'contentregion' contract (CONTENT REGIONS, decision 162: the three places a component's CHILD CONTENT is emitted -- a RenderFragment's, a cascade's and an EditForm's -- each holding TEMPLATE C#, which used to CRASH the tool with FIL-WIRING on sources Blazor compiles; plus the SOURCE ORDER of a root <CascadingValue>'s content, which used to be built and inserted NOWHERE at exit 0. Four claims that fail independently: presence of #body/#name/#list, the order #head < #list < #tail, liveness (#add reassigns the cascade's list by @key and bumps the card's count; #toggle unmounts and remounts the card's AND the form's regions), and the form region's own @bind typed then submitted). 1.60.0: 'todo' contract restyled (THE FILAMENT RESTYLE, BENCH n°67: same DOM contract, same interactions, new asserted class strings -- the rows themselves build the design's wire, each li carrying a border-l-2 segment lit amber while pending and extinguished to stone when done; the toggle label is a REACTIVE TERNARY in text position, done/undo, asserted flipping on both shells after toggle AND after the reload; the input gains a static placeholder asserted verbatim -- static attributes emit whatever their name). 1.59.0: 'todo' contract v2 (THE REAL TODO, decision 161: the same app plus everything the todo-v2 program widened -- OnInitializedAsync seeds from localStorage through the erased IJSRuntime bridge and JsonSerializer.Deserialize, decisions 156/157; an ENTER add through the KeyboardEventArgs handler, decision 159; an IN-PLACE edit whose @if mounts the branch inside the REUSED row with a working @bind, decision 158; the count is a computed(), decision 160. The driver now has TWO PHASES around a REAL page reload -- the restored DOM is the persistence proof -- and asserts the STORED JSON STRING byte-identical: Blazor writes it through the real System.Text.Json, Filament through the emitted per-record __serItem, and equality IS decision 157's faithfulness proof). 1.58.0: 'todo' contract (THE TAILWIND TODO-LIST, decision 154: add x2 through a plain-@bind input -- the bind ALONE lifts newText to a signal, decision 154's widening -- then toggle a PERSISTING row whose reactive loop-variable class must flip to line-through, decision 152; clear-done through the child's EventCallback, decision 130; remove to empty. EVERY className is asserted byte-identical against Blazor, multi-token Tailwind values included -- variant colons, fraction slashes, arbitrary-value brackets, leading dashes -- which is the measurement of decision 151's whitespace fix). 1.57.0: 'httpjson' contract (HttpClient erased to fetch, decision 147: #load runs `await Http.GetFromJsonAsync<List<Item>>` -> `await __getJson`; both shells serve the SAME static data/items.json so the network is deterministic and the fetched rows + "loaded 3" are asserted byte-identically, with an async settle wait like asyncclick's). 1.56.0: 'random' contract (System.Random, decision 146: the SEEDED side is asserted byte-for-byte -- Blazor renders the real BCL's Random(42) sequence and Filament must render the same digits, which IS the faithfulness proof of the emitted Knuth-subtractive __rnd; the UNSEEDED Random.Shared side gets the first RANGE predicate, [0, 10)). 1.55.0: 'datetimenow' contract (DateTime.UtcNow -> the emitted __dtUtcNow() reading Date.now(), decision 145; the FIRST TOLERANCE predicate -- a live clock cannot be byte-compared across two runs minutes apart, so each side's rendered ticks are compared to the harness's own wall clock at ITS assert time, 90 s tolerance, and a second snap must not go backwards). 1.54.0: 'duel' contract (THE DUEL, the app-level head-to-head: form add x2, per-row toggle on a PERSISTING row, the three filters, per-row remove, routed navigation with the mounted-afresh contract and Back -- one driver asserting the whole composed app against the same source's Blazor twin). 1.53.0: 'rowactions' contract (a PER-ROW handler, decision 141: `@onclick="() => Del(r.Id)"` captures the loop variable; two #add then first .del -> that row alone is removed). 1.52.0: 'foreachlist' contract (@foreach over a REASSIGNED, never-mutated List<T> -> list() with the collapsed source () => items.value, decision 140; one #add click removes key 2, inserts 4/5, moves 1/3). 1.51.0: 'routing' contract (@page + a GENERATED router: link clicks navigate without reloading, a page with state is remounted afresh on re-entry, and Back works). 1.50.0: 'forms' contract (<EditForm>/<InputText> + @bind-Value onto a record property: type -> #live follows while #out stays, submit -> #out holds it, and no navigation). 1.49.0: 'inherits' contract (@inherits merges a sibling base's members before state lifting; inherited field + method: #out 0->1->2). 1.48.0: 'generic' contract (@typeparam erased; a generic child's bound T stays a live binding: #out 1->2->3). 1.47.0: 'cascade' contract (<CascadingValue> + [CascadingParameter] matched by TYPE, erased to lexical scope: #depth 1->2->3). 1.46.0: 'jsinterop' contract (@inject IJSRuntime + InvokeVoidAsync/InvokeAsync<T> erased to direct calls: localStorage round trip, #out -> "hello"). 1.45.0: 'elemref' contract (@ref names the const the element is emitted into; FocusAsync() -> .focus(), observed via document.activeElement.id). 1.44.0: 'fragment' contract (RenderFragment/ChildContent: the parent's markup is spliced INSIDE the child's element after the child's own heading, and keeps the binding it was written with -- #body advances 0->1->2). 1.43.0: 'eventcb' contract (EventCallback child->parent: the callback is resolved to the parent's method at build time and ERASED, so the child's #bump runs the parent's Inc and #out advances 0->1->2). 1.42.0: 'groupby' contract (LINQ GroupBy -> reduce into Map<K,group>, each group a JS array-with-.key; g.Key -> g.key, first-appearance order). 1.41.0: 'elementwrite' contract (mutable arr[i]=v / d[k]=v as copy-on-write -> arr.with(i,v) / new Map(d).set(k,v), a new ref so the signal fires). 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
+export const HARNESS_VERSION = '1.62.0';   // 1.62.0: 'submit' contract (THE SUBMIT CONTRACT, decision 165: four forms, four paths to a submit listener -- a plain <form @onsubmit> on a @code method, an <EditForm Model> with NO OnValidSubmit, @onsubmit AND @onkeydown on ONE element, and an inline-lambda handler -- three of which used to NAVIGATE, reloading the document and throwing the application away at exit 0 with no diagnostic (register defects A1/A2). The measurement is an ABSENCE, so it cannot be read in the same task as the click: each submit PLANTS A MARKER on window, waits, and asserts it survives in a SEPARATE evaluate -- a reload destroys the JS context and the marker comes back undefined, the one signal a reload cannot fake -- with a window-level submit spy asserting defaultPrevented:true from the other side. The keydown claim pins the (element, EVENT) key: the same <form> carries both handlers, the submit is suppressed and the keydown still receives its own event. DISCLOSED, not asserted around: <InputText> emits none of Blazor's valid/modified field-state classes, register A16. 1.61.0: 'contentregion' contract (CONTENT REGIONS, decision 162: the three places a component's CHILD CONTENT is emitted -- a RenderFragment's, a cascade's and an EditForm's -- each holding TEMPLATE C#, which used to CRASH the tool with FIL-WIRING on sources Blazor compiles; plus the SOURCE ORDER of a root <CascadingValue>'s content, which used to be built and inserted NOWHERE at exit 0. Four claims that fail independently: presence of #body/#name/#list, the order #head < #list < #tail, liveness (#add reassigns the cascade's list by @key and bumps the card's count; #toggle unmounts and remounts the card's AND the form's regions), and the form region's own @bind typed then submitted). 1.60.0: 'todo' contract restyled (THE FILAMENT RESTYLE, BENCH n°67: same DOM contract, same interactions, new asserted class strings -- the rows themselves build the design's wire, each li carrying a border-l-2 segment lit amber while pending and extinguished to stone when done; the toggle label is a REACTIVE TERNARY in text position, done/undo, asserted flipping on both shells after toggle AND after the reload; the input gains a static placeholder asserted verbatim -- static attributes emit whatever their name). 1.59.0: 'todo' contract v2 (THE REAL TODO, decision 161: the same app plus everything the todo-v2 program widened -- OnInitializedAsync seeds from localStorage through the erased IJSRuntime bridge and JsonSerializer.Deserialize, decisions 156/157; an ENTER add through the KeyboardEventArgs handler, decision 159; an IN-PLACE edit whose @if mounts the branch inside the REUSED row with a working @bind, decision 158; the count is a computed(), decision 160. The driver now has TWO PHASES around a REAL page reload -- the restored DOM is the persistence proof -- and asserts the STORED JSON STRING byte-identical: Blazor writes it through the real System.Text.Json, Filament through the emitted per-record __serItem, and equality IS decision 157's faithfulness proof). 1.58.0: 'todo' contract (THE TAILWIND TODO-LIST, decision 154: add x2 through a plain-@bind input -- the bind ALONE lifts newText to a signal, decision 154's widening -- then toggle a PERSISTING row whose reactive loop-variable class must flip to line-through, decision 152; clear-done through the child's EventCallback, decision 130; remove to empty. EVERY className is asserted byte-identical against Blazor, multi-token Tailwind values included -- variant colons, fraction slashes, arbitrary-value brackets, leading dashes -- which is the measurement of decision 151's whitespace fix). 1.57.0: 'httpjson' contract (HttpClient erased to fetch, decision 147: #load runs `await Http.GetFromJsonAsync<List<Item>>` -> `await __getJson`; both shells serve the SAME static data/items.json so the network is deterministic and the fetched rows + "loaded 3" are asserted byte-identically, with an async settle wait like asyncclick's). 1.56.0: 'random' contract (System.Random, decision 146: the SEEDED side is asserted byte-for-byte -- Blazor renders the real BCL's Random(42) sequence and Filament must render the same digits, which IS the faithfulness proof of the emitted Knuth-subtractive __rnd; the UNSEEDED Random.Shared side gets the first RANGE predicate, [0, 10)). 1.55.0: 'datetimenow' contract (DateTime.UtcNow -> the emitted __dtUtcNow() reading Date.now(), decision 145; the FIRST TOLERANCE predicate -- a live clock cannot be byte-compared across two runs minutes apart, so each side's rendered ticks are compared to the harness's own wall clock at ITS assert time, 90 s tolerance, and a second snap must not go backwards). 1.54.0: 'duel' contract (THE DUEL, the app-level head-to-head: form add x2, per-row toggle on a PERSISTING row, the three filters, per-row remove, routed navigation with the mounted-afresh contract and Back -- one driver asserting the whole composed app against the same source's Blazor twin). 1.53.0: 'rowactions' contract (a PER-ROW handler, decision 141: `@onclick="() => Del(r.Id)"` captures the loop variable; two #add then first .del -> that row alone is removed). 1.52.0: 'foreachlist' contract (@foreach over a REASSIGNED, never-mutated List<T> -> list() with the collapsed source () => items.value, decision 140; one #add click removes key 2, inserts 4/5, moves 1/3). 1.51.0: 'routing' contract (@page + a GENERATED router: link clicks navigate without reloading, a page with state is remounted afresh on re-entry, and Back works). 1.50.0: 'forms' contract (<EditForm>/<InputText> + @bind-Value onto a record property: type -> #live follows while #out stays, submit -> #out holds it, and no navigation). 1.49.0: 'inherits' contract (@inherits merges a sibling base's members before state lifting; inherited field + method: #out 0->1->2). 1.48.0: 'generic' contract (@typeparam erased; a generic child's bound T stays a live binding: #out 1->2->3). 1.47.0: 'cascade' contract (<CascadingValue> + [CascadingParameter] matched by TYPE, erased to lexical scope: #depth 1->2->3). 1.46.0: 'jsinterop' contract (@inject IJSRuntime + InvokeVoidAsync/InvokeAsync<T> erased to direct calls: localStorage round trip, #out -> "hello"). 1.45.0: 'elemref' contract (@ref names the const the element is emitted into; FocusAsync() -> .focus(), observed via document.activeElement.id). 1.44.0: 'fragment' contract (RenderFragment/ChildContent: the parent's markup is spliced INSIDE the child's element after the child's own heading, and keeps the binding it was written with -- #body advances 0->1->2). 1.43.0: 'eventcb' contract (EventCallback child->parent: the callback is resolved to the parent's method at build time and ERASED, so the child's #bump runs the parent's Inc and #out advances 0->1->2). 1.42.0: 'groupby' contract (LINQ GroupBy -> reduce into Map<K,group>, each group a JS array-with-.key; g.Key -> g.key, first-appearance order). 1.41.0: 'elementwrite' contract (mutable arr[i]=v / d[k]=v as copy-on-write -> arr.with(i,v) / new Map(d).set(k,v), a new ref so the signal fires). 1.40.0: 'linqorder' contract (LINQ OrderBy/OrderByDescending/Skip/Take -> stable sort of a copy + slice; observed via First/Last scalar terminals). 1.39.0: 'foreachdict' contract (@foreach over a reassigned Dictionary -> list() over [...d.value]; @kvp.Value is the reactive lookup d.value.get(kvp[0]) so a reused key's value refreshes). 1.38.0: 'foreacharray' contract (@foreach over a reassigned int[] -> list() with source () => items.value, keyed reconcile). 1.37.0: 'asyncresult' contract (value-returning async Task<T>, await Compute()). 1.36.0: 'sizedarray' contract (new int[n] -> new Array(n).fill(default)). 1.35.0: 'linqaggregate' contract (LINQ Sum/Min/Max/Average/First/Last aggregates). 1.34.0: 'ifnestedmixed' contract (branch mixing markup + nested @if -> spread active indices). 1.33.0: 'asyncclick' contract (async Task handler, await + Task.Delay -> Promise). 1.32.0: 'dictlookup' contract (Dictionary -> JS Map, @d[k] -> .get). 1.31.0: 'arrayindex' contract (T[] -> JS array, @items[i] indexing). 1.30.0: 'linq' contract (LINQ Where/Count -> filter/length array methods). 1.29.0: 'datetimecounter' contract (DateTime -> BigInt ticks + __dtStr, AddDays + faithful format). 1.28.0: 'decimalcounter' contract (decimal -> boxed { m, s } + __dec helpers, exact base-10 + scale). 1.27.0: 'floatcounter' contract (float -> Math.fround + shortest-round-trip display). 1.26.0: 'longcounter' contract (long -> BigInt, exact past 2^53). 1.25.0: 'positionalrecord' contract (positional record -> object literal). 1.24.0: 'trylock' contract (try/catch/throw/lock statements). 1.23.0: 'codeblock' contract (root @{ } local). 1.22.0: 'intbind' contract (int @bind, parse+revert). 1.21.0: 'checkbind' contract (checkbox @bind on a bool). 1.20.0: 'listops' contract (List.Clear()). 1.19.0: 'lambdahandler' contract (inline no-arg lambda event handler). 1.18.0: 'bind' contract (@bind two-way on a string input). 1.17.0: 'moreattrs' contract (boolean hidden + string role/style/data-*). 1.16.0: 'loops' contract (while/do-while/switch statements). 1.15.0: 'divideint' contract (integer division via Math.trunc). 1.14.0: 'ifnested' contract (nested @if in a branch). 1.13.0: 'ifelsemulti' contract (multi-node body in an @if/@else branch). 1.12.0: 'ifmulti' contract (multi-node @if body, single branch). 1.11.0: 'stringattrs' contract (reactive title/href/aria-label). 1.10.0: 'mixedattr' (mixed literal+expression class value). 1.9.0: 'boolattr' (boolean disabled present/absent). 1.8.0: 'reactiveattr' (reactive class attribute). 1.7.0: 'boundcompose' (bound-parameter composition). 1.6.0: rootforeach/rootif. 1.5.0: compose. 1.4.0: divide.
 
 // ---------------------------------------------------------------------------
 // Harness identity.
@@ -678,6 +678,24 @@ const APPS = {
   contentregion: {
     readySelector: '#toggle',
     observeSelector: '#list',
+    scenarios: [],
+  },
+  // Correctness-only: verifyContract submits FOUR forms and, for each one, asserts an ABSENCE -- that the
+  // document did not navigate. Blazor's shipped dispatcher carries `_={submit:!0}` and preventDefaults any
+  // submit with a registered handler; Filament read that table for <EditForm OnValidSubmit> only, so a
+  // plain <form @onsubmit> (register A1), a callback-less <EditForm Model> (A2), and an inline-lambda
+  // handler all navigated -- page reloaded, application thrown away, every typed field emptied, at exit 0
+  // with no diagnostic. The measurement of the submit contract (BENCH n°71, decision 165).
+  //
+  // THE MARKER IS THE REAL ASSERT. A synchronous DOM read completes BEFORE a navigation commits, so an
+  // assert on #out alone passes on a page that is already leaving -- which is exactly how the 'forms'
+  // contract (1.50.0) could assert `location.href` unchanged and still miss A1. So each submit plants
+  // window.__submitMarker, waits, and asserts it is STILL THERE in a fresh evaluate: a reload gives a
+  // new context where the marker is undefined. The keydown claim is the (element, event) key: the same
+  // <form> carries @onsubmit and @onkeydown, and the keydown handler must still receive its own event.
+  submit: {
+    readySelector: '#save',
+    observeSelector: '#out',
     scenarios: [],
   },
   // Correctness-only DOM contract; routing's WEIGHT is measured separately (BENCH n°57), because routing
@@ -2636,6 +2654,161 @@ async function driveLoadedApp(ctx, app, opts, expectedLabels) {
         if (out.observed.navigated) out.problems.push('submit navigated -- preventDefault() missing');
         return out;
       });
+    }
+
+    if (app === 'submit') {
+      // THE SUBMIT CONTRACT (decision 165). What is being measured is an ABSENCE -- that the document
+      // did not navigate -- and an absence cannot be read inside the same synchronous task as the click
+      // that would cause it: a navigation is queued, not immediate, so `location.href` still reads the
+      // old value and every DOM assert still finds the old nodes. That is precisely how the 'forms'
+      // contract (1.50.0) checked for navigation and still let register defects A1 and A2 through.
+      //
+      // So each submit is THREE steps with real time between them: plant a marker and click, wait, then
+      // read in a SEPARATE evaluate. A reload destroys the JS context, so the marker comes back
+      // undefined -- which is the one signal a reload cannot fake. `defaultPrevented`, recorded by a spy
+      // on `window` (bubble phase, therefore after Blazor's delegated dispatcher AND after Filament's
+      // own listener on the form), says the same thing from the other side.
+      const out = { problems: [], observed: {} };
+      const startHref = ctx.page.url();
+
+      const structure = await ctx.page.evaluate(() => {
+        const missing = ['#name', '#save', '#out', '#quiet', '#quiet-save', '#live', '#tally', '#hits', '#key', '#lam-go', '#lam']
+          .filter((sel) => !document.querySelector(sel));
+        // The spy outlives each click; it is re-installed after any reload, and its absence in the
+        // read-back below would itself mean the document was replaced.
+        window.__submitSpy = [];
+        window.addEventListener('submit', (e) => { window.__submitSpy.push({ defaultPrevented: e.defaultPrevented, target: e.target.tagName }); });
+        return {
+          missing,
+          text: {
+            out: (document.querySelector('#out') || {}).textContent,
+            live: (document.querySelector('#live') || {}).textContent,
+            hits: (document.querySelector('#hits') || {}).textContent,
+            key: (document.querySelector('#key') || {}).textContent,
+            lam: (document.querySelector('#lam') || {}).textContent,
+          },
+        };
+      });
+      if (structure.missing.length) {
+        out.problems.push(`missing required element(s): ${structure.missing.join(', ')}`);
+        return out;
+      }
+      const initial = {
+        out: (structure.text.out || '').trim(), live: (structure.text.live || '').trim(),
+        hits: (structure.text.hits || '').trim(), key: (structure.text.key || '').trim(),
+        lam: (structure.text.lam || '').trim(),
+      };
+      out.observed.initial = initial;
+      if (initial.out !== '' || initial.live !== '' || initial.key !== '') {
+        out.problems.push(`initial #out/#live/#key are "${initial.out}"/"${initial.live}"/"${initial.key}", expected all ""`);
+        return out;
+      }
+      if (initial.hits !== '0' || initial.lam !== '0') {
+        out.problems.push(`initial #hits/#lam are "${initial.hits}"/"${initial.lam}", expected "0"/"0"`);
+        return out;
+      }
+
+      // One submit: plant, click, WAIT, then read back from a fresh evaluate.
+      const submitOnce = async (button) => {
+        await ctx.page.evaluate((sel) => {
+          window.__submitMarker = 'alive';
+          window.__submitSpy = [];
+          document.querySelector(sel).click();
+        }, button);
+        await new Promise((r) => setTimeout(r, 300));
+        return ctx.page.evaluate(() => ({
+          marker: window.__submitMarker === undefined ? null : window.__submitMarker,
+          spy: window.__submitSpy === undefined ? null : window.__submitSpy,
+          href: location.href,
+          text: {
+            out: ((document.querySelector('#out') || {}).textContent || '').trim(),
+            live: ((document.querySelector('#live') || {}).textContent || '').trim(),
+            hits: ((document.querySelector('#hits') || {}).textContent || '').trim(),
+            key: ((document.querySelector('#key') || {}).textContent || '').trim(),
+            lam: ((document.querySelector('#lam') || {}).textContent || '').trim(),
+          },
+        }));
+      };
+      const survived = (what, r) => {
+        if (r.marker !== 'alive') { out.problems.push(`${what}: the page RELOADED -- a marker planted before the click is gone (marker=${JSON.stringify(r.marker)})`); return false; }
+        if (r.href !== startHref) { out.problems.push(`${what}: location.href moved to "${r.href}", expected "${startHref}"`); return false; }
+        if (!r.spy || r.spy.length !== 1) { out.problems.push(`${what}: the window submit spy saw ${JSON.stringify(r.spy)}, expected exactly one submit`); return false; }
+        if (r.spy[0].defaultPrevented !== true) { out.problems.push(`${what}: submit reached window with defaultPrevented=false -- nothing suppressed the browser's default`); return false; }
+        return true;
+      };
+
+      // CLAIM 1 -- a plain <form @onsubmit="Save"> (register A1). Type first, so what a reload would
+      // destroy is on screen: the handler must read the model back into #out AND the page must stay.
+      await ctx.page.evaluate(() => {
+        const i = document.querySelector('#name');
+        i.value = 'ok';
+        i.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await new Promise((r) => setTimeout(r, 120));
+      const plain = await submitOnce('#save');
+      // hrefUnchanged, not href: the harness serves on an EPHEMERAL PORT, so the absolute URL differs
+      // between the two shells for a reason that has nothing to do with either framework. The claim is
+      // that the URL did not MOVE, and that is what is recorded, so the two observed JSONs are directly
+      // comparable byte for byte.
+      out.observed.plainForm = { marker: plain.marker, hrefUnchanged: plain.href === startHref, spy: plain.spy, out: plain.text.out };
+      if (!survived('plain <form @onsubmit>', plain)) return out;
+      if (plain.text.out !== 'ok') out.problems.push(`#out after the plain form's submit is "${plain.text.out}", expected "ok"`);
+
+      // CLAIM 2 -- an <EditForm Model> with NO OnValidSubmit (register A2). Nothing renders on submit,
+      // by design: the whole observable IS the absence of a navigation, plus the typed value surviving.
+      await ctx.page.evaluate(() => {
+        const i = document.querySelector('#quiet');
+        i.value = 'kept';
+        i.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      await new Promise((r) => setTimeout(r, 120));
+      const quiet = await submitOnce('#quiet-save');
+      out.observed.callbacklessEditForm = { marker: quiet.marker, hrefUnchanged: quiet.href === startHref, spy: quiet.spy, live: quiet.text.live };
+      if (!survived('callback-less <EditForm Model>', quiet)) return out;
+      if (quiet.text.live !== 'kept') out.problems.push(`#live after the callback-less form's submit is "${quiet.text.live}", expected "kept" (the typed value did not survive)`);
+
+      // CLAIM 3 -- @onsubmit AND @onkeydown on ONE element. The submit is suppressed; the keydown is
+      // NOT, and its handler still receives its own event (it reads e.Key). An element-keyed rule
+      // would have broken the second half while fixing the first.
+      const keys = await submitOnce('#tally');
+      out.observed.twoHandlerForm = { marker: keys.marker, hrefUnchanged: keys.href === startHref, spy: keys.spy, hits: keys.text.hits, key: keys.text.key };
+      if (!survived('<form @onsubmit @onkeydown>', keys)) return out;
+      if (keys.text.hits !== '1') out.problems.push(`#hits after submit is "${keys.text.hits}", expected "1"`);
+      await ctx.page.evaluate(() => {
+        document.querySelector('#tally').closest('form')
+          .dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+      });
+      await new Promise((r) => setTimeout(r, 200));
+      out.observed.afterKeydown = await ctx.page.evaluate(() => ({
+        key: ((document.querySelector('#key') || {}).textContent || '').trim(),
+        hits: ((document.querySelector('#hits') || {}).textContent || '').trim(),
+      }));
+      if (out.observed.afterKeydown.key !== 'a')
+        out.problems.push(`#key after a keydown on the SAME element is "${out.observed.afterKeydown.key}", expected "a" (the keydown handler lost its event)`);
+      if (out.observed.afterKeydown.hits !== '1')
+        out.problems.push(`#hits after the keydown is "${out.observed.afterKeydown.hits}", expected "1" (a keydown must not run the submit handler)`);
+
+      // CLAIM 4 -- an inline lambda handler, which is a SECOND emission path in the compiler and was
+      // therefore a second, separately-navigating form.
+      const lam = await submitOnce('#lam-go');
+      out.observed.lambdaForm = { marker: lam.marker, hrefUnchanged: lam.href === startHref, spy: lam.spy, lam: lam.text.lam };
+      if (!survived('<form @onsubmit="() => …">', lam)) return out;
+      if (lam.text.lam !== '1') out.problems.push(`#lam after the lambda form's submit is "${lam.text.lam}", expected "1"`);
+
+      // EVERYTHING STILL STANDS. One reload anywhere above would have reset all four counters, so the
+      // final sweep is the cheapest possible proof that nothing was quietly rebuilt along the way.
+      out.observed.final = await ctx.page.evaluate(() => ({
+        out: ((document.querySelector('#out') || {}).textContent || '').trim(),
+        live: ((document.querySelector('#live') || {}).textContent || '').trim(),
+        hits: ((document.querySelector('#hits') || {}).textContent || '').trim(),
+        key: ((document.querySelector('#key') || {}).textContent || '').trim(),
+        lam: ((document.querySelector('#lam') || {}).textContent || '').trim(),
+      }));
+      const expectedFinal = { out: 'ok', live: 'kept', hits: '1', key: 'a', lam: '1' };
+      for (const [k, want] of Object.entries(expectedFinal))
+        if (out.observed.final[k] !== want)
+          out.problems.push(`final #${k} is "${out.observed.final[k]}", expected "${want}"`);
+      return out;
     }
 
     if (app === 'contentregion') {

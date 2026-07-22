@@ -1,0 +1,56 @@
+@* THE SUBMIT CONTRACT (decision 165). A submit event with a registered handler is preventDefault()ed
+   -- ALWAYS, and with no `:preventDefault` modifier. Blazor's own shipped dispatcher says so, in one
+   line: `_={submit:!0}` and `hasOwnProperty.call(_,t.type)&&t.preventDefault()`. That table has ONE
+   entry, and it is keyed on the EVENT, not on the element and not on which component owns it.
+
+   Filament read that table for <EditForm OnValidSubmit> only. Every other submit shape emitted a bare
+   listener, so the browser did what a browser does with an un-suppressed submit: NAVIGATE. The page
+   reloaded, the app was thrown away and rebuilt from scratch, and every field the author had just
+   filled in came back empty -- at exit 0, with no diagnostic. Four shapes, each here so it can fail
+   alone, and each one is a class-A silent divergence:
+
+     1. <form @onsubmit="Save">                     -- a plain form, a @code method    (register A1)
+     2. <EditForm Model> with NO OnValidSubmit      -- Blazor still registers onsubmit  (register A2)
+     3. <form @onsubmit @onkeydown> on ONE element  -- the table is keyed on the EVENT
+     4. <form @onsubmit="() => …">                  -- the inline-lambda emission path
+
+   DOM contract, every line failing independently:
+     #out    -- "", then "ok" once the plain form has submitted (its handler ran)
+     #live   -- follows the callback-less EditForm's model as it is typed
+     #hits   -- "0", then "1" once the two-handler form has submitted
+     #key    -- "", then "a" once a keydown reaches the SAME element (its handler still gets its
+                event: preventDefault belongs to the submit, not to the element)
+     #lam    -- "0", then "1" once the lambda-handler form has submitted
+
+   And the claim that outranks all of them, because a reload silently resets everything else: a marker
+   planted on `window` before each click must still be there after it, and location.href must not move. *@
+
+<form @onsubmit="Save"><input id="name" @bind="name" /><button id="save" type="submit">save</button></form>
+<p id="out">@saved</p>
+
+<EditForm Model="@model"><InputText id="quiet" @bind-Value="model.Name" /><button id="quiet-save" type="submit">save</button></EditForm>
+<p id="live">@model.Name</p>
+
+<form @onsubmit="Tally" @onkeydown="OnKey"><button id="tally" type="submit">tally</button></form>
+<p id="hits">@hits</p>
+<p id="key">@lastKey</p>
+
+<form @onsubmit="() => lamHits++"><button id="lam-go" type="submit">lam</button></form>
+<p id="lam">@lamHits</p>
+
+@code {
+    private string name = "";
+    private string saved = "";
+    private int hits = 0;
+    private string lastKey = "";
+    private int lamHits = 0;
+    private Person model = new Person();
+
+    void Save() { saved = name; }
+
+    void Tally() { hits++; }
+
+    void OnKey(KeyboardEventArgs e) { lastKey = e.Key; }
+
+    public record Person { public string Name { get; set; } = ""; }
+}

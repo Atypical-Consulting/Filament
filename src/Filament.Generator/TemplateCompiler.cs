@@ -236,10 +236,22 @@ public sealed class TemplateCompiler
     /// </summary>
     readonly List<(string El, string Event, string Handler)> _handlers = [];
 
-    /// <summary>Elements whose recorded handler must call preventDefault() first -- today only a
-    /// &lt;form&gt;'s submit (decision 138). Without it the browser navigates and the page reloads, which
-    /// is exactly what Blazor's EditForm suppresses; it is part of the mapping, not a nicety.</summary>
-    readonly HashSet<string> _preventDefault = [];
+    /// <summary>
+    /// THE EVENTS WHOSE BROWSER DEFAULT A REGISTERED HANDLER SUPPRESSES -- Blazor's own table, ported
+    /// entry for entry (decision 165). The shipped blazor.webassembly.js carries `_={submit:!0}` and
+    /// `Object.prototype.hasOwnProperty.call(_,t.type)&amp;&amp;t.preventDefault()` inside the delegated
+    /// dispatcher, reached whenever a handler is registered for the event. So preventDefault() is
+    /// unconditional for submit, needs no `:preventDefault` modifier, and does NOT depend on which
+    /// component owns the form or on whether a callback was supplied.
+    ///
+    /// KEYED ON THE EVENT, WHICH IS THE WHOLE POINT. This began as a set of ELEMENT names populated
+    /// only inside EmitEditForm, and both halves of that were wrong: a plain
+    /// &lt;form @onsubmit="Save"&gt; got a bare listener and NAVIGATED (register A1), while an element
+    /// carrying both @onsubmit and @onkeydown would -- under any element-keyed repair -- have had its
+    /// KEYDOWN suppressed and called with no event argument. Blazor's table has one entry and it names
+    /// an event type; copying it as an event type is what makes both cases fall out.
+    /// </summary>
+    static readonly HashSet<string> DefaultSuppressedEvents = new(StringComparer.Ordinal) { "submit" };
 
     /// <summary>
     /// The @key node the enclosing list() has already consumed. @key outside a list is still
@@ -520,7 +532,7 @@ public sealed class TemplateCompiler
                 .ToHashSet(StringComparer.Ordinal);
 
             foreach (var h in _handlers)
-                _events.Add($"listen({h.El}, {JsString(h.Event)}, {HandlerArrow(h.Handler, inlined, _preventDefault.Contains(h.El))});");
+                _events.Add($"listen({h.El}, {JsString(h.Event)}, {HandlerArrow(h.Handler, inlined, DefaultSuppressedEvents.Contains(h.Event))});");
 
             prologue = _code.EmitPrologue(inlined);
             module = _code.EmitModule();
@@ -1061,22 +1073,16 @@ public sealed class TemplateCompiler
     {
         var batched = _code.MayWriteMoreThanOnce(handler);
 
-        // A FORM'S SUBMIT (decision 138). It is the one handler whose arrow takes the event, and it takes
+        // A SUBMIT (decisions 138/165). It is the one handler whose arrow takes the event, and it takes
         // one because the DOM requires it: without preventDefault() the browser navigates and the page
-        // reloads, which is exactly what Blazor's EditForm suppresses. Emitted as statements rather than
-        // by wrapping the no-arg shape below, so the result reads as what it is.
+        // reloads, which is exactly what Blazor's dispatcher suppresses. Emitted as statements rather
+        // than by wrapping the no-arg shape below, so the result reads as what it is.
         if (preventDefault)
-        {
-            var inner = inlined.Contains(handler)
-                ? string.Join("\n", _code.InlineBody(handler).Select(l => "  " + l))
-                : $"  {_code.MethodJs(handler)}();";
-            if (batched)
-            {
-                _used.Add("batch");
-                inner = "  batch(() => {\n" + string.Join("\n", inner.Split('\n').Select(l => "  " + l)) + "\n  });";
-            }
-            return "(e) => {\n  e.preventDefault();\n" + inner + "\n}";
-        }
+            return SuppressingArrow(
+                inlined.Contains(handler)
+                    ? string.Join("\n", _code.InlineBody(handler).Select(l => "  " + l))
+                    : $"  {_code.MethodJs(handler)}();",
+                batched);
 
         // A KEYBOARD handler (decision 159): the other arrow that takes the event -- the DOM
         // provides it, the method declared it. The arrow binds the METHOD's own parameter name so
@@ -1113,6 +1119,27 @@ public sealed class TemplateCompiler
 
         _used.Add("batch");
         return $"() => batch({body})";
+    }
+
+    /// <summary>
+    /// The listener for an event in <see cref="DefaultSuppressedEvents"/>: it takes the event, kills the
+    /// browser's default action FIRST, and only then runs the author's statements. ONE definition, because
+    /// there are TWO emission paths into it -- a @code method name is RECORDED and rendered after the walk
+    /// (HandlerArrow), an inline lambda is emitted during the walk (decision 105) -- and the whole content
+    /// of register defect A1 is that one path knew about preventDefault and the other did not. A rule that
+    /// lives in one place cannot be half-applied.
+    ///
+    /// batch() wraps INSIDE the arrow, never around it, so `e` stays in scope: the same reason decision
+    /// 159's keyboard arrow is built this way.
+    /// </summary>
+    string SuppressingArrow(string inner, bool batched)
+    {
+        if (batched)
+        {
+            _used.Add("batch");
+            inner = "  batch(() => {\n" + string.Join("\n", inner.Split('\n').Select(l => "  " + l)) + "\n  });";
+        }
+        return "(e) => {\n  e.preventDefault();\n" + inner + "\n}";
     }
 
     /// <summary>
@@ -1869,6 +1896,10 @@ public sealed class TemplateCompiler
     /// (decision 138). preventDefault() is not decoration: without it the browser navigates on submit
     /// and the page reloads, which is precisely what Blazor's EditForm suppresses.
     ///
+    /// AND IT SUPPRESSES IT WITH OR WITHOUT A CALLBACK (decision 165). EditForm registers `onsubmit`
+    /// in its own render tree, always; OnValidSubmit only decides what runs after. So the submit
+    /// listener here is unconditional, and the callback is the optional part.
+    ///
     /// WITHOUT A VALIDATOR, OnValidSubmit FIRES ON EVERY SUBMIT -- that is Blazor's behaviour, not a
     /// simplification, because "valid" is decided by validator components and there are none. A
     /// &lt;DataAnnotationsValidator /&gt; is therefore REFUSED rather than ignored: ignoring it would make
@@ -1902,6 +1933,7 @@ public sealed class TemplateCompiler
         var v = $"_el{_el++}";
         _create.Add($"const {v} = document.createElement('form');");
 
+        var submitHandled = false;
         foreach (var attr in attrs)
         {
             if (attr.AttributeName is "Model") continue;   // consumed: nothing validates it (see above)
@@ -1920,8 +1952,25 @@ public sealed class TemplateCompiler
 
             _used.Add("listen");
             // Recorded like any other handler, so single-use inlining and batching decide identically.
+            // preventDefault() is NOT recorded alongside it: DefaultSuppressedEvents decides that from
+            // the event name, which is where Blazor keeps the rule too.
             _handlers.Add((v, "submit", handler));
-            _preventDefault.Add(v);
+            submitHandled = true;
+        }
+
+        // AN <EditForm> WITH NO OnValidSubmit STILL REGISTERS ONE (decision 165, register defect A2).
+        // Blazor's EditForm wires `onsubmit` -> HandleSubmitAsync unconditionally in its own render tree;
+        // the callback only decides what runs AFTER the default is killed. So the callback-less form
+        // suppresses navigation exactly like its twin -- measured in the browser, `defaultPrevented:true`
+        // on both. Filament emitted no listener at all here, which made the ONE thing an author writes a
+        // form for -- a submit button -- throw the whole application away and reload the document.
+        //
+        // Emitted directly rather than recorded, because _handlers entries name a @code METHOD and there
+        // is no method here: the listener's entire body IS the suppression.
+        if (!submitHandled)
+        {
+            _used.Add("listen");
+            _events.Add($"listen({v}, 'submit', (e) => {{ e.preventDefault(); }});");
         }
 
         EmitChildContent(node, v);
@@ -2585,8 +2634,21 @@ public sealed class TemplateCompiler
                 if (_code.LambdaBodyJs(attr) is { } lambdaLines)
                 {
                     _used.Add("listen");
-                    var arrow = "() => {\n" + string.Join("\n", lambdaLines.Select(l => "  " + l)) + "\n}";
-                    if (_code.LambdaBatched(attr)) { _used.Add("batch"); arrow = $"() => batch({arrow})"; }
+                    string arrow;
+                    // A LAMBDA ON A SUPPRESSED EVENT (decision 165) goes through the SAME arrow a named
+                    // handler does. This path emits during the walk instead of being recorded, and that
+                    // alone is why `<form @onsubmit="() => …">` navigated while <EditForm> did not: the
+                    // rule was written on one path only. It is one rule now, in SuppressingArrow.
+                    if (DefaultSuppressedEvents.Contains(domEvent))
+                    {
+                        arrow = SuppressingArrow(
+                            string.Join("\n", lambdaLines.Select(l => "  " + l)), _code.LambdaBatched(attr));
+                    }
+                    else
+                    {
+                        arrow = "() => {\n" + string.Join("\n", lambdaLines.Select(l => "  " + l)) + "\n}";
+                        if (_code.LambdaBatched(attr)) { _used.Add("batch"); arrow = $"() => batch({arrow})"; }
+                    }
                     _events.Add($"listen({v}, {JsString(domEvent)}, {arrow});");
                     return;
                 }
