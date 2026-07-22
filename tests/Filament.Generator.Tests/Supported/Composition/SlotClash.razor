@@ -1,0 +1,14 @@
+@* THE SLOT NAME BEATS THE SIBLING FILE (decision 168, register defect A6). SlotCard declares a
+   `Slot` fragment and Slot.razor exists next door. Razor's codegen for this source is
+   AddAttribute(…, "Slot", (RenderFragment)…) and OpenComponent<…Slot> appears NOWHERE.
+
+   BEFORE #168 THIS EMITTED THE DECOY, at exit 0 -- sibling-file resolution ran first. Worse, it
+   emitted the SAME BYTES as SlotClashCfact.razor, whose child declares ChildContent instead and
+   where the decoy IS what Blazor instantiates: the emission was invariant to the declaration that
+   decides the meaning. *@
+<div id="wrap"><SlotCard><Slot><span id="body">@count</span></Slot></SlotCard><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

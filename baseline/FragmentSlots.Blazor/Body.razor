@@ -1,0 +1,9 @@
+@* THE DECOY. A real, compilable sibling component named exactly like <Slotted>'s fragment
+   parameter. Nothing in this app instantiates it, and the measurement asserts that: #decoy must
+   not exist. It is here to make the collision real -- without the file, sibling resolution would
+   simply fail and the ordering bug would be invisible. *@
+<p id="decoy">DECOY @ChildContent</p>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

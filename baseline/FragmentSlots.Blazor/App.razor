@@ -1,0 +1,31 @@
+@* Parent for the THREE fragment defects decision 168 closes, in one page, because all three are
+   RENDER differences and a render difference is only a claim once a browser has read it.
+
+   1. A CHILD WITH TWO HOLES. <Card> declares Header AND ChildContent; this parent passes BARE
+      content. Blazor binds bare content to ChildContent and to NOTHING else, so #head comes out
+      EMPTY and there is exactly ONE #mark. Decision 131 held one UN-NAMED fragment and inlined it
+      at every hole: two #mark, both live, duplicate ids, at exit 0. The count is the measurement --
+      "there is a #mark" passes on the broken compiler too.
+
+   2. A SLOT NAME THAT COLLIDES WITH A SIBLING FILE. <Slotted> declares a `Body` fragment AND
+      Body.razor exists next door, rendering #decoy. Blazor's codegen for this source is
+      AddAttribute("Body", RenderFragment…) -- the slot wins, and OpenComponent<Body> appears
+      nowhere. Filament resolved the sibling FIRST and emitted the decoy. So: #slot must render
+      INSIDE #card2, and #decoy must not exist AT ALL.
+
+   3. A FRAGMENT FORWARDED TWO LEVELS. <Middle> renders <Inner>@ChildContent</Inner>: it does not
+      place the content, it PASSES IT ON. Filament dropped it in total silence (exit 0, no
+      diagnostic, the span simply absent). #deep must be inside #inner, and it must still be a LIVE
+      binding on the GRANDPARENT's signal -- a forward that arrived but lost its scope would sit at
+      "0" forever, which is why #inc drives all three counters at once.
+
+   No whitespace between any siblings, matching Fragment.Blazor's contract: whitespace between
+   named slots is exactly what stays REFUSED here (register defect D9), so this file must not
+   contain any. *@
+
+<div id="wrap"><Card Title="hits"><span id="mark">@count</span></Card><Slotted Title="named"><Body><span id="slot">@count</span></Body></Slotted><Middle><span id="deep">@count</span></Middle><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

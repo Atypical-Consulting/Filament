@@ -1734,18 +1734,39 @@ public sealed class TemplateCompiler
     /// hand raw C# to the emitter. Carrying the container lets EmitFragment take the same
     /// `_regions.Contains(container)` branch every other container takes.
     /// </param>
+    /// <param name="Outer">
+    /// The slot map in scope where the content was WRITTEN (decision 168). A fragment is compiled in
+    /// its author's scope, and `@ChildContent` is part of that scope: `Middle.razor` rendering
+    /// `&lt;Inner&gt;@ChildContent&lt;/Inner&gt;` FORWARDS its own hole one level down, so when Inner's
+    /// hole is reached the map to consult is the one Middle saw -- the grandparent's. Clearing it
+    /// instead (which is what shipped) dropped every forwarded fragment silently; restoring the map the
+    /// SLOT ITSELF is in would re-inline the fragment into itself and never terminate. The scope it was
+    /// written in is the only one that is both correct and finite.
+    /// </param>
     sealed record Fragment(
         IReadOnlyList<IntermediateNode> Nodes,
         IntermediateNode Container,
         CSharpFrontEnd Code,
         HashSet<IntermediateNode> Regions,
         string File,
-        IReadOnlyList<string> Composing);
+        IReadOnlyList<string> Composing,
+        IReadOnlyDictionary<string, Fragment> Outer);
 
-    /// <summary>The fragment in scope for the child currently being inlined, or null. Saved/restored
-    /// around each composition exactly as _code/_regions/_file are, so a nested composition cannot see
-    /// its grandparent's fragment.</summary>
-    Fragment? _fragment;
+    /// <summary>
+    /// The content a composing parent bound to the child currently being inlined, KEYED BY THE
+    /// FRAGMENT PARAMETER NAME it fills (decision 168). Saved/restored around each composition exactly
+    /// as _code/_regions/_file are, so a nested composition cannot see its grandparent's content.
+    ///
+    /// KEYED, not single: a child may declare `Header` AND `ChildContent`, and Blazor binds bare
+    /// content to `ChildContent` ALONE. One un-named fragment (decision 131's shape) was inlined at
+    /// EVERY hole -- the same markup rendered twice, duplicate element ids, two live effects on one
+    /// signal. Always REPLACED, never mutated in place, because each entry's Outer holds a reference
+    /// to the map that was in scope one level up.
+    /// </summary>
+    IReadOnlyDictionary<string, Fragment> _fragments = EmptyFragments;
+
+    static readonly IReadOnlyDictionary<string, Fragment> EmptyFragments =
+        new Dictionary<string, Fragment>(StringComparer.Ordinal);
 
     /// <summary>The cascaded values in scope, keyed by C# TYPE (decision 134). A stack in effect: each
     /// &lt;CascadingValue&gt; adds its entry for the duration of its children and restores on the way out,
@@ -1761,10 +1782,20 @@ public sealed class TemplateCompiler
     /// </summary>
     void EmitFragment(CSharpExpressionIntermediateNode slot, string? parent)
     {
-        if (_fragment is not { } frag)
+        // WHICH hole this is. `@Header` and `@ChildContent` are two different positions, and only the
+        // content the parent bound to THIS name belongs here (decision 168).
+        var name = _code.SlotFragmentName(slot)
+            ?? throw new GeneratorException(
+                "FIL-WIRING: a fragment slot reached the emitter without the [Parameter] name it reads. " +
+                "SlotIsFragment and SlotFragmentName are set together at the one site that recognises a " +
+                "fragment slot. This is the TOOL being broken, not the input.");
+
+        if (!_fragments.TryGetValue(name, out var frag))
         {
-            // No parent supplied one. Blazor renders a null RenderFragment as NOTHING, so this emits
-            // nothing -- the one case where silence is the faithful answer rather than a dropped node.
+            // The parent bound nothing to this hole. Blazor renders a null RenderFragment as NOTHING,
+            // so this emits nothing -- the one case where silence is the faithful answer rather than a
+            // dropped node. It is ALSO the case decision 131 got wrong by having no key to miss on:
+            // `<div id="head">@Header</div>` must come out EMPTY when the parent passed bare content.
             return;
         }
 
@@ -1777,7 +1808,7 @@ public sealed class TemplateCompiler
         var savedFile = _file;
         var savedCode = _code;
         var savedRegions = _regions;
-        var savedFragment = _fragment;
+        var savedFragments = _fragments;
         var savedComposing = _composing.ToArray();
 
         _file = frag.File;
@@ -1787,9 +1818,12 @@ public sealed class TemplateCompiler
         // inside it, so a component the parent nested in its own content is not re-entering anything.
         _composing.Clear();
         _composing.AddRange(frag.Composing);
-        // The fragment's own content may compose further children, but it is not itself inside one:
-        // clearing this is what stops a fragment that contains `@ChildContent` from re-inlining itself.
-        _fragment = null;
+        // ...AND THE SLOT MAP. The content is compiled in the scope it was WRITTEN in, and a hole that
+        // scope could see is part of it: `<Inner>@ChildContent</Inner>` inside a child FORWARDS the
+        // grandparent's content one level down, and Outer is the map that makes that resolve. Setting
+        // null here (decision 131) dropped it in total silence; setting the CURRENT map would re-enter
+        // this same fragment forever.
+        _fragments = frag.Outer;
 
         // THE CONTENT IS A CONTAINER LIKE ANY OTHER. If it held template C#, Collect planned it as a
         // region against the element the parent wrote it in, and its emission comes from the C# front
@@ -1806,7 +1840,7 @@ public sealed class TemplateCompiler
         _file = savedFile;
         _code = savedCode;
         _regions = savedRegions;
-        _fragment = savedFragment;
+        _fragments = savedFragments;
         _composing.Clear();
         _composing.AddRange(savedComposing);
     }
@@ -2427,7 +2461,7 @@ public sealed class TemplateCompiler
         var savedFile = _file;
         var savedCode = _code;
         var savedRegions = _regions;
-        var savedFragment = _fragment;
+        var savedFragments = _fragments;             // the slot map the CONTENT below was written in
         var savedComposing = _composing.ToArray();   // the chain the CONTENT below was written in
         var diagBefore = _diagnostics.Count;
 
@@ -2472,17 +2506,23 @@ public sealed class TemplateCompiler
                     $"static-leaf slice; it has {roots.Count}. Refusing to emit.", el.Source);
             else
             {
-                // Walk the child's root with _code swapped to the child front end: its create
-                // statements splice INTO the parent's shared _create (inline), and @Name folds to
-                // the bound constant. Same save/restore idiom EmitBranchFn uses for _create/_bindings.
-                _code = childCode;
-                _regions = childRegions;
-                // The fragment travels with the PARENT context it was written in, so that when the child's
-                // @ChildContent is reached the parent's scope can be restored to compile it (decision 131).
-                _fragment = fragmentNodes.Count > 0
-                    ? new Fragment(fragmentNodes, el, savedCode, savedRegions, savedFile, savedComposing)
-                    : null;
-                result = EmitNode(roots[0], parent: null);
+                // WHICH HOLE GETS WHAT (decision 168). The content is bound to the child's fragment
+                // [Parameter]s BY NAME before anything is emitted, so a refusal costs no statements.
+                // The fragments travel with the PARENT context they were written in, so that when a
+                // hole is reached the parent's scope can be restored to compile them (decision 131).
+                var slots = BindFragmentSlots(
+                    el, fragmentNodes, childCode, savedCode, savedRegions, savedFile, savedComposing, savedFragments);
+
+                if (slots is not null)
+                {
+                    // Walk the child's root with _code swapped to the child front end: its create
+                    // statements splice INTO the parent's shared _create (inline), and @Name folds to
+                    // the bound constant. Same save/restore idiom EmitBranchFn uses for _create/_bindings.
+                    _code = childCode;
+                    _regions = childRegions;
+                    _fragments = slots;
+                    result = EmitNode(roots[0], parent: null);
+                }
             }
         }
 
@@ -2490,8 +2530,130 @@ public sealed class TemplateCompiler
         _file = savedFile;
         _code = savedCode;
         _regions = savedRegions;
-        _fragment = savedFragment;
+        _fragments = savedFragments;
         return result;
+    }
+
+    /// <summary>
+    /// Bind the markup a parent passed to the CHILD's fragment [Parameter]s, BY NAME (decision 168).
+    /// Returns null after emitting a located refusal; an empty map when nothing was passed.
+    ///
+    /// SLOT FIRST, SIBLING FILE SECOND, and the order is the whole fix for one of the two defects
+    /// this closes. `&lt;Slotted&gt;&lt;Body&gt;…&lt;/Body&gt;&lt;/Slotted&gt;` where the child declares
+    /// a `Body` fragment names the child's HOLE; Razor's own codegen for that source is
+    /// `AddAttribute(5, "Body", (RenderFragment)…)` and `OpenComponent&lt;…Body&gt;` appears NOWHERE.
+    /// Resolving `Body.razor` first -- which is what shipped -- emitted the sibling component instead
+    /// of filling the slot, at exit 0. Worse, it emitted the SAME bytes whether or not the child
+    /// declared `Body`, i.e. it was invariant to the declaration that decides the meaning: accidentally
+    /// right in one case, silently wrong in the other. The match is scoped to IMMEDIATE children, which
+    /// is also Blazor's rule -- one level down, `&lt;Body&gt;` is the component again.
+    /// </summary>
+    IReadOnlyDictionary<string, Fragment>? BindFragmentSlots(
+        MarkupElementIntermediateNode el,
+        IReadOnlyList<IntermediateNode> content,
+        CSharpFrontEnd childCode,
+        CSharpFrontEnd parentCode,
+        HashSet<IntermediateNode> parentRegions,
+        string parentFile,
+        IReadOnlyList<string> parentComposing,
+        IReadOnlyDictionary<string, Fragment> outer)
+    {
+        if (content.Count == 0) return EmptyFragments;
+
+        var declared = childCode.FragmentParameterNames.ToHashSet(StringComparer.Ordinal);
+        var named = content.OfType<MarkupElementIntermediateNode>()
+            .Where(m => declared.Contains(m.TagName))
+            .ToList();
+
+        Fragment Make(IntermediateNode container, IReadOnlyList<IntermediateNode> nodes) =>
+            new(nodes, container, parentCode, parentRegions, parentFile, parentComposing, outer);
+
+        if (named.Count == 0)
+        {
+            // BARE CONTENT GOES TO ChildContent, AND TO NOTHING ELSE. That is Blazor's rule, and the
+            // reason the map needs a key it can MISS on: with one un-named fragment, a child declaring
+            // `Header` AND `ChildContent` rendered the parent's markup at BOTH holes -- the same
+            // elements twice, duplicate ids, two effects on one signal, at exit 0.
+            if (!declared.Contains("ChildContent"))
+            {
+                // Razor still lowers bare content to `AddAttribute(…, "ChildContent", …)` for a
+                // property that does not exist, so this BUILDS on the Blazor side and fails when the
+                // component is rendered. Dropping it here would be the silent half of that.
+                Diag("composition-out-of-subset",
+                    $"<{el.TagName}> was given bare content, which binds to a `ChildContent` " +
+                    $"[Parameter] RenderFragment -- and {el.TagName}.razor declares no such parameter. " +
+                    $"It declares: {string.Join(", ", declared)}. Either name the slot explicitly " +
+                    $"(`<{el.TagName}><{declared.First()}>…</{declared.First()}></{el.TagName}>`) or " +
+                    "declare `[Parameter] public RenderFragment? ChildContent { get; set; }`. Refusing " +
+                    "to emit rather than place the content at a hole the author did not name.",
+                    el.Source);
+                return null;
+            }
+
+            return new Dictionary<string, Fragment>(StringComparer.Ordinal) { ["ChildContent"] = Make(el, content) };
+        }
+
+        // NAMED-SLOT MODE. Everything below is REFUSED rather than emitted, and each refusal has a
+        // Blazor reading behind it -- either Razor rejects the source outright, or Razor and this
+        // compiler disagree about what the leftover means (register defect D9).
+        if (named.GroupBy(m => m.TagName, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1) is { } dup)
+        {
+            // NOT a Razor error, and that was MEASURED rather than assumed: Razor accepts this source
+            // (`Build succeeded. 0 Warning(s) 0 Error(s)`) and emits the parameter assignment TWICE,
+            // so a real Blazor app renders the LAST one and silently discards the first (read in
+            // Chrome: `<div id="card"><span id="h2">b</span></div>`, the `id="h"` content gone).
+            // Reproducing that is one line here -- the map is keyed, so the later entry would win by
+            // itself -- but shipping a rule whose whole content is "one of the two you wrote is
+            // ignored" without driving it through the DOM-contract oracle on both shells is exactly
+            // the shortcut this project does not take. Refused, and the refusal names what Blazor does.
+            Diag("composition-out-of-subset",
+                $"<{el.TagName}> names the slot '{dup.Key}' more than once, and a fragment [Parameter] " +
+                "holds ONE value. Razor accepts this and assigns the parameter twice, so a Blazor app " +
+                "renders the LAST one and silently drops the earlier content. Merge them into a single " +
+                $"<{dup.Key}> element. Refusing to emit rather than compile a source whose first half " +
+                "does nothing.", el.Source);
+            return null;
+        }
+
+        if (named.FirstOrDefault(m => m.Children.OfType<HtmlAttributeIntermediateNode>().Any()) is { } withAttr)
+        {
+            // Razor: `RZ9997: Unrecognized attribute '…' on child content element '…'`. A slot element
+            // is not an element -- it is the NAME of a parameter -- so it has nothing to carry.
+            Diag("composition-out-of-subset",
+                $"<{withAttr.TagName}> inside <{el.TagName}> names a fragment [Parameter], not an " +
+                "element, so it cannot carry attributes -- Razor rejects the same source with RZ9997. " +
+                "Move the attribute onto an element INSIDE the slot. Refusing to emit.",
+                withAttr.Source ?? el.Source);
+            return null;
+        }
+
+        if (content.FirstOrDefault(c => !named.Contains(c)) is { } leftover)
+        {
+            var isWhitespace = leftover is HtmlContentIntermediateNode h && string.IsNullOrWhiteSpace(RawText(h));
+            Diag("composition-out-of-subset",
+                isWhitespace
+                    ? $"<{el.TagName}> mixes named slots with WHITESPACE, and the two compilers disagree " +
+                      "about what that whitespace is: Razor DISCARDS it between child content elements, " +
+                      "while this compiler materialises whitespace between siblings as a real text node " +
+                      "(the documented policy every other slice is measured under). Emitting would build " +
+                      "a DOM Blazor does not. Write the slots with no space between them " +
+                      $"(`<{el.TagName}><{named[0].TagName}>…</{named[0].TagName}>…</{el.TagName}>`). " +
+                      "Refusing to emit rather than add a node Blazor never creates."
+                    : $"<{el.TagName}> mixes named slots with loose content. Razor rejects the same " +
+                      $"source with RZ9996 (Unrecognized child content inside component '{el.TagName}'): " +
+                      "once one slot is named, ALL of the content must be. Wrap the loose content in its " +
+                      "own named slot. Refusing to emit.",
+                el.Source);
+            return null;
+        }
+
+        var map = new Dictionary<string, Fragment>(StringComparer.Ordinal);
+        foreach (var m in named)
+            // The slot ELEMENT is the container, not the composition element: if the slot's content
+            // holds template C#, the parent's collect walk planned the region against THAT node
+            // (decision 162), and EmitFragment asks `_regions.Contains(container)`.
+            map[m.TagName] = Make(m, m.Children.Where(c => c is not HtmlAttributeIntermediateNode).ToList());
+        return map;
     }
 
     /// <summary>Emit one re-parsed region, in the order the C# says.</summary>

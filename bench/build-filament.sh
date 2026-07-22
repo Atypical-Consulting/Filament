@@ -230,6 +230,7 @@ ALL_LABELS=(
   filament-forms-gen
   filament-contentregion-gen
   filament-submit-gen
+  filament-fragmentslots-gen
   filament-routing-gen
   filament-counter-stats
   filament-rows-stats
@@ -300,6 +301,7 @@ project_for() {
     filament-forms-gen)                              echo "samples/filament-forms-gen" ;;
     filament-contentregion-gen)                      echo "samples/filament-contentregion-gen" ;;
     filament-submit-gen)                             echo "samples/filament-submit-gen" ;;
+    filament-fragmentslots-gen)                      echo "samples/filament-fragmentslots-gen" ;;
     filament-routing-gen)                            echo "samples/filament-routing-gen" ;;
     *) return 1 ;;
   esac
@@ -310,7 +312,7 @@ project_for() {
 mode_for() {
   case "$1" in
     *-stats) echo "instrumented" ;;
-    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachlist-gen|filament-rowactions-gen|filament-duel-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen|filament-inherits-gen|filament-forms-gen|filament-routing-gen|filament-datetimenow-gen|filament-random-gen|filament-httpjson-gen|filament-todo-gen|filament-contentregion-gen|filament-submit-gen) echo "production" ;;
+    filament-counter|filament-rows|filament-counter-gen|filament-rows-gen|filament-divide-gen|filament-compose-gen|filament-rootforeach-gen|filament-rootif-gen|filament-boundcompose-gen|filament-reactiveattr-gen|filament-boolattr-gen|filament-mixedattr-gen|filament-stringattrs-gen|filament-ifmulti-gen|filament-ifelsemulti-gen|filament-ifnested-gen|filament-divideint-gen|filament-loops-gen|filament-moreattrs-gen|filament-bind-gen|filament-lambdahandler-gen|filament-listops-gen|filament-checkbind-gen|filament-intbind-gen|filament-codeblock-gen|filament-trylock-gen|filament-positionalrecord-gen|filament-longcounter-gen|filament-floatcounter-gen|filament-decimalcounter-gen|filament-datetimecounter-gen|filament-linq-gen|filament-arrayindex-gen|filament-dictlookup-gen|filament-asyncclick-gen|filament-ifnestedmixed-gen|filament-linqaggregate-gen|filament-sizedarray-gen|filament-asyncresult-gen|filament-foreacharray-gen|filament-foreachlist-gen|filament-rowactions-gen|filament-duel-gen|filament-foreachdict-gen|filament-linqorder-gen|filament-elementwrite-gen|filament-groupby-gen|filament-eventcb-gen|filament-fragment-gen|filament-elemref-gen|filament-jsinterop-gen|filament-cascade-gen|filament-generic-gen|filament-inherits-gen|filament-forms-gen|filament-routing-gen|filament-datetimenow-gen|filament-random-gen|filament-httpjson-gen|filament-todo-gen|filament-contentregion-gen|filament-submit-gen|filament-fragmentslots-gen) echo "production" ;;
     *) return 1 ;;
   esac
 }
@@ -399,6 +401,7 @@ razor_for() {
     filament-forms-gen)                              echo "$REPO_ROOT/baseline/Forms.Blazor/App.razor" ;;
     filament-contentregion-gen)                      echo "$REPO_ROOT/baseline/ContentRegion.Blazor/App.razor" ;;
     filament-submit-gen)                             echo "$REPO_ROOT/baseline/Submit.Blazor/App.razor" ;;
+    filament-fragmentslots-gen)                      echo "$REPO_ROOT/baseline/FragmentSlots.Blazor/App.razor" ;;
     *) echo "" ;;
   esac
 }
@@ -470,6 +473,7 @@ generated_js_for() {
     filament-forms-gen)                              echo "App.g.js" ;;
     filament-contentregion-gen)                      echo "App.g.js" ;;
     filament-submit-gen)                             echo "App.g.js" ;;
+    filament-fragmentslots-gen)                      echo "App.g.js" ;;
     *) echo "" ;;
   esac
 }
@@ -537,6 +541,7 @@ title_for() {
     filament-forms-gen)                              echo "Forms" ;;
     filament-contentregion-gen)                      echo "ContentRegion" ;;
     filament-submit-gen)                             echo "Submit" ;;
+    filament-fragmentslots-gen)                      echo "FragmentSlots" ;;
     filament-routing-gen)                            echo "Routing" ;;
     *) return 1 ;;
   esac
@@ -608,6 +613,7 @@ blazor_label_for() {
     filament-forms-gen)                              echo "blazor-forms" ;;
     filament-contentregion-gen)                      echo "blazor-contentregion" ;;
     filament-submit-gen)                             echo "blazor-submit" ;;
+    filament-fragmentslots-gen)                      echo "blazor-fragmentslots" ;;
     filament-routing-gen)                            echo "blazor-routing" ;;
     *) return 1 ;;
   esac
@@ -687,6 +693,7 @@ css_for() {
     filament-forms-gen)                              echo "$REPO_ROOT/baseline/Forms.Blazor/wwwroot/css/app.css" ;;
     filament-contentregion-gen)                      echo "$REPO_ROOT/baseline/ContentRegion.Blazor/wwwroot/css/app.css" ;;
     filament-submit-gen)                             echo "$REPO_ROOT/baseline/Submit.Blazor/wwwroot/css/app.css" ;;
+    filament-fragmentslots-gen)                      echo "$REPO_ROOT/baseline/FragmentSlots.Blazor/wwwroot/css/app.css" ;;
     filament-routing-gen)                            echo "$REPO_ROOT/baseline/Routing.Blazor/wwwroot/css/app.css" ;;
     *) return 1 ;;
   esac

@@ -1,0 +1,13 @@
+@* BARE CONTENT GOES TO ChildContent, AND TO NOTHING ELSE (decision 168, register defect A5).
+   HoleCard declares Header AND ChildContent; this parent names neither, so Razor lowers the span to
+   AddAttribute("ChildContent", …) and emits no Header attribute at all -- #head comes out empty.
+
+   BEFORE #168 THIS COMPILED WITH THE SPAN AT BOTH HOLES: one un-named `Fragment? _fragment` cannot
+   miss, so it was inlined at every slot. Two elements carrying id='mark', two effects on one signal,
+   exit 0, no diagnostic. Blazor renders ONE. *@
+<div id="wrap"><HoleCard><span id="mark">@count</span></HoleCard><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

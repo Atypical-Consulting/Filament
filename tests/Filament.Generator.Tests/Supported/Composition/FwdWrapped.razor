@@ -1,0 +1,8 @@
+@* The forward's wrapped variant: Fwd hands the content on, and here it lands inside an element the
+   middle level created. Before #168 #hold was built and left EMPTY. *@
+<div id="wrap"><FwdHold><span id="body">@count</span></FwdHold><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

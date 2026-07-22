@@ -1,0 +1,6 @@
+@* The end of the forward: the level that actually PLACES the grandparent's markup. *@
+<div id="inner">@ChildContent</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,5 @@
+@* RZ9997 PARITY. A named slot element is the NAME OF A PARAMETER, not an element, so it has nothing
+   to carry an attribute for: Razor rejects this exact source with `error RZ9997: Unrecognized
+   attribute 'class' on child content element 'Head'.` Refused here for the same reason, with the
+   remedy -- put the attribute on an element INSIDE the slot -- in the message. *@
+<div id="wrap"><SlottedCard><Head class="x"><span id="h">head</span></Head><Foot><span id="f">foot</span></Foot></SlottedCard></div>

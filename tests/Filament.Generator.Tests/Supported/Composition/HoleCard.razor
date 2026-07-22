@@ -1,0 +1,8 @@
+@* A child with TWO fragment holes (decision 168). Blazor binds a parent's BARE content to
+   ChildContent and to nothing else, so @Header renders NOTHING here unless the parent names it. *@
+<div id="card"><div id="head">@Header</div><div id="body">@ChildContent</div></div>
+
+@code {
+    [Parameter] public RenderFragment? Header { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,8 @@
+@* THE DECOY. A real sibling component whose file name is exactly the name of SlotCard's fragment
+   [Parameter]. It exists so the collision is real; the point of the witness is that it is NOT
+   instantiated where the name is a slot -- and IS instantiated one level down, where it is a tag. *@
+<p id="decoy">DECOY @ChildContent</p>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

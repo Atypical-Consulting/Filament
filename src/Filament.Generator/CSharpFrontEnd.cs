@@ -521,6 +521,10 @@ public sealed class CSharpFrontEnd
         /// a computed refreshes from inside flush()/checkDirty(), which is BEFORE the binding's own body
         /// runs, so a throw raised there passes no guard the boundary can place (decision 164).</summary>
         public bool ReadsComputed;
+
+        /// <summary>WHICH RenderFragment [Parameter] the slot names (decision 170) -- "ChildContent",
+        /// "Header", … A hole is filled by the content bound to ITS name and by nothing else.</summary>
+        public string? FragmentName;
     }
 
     /// <summary>The decimal helpers this module actually used (`decAdd`, `decStr`, …). A `decimal` value is a
@@ -637,6 +641,11 @@ public sealed class CSharpFrontEnd
     /// <summary>The slot is `@ChildContent` — the POSITION a composing parent's markup is inlined at,
     /// not a value to bind (decision 131).</summary>
     public bool SlotIsFragment(IntermediateNode node) => Get(node).IsFragment;
+
+    /// <summary>WHICH fragment [Parameter] the slot names (decision 168). Null when the slot is not a
+    /// fragment hole at all. A child declaring `Header` AND `ChildContent` has two holes, and only the
+    /// content bound to a hole's own name may be inlined there.</summary>
+    public string? SlotFragmentName(IntermediateNode node) => Get(node).FragmentName;
 
     /// <summary>The slot expression's C# type, as a display string — the key a cascade is matched on
     /// (decision 134). Asked of the semantic model, so `@level` cascades as `int`, not as "level".</summary>
@@ -2420,12 +2429,18 @@ public sealed class CSharpFrontEnd
             // composing parent's markup is inlined (decision 131). Recognised HERE, at the WHOLE-slot
             // level, so that a fragment used as part of a larger expression never reaches this branch and
             // is refused by Identifier() instead: there is no value to concatenate or compare.
-            var isFragment = e is IdentifierNameSyntax fid
+            var fragmentName = e is IdentifierNameSyntax fid
                 && _model.GetSymbolInfo(fid).Symbol is IPropertySymbol fp
-                && IsFragmentParameter(fp.Name);
-            if (isFragment)
+                && IsFragmentParameter(fp.Name)
+                    ? fp.Name
+                    : null;
+            if (fragmentName is not null)
             {
-                _slots[node] = new Slot { Js = "/*fragment*/", IsFragment = true };
+                // The NAME is kept, not just the fact (decision 168). A child may declare several
+                // fragment [Parameter]s -- `Header` and `ChildContent` -- and which markup belongs
+                // at THIS hole is decided by which parameter it names. Holding "a fragment" without
+                // its name is what made one parent fragment render at EVERY hole.
+                _slots[node] = new Slot { Js = "/*fragment*/", IsFragment = true, FragmentName = fragmentName };
                 continue;
             }
 

@@ -350,6 +350,8 @@ public static class Generate
 
     public static string FragmentToTemp() => ToTemp(RepoPaths.FragmentRazor, "Fragment");
 
+    public static string FragmentSlotsToTemp() => ToTemp(RepoPaths.FragmentSlotsRazor, "FragmentSlots");
+
     public static string ElemRefToTemp() => ToTemp(RepoPaths.ElemRefRazor, "ElemRef");
 
     public static string JsInteropToTemp() => ToTemp(RepoPaths.JsInteropRazor, "JsInterop");

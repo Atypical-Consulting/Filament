@@ -1,0 +1,14 @@
+@* A FRAGMENT FORWARDED TWO LEVELS (decision 168, register defect A7). Fwd.razor renders
+   <FwdInner>@ChildContent</FwdInner>, so this parent's span has to travel through TWO composition
+   boundaries before anything places it.
+
+   BEFORE #168 IT WAS DROPPED IN TOTAL SILENCE: emitting a fragment CLEARED the slot map before
+   walking its nodes, so Fwd's own @ChildContent resolved against nothing. Exit 0, no diagnostic, the
+   span simply absent and #inner empty. The map to consult inside a fragment is the one in scope
+   where that fragment was WRITTEN -- for Fwd's content, this file's. *@
+<div id="wrap"><Fwd><span id="body">@count</span></Fwd><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

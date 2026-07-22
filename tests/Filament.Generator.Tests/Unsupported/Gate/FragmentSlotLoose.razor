@@ -1,0 +1,5 @@
+@* RZ9996 PARITY. Once one slot is named, ALL of a component's content must be: Razor rejects this
+   exact source with `error RZ9996: Unrecognized child content inside component 'SlottedCard'.`
+   Admitting it here would admit a source Blazor does not compile, which is the mirror image of the
+   silent divergence this slice closes -- so it is refused, and the message says how to fix it. *@
+<div id="wrap"><SlottedCard><Head><span id="h">head</span></Head><span id="loose">loose</span></SlottedCard></div>

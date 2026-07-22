@@ -1,0 +1,8 @@
+@* FORWARDING. This child does not PLACE its content, it hands it to another child. Its own
+   @ChildContent is read in Middle's scope but resolves to what App passed -- the grandparent's
+   markup, one level up. *@
+<Inner>@ChildContent</Inner>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}
