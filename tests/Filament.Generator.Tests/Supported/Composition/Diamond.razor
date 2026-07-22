@@ -1,0 +1,12 @@
+@* THE CONTROL THAT KEEPS THE CYCLE GUARD HONEST (decision 169). "Used more than once" is not a
+   cycle, and this file makes the compiler prove it: DiamondLeaf.razor is reached FOUR times -- via
+   DiamondLeft, via DiamondRight, and twice as a direct child -- and every one of those occurrences
+   terminates.
+
+   That is why _composing is a PATH (the chain of files open ABOVE the current site) and not a
+   visited set. A visited set would refuse this file, and refusing it would be a worse defect than
+   the crash it was meant to fix.
+
+   Byte-identity was measured, not assumed: this file emits the same 1 455 bytes from the HEAD
+   generator and from the guarded one, diffed. *@
+<div id="wrap"><DiamondLeft V="a" /><DiamondRight V="b" /><DiamondLeaf V="c" /><DiamondLeaf V="d" /></div>

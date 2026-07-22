@@ -311,6 +311,25 @@ public sealed class TemplateCompiler
     string? _region;
 
     string _file = "";
+
+    /// <summary>
+    /// THE CHAIN OF COMPONENTS CURRENTLY BEING INLINED, root first — a PATH, not a visited set.
+    ///
+    /// Composition has no runtime instance: EmitComposition splices the child's markup into the
+    /// parent's mount() at compile time, and it walks the child's @if bodies whether or not the
+    /// condition can ever be true (the guard becomes a runtime list(), decision 81). So a component
+    /// that reaches itself has no finite expansion, and before this chain existed the walk simply
+    /// descended until the CLR aborted the process — `Stack overflow.`, SIGABRT, no output and no
+    /// diagnostic, which is the worst possible answer to a valid Blazor source.
+    ///
+    /// A PATH is the whole point. The same child used twice as a SIBLING, or reached twice through a
+    /// diamond (A→B, A→C, B→D, C→D), is not a cycle: each occurrence terminates. Only re-entering a
+    /// file that is still open ABOVE the current site does not. Push/pop follows the same save/restore
+    /// idiom _file/_code/_regions already use, so it tracks the dynamic walk — a composition inlined
+    /// under a row or inside a fragment is on the chain too.
+    /// </summary>
+    readonly List<string> _composing = [];
+
     int _el, _tx;
     int _if;
 
@@ -566,6 +585,10 @@ public sealed class TemplateCompiler
     public string Compile(ParseResult parse, string runtimeSpecifier, string sourceName)
     {
         _file = parse.FilePath;
+        // The root is the first link of the composition chain, so `App.razor` containing <App /> is
+        // caught at its own site rather than one inlined copy later.
+        _composing.Clear();
+        _composing.Add(Path.GetFullPath(parse.FilePath));
 
         // THE PAGE COMPILES ITS OWN ROUTE PARAMETERS, FROM ITS OWN @page (decision 163) -- the router is
         // not consulted, and that is deliberate. A page module is byte-identical whether it is routed or
@@ -1692,11 +1715,18 @@ public sealed class TemplateCompiler
 
     /// <summary>
     /// The markup a composing parent passed INTO a child (`&lt;Card&gt;…&lt;/Card&gt;`), together with the
-    /// parent context it must be compiled in (decision 131). All four fields travel together because the
+    /// parent context it must be compiled in (decision 131). All five fields travel together because the
     /// fragment is written in the PARENT's file and scope: its `@count` names the PARENT's signal, and its
     /// regions were planned by the PARENT's collect walk. Emitting it under the child's context would
     /// resolve those names against the wrong component -- or, worse, silently against nothing.
     /// </summary>
+    /// <param name="Composing">
+    /// The composition chain the fragment was WRITTEN in, i.e. without the child that will place it.
+    /// The chain is lexical, like every other field here: `&lt;Card&gt;&lt;Card&gt;x&lt;/Card&gt;&lt;/Card&gt;`
+    /// nests a Card inside a Card's content and TERMINATES (the inner content is text), so the inner use
+    /// must not see the outer Card on the chain and be refused as a cycle. Card.razor rendering
+    /// `&lt;Card&gt;x&lt;/Card&gt;` ITSELF is the genuine cycle, and that one is caught at its own site.
+    /// </param>
     /// <param name="Container">
     /// The node Collect planned the content's region against, when the passed content holds template
     /// C# (`&lt;Card&gt;@if (show) { … }&lt;/Card&gt;`). A region's children are NOT in document order any
@@ -1709,7 +1739,8 @@ public sealed class TemplateCompiler
         IntermediateNode Container,
         CSharpFrontEnd Code,
         HashSet<IntermediateNode> Regions,
-        string File);
+        string File,
+        IReadOnlyList<string> Composing);
 
     /// <summary>The fragment in scope for the child currently being inlined, or null. Saved/restored
     /// around each composition exactly as _code/_regions/_file are, so a nested composition cannot see
@@ -1747,10 +1778,15 @@ public sealed class TemplateCompiler
         var savedCode = _code;
         var savedRegions = _regions;
         var savedFragment = _fragment;
+        var savedComposing = _composing.ToArray();
 
         _file = frag.File;
         _code = frag.Code;
         _regions = frag.Regions;
+        // ...and the composition chain with them: this markup sits ABOVE the child on the chain, not
+        // inside it, so a component the parent nested in its own content is not re-entering anything.
+        _composing.Clear();
+        _composing.AddRange(frag.Composing);
         // The fragment's own content may compose further children, but it is not itself inside one:
         // clearing this is what stops a fragment that contains `@ChildContent` from re-inlining itself.
         _fragment = null;
@@ -1771,6 +1807,8 @@ public sealed class TemplateCompiler
         _code = savedCode;
         _regions = savedRegions;
         _fragment = savedFragment;
+        _composing.Clear();
+        _composing.AddRange(savedComposing);
     }
 
     /// <summary>
@@ -2291,6 +2329,29 @@ public sealed class TemplateCompiler
             return null;
         }
 
+        // THE CYCLE GUARD. Case-insensitive because File.Exists above is, on this platform and on
+        // Windows: a tag whose spelling differs from the file only in case resolves to the SAME file,
+        // so it must land on the same link of the chain. Two sibling components whose names differ
+        // only in case cannot both be resolved here anyway.
+        var childFull = Path.GetFullPath(childPath);
+        var opened = _composing.FindIndex(p => string.Equals(p, childFull, StringComparison.OrdinalIgnoreCase));
+        if (opened >= 0)
+        {
+            var cycle = string.Join(" -> ", _composing.Skip(opened).Append(childFull).Select(Path.GetFileName));
+            Diag("composition-cycle",
+                $"<{el.TagName}> re-enters a component that is already being inlined: {cycle}. Composition " +
+                "is COMPILE-TIME INLINING (decision 88): the child has no runtime instance, its markup is " +
+                "spliced into this mount(), and an @if guard around the recursive use becomes a runtime " +
+                "list() whose body is walked either way -- so the compiler cannot know where the recursion " +
+                "stops, and a cycle has no finite expansion here. Blazor instantiates the child at RUN time " +
+                "and evaluates the guard, so a guarded recursion does terminate there; the subset has no " +
+                "faithful mapping for that. Cut one edge of the cycle -- a recursive component tree needs a " +
+                "runtime instance per level, which is the spec 3 non-goal. Refusing to emit rather than " +
+                "descend until the process aborts.",
+                el.Source);
+            return null;
+        }
+
         // Two kinds of binding. A STATIC scalar (Name="World") folds to a JS string literal (#88). A
         // BOUND value (Value="@count") is the parent's translated EXPRESSION (decision 90): the parent
         // already compiled it (CollectComponentBindings harvested it into FreeSlots), so SlotJs is its
@@ -2367,9 +2428,11 @@ public sealed class TemplateCompiler
         var savedCode = _code;
         var savedRegions = _regions;
         var savedFragment = _fragment;
+        var savedComposing = _composing.ToArray();   // the chain the CONTENT below was written in
         var diagBefore = _diagnostics.Count;
 
         _file = childParse.FilePath;
+        _composing.Add(childFull);
         var (childMethod, childRegions) = PrepareComponent(childParse, childCode);
 
         string? result = null;
@@ -2417,12 +2480,13 @@ public sealed class TemplateCompiler
                 // The fragment travels with the PARENT context it was written in, so that when the child's
                 // @ChildContent is reached the parent's scope can be restored to compile it (decision 131).
                 _fragment = fragmentNodes.Count > 0
-                    ? new Fragment(fragmentNodes, el, savedCode, savedRegions, savedFile)
+                    ? new Fragment(fragmentNodes, el, savedCode, savedRegions, savedFile, savedComposing)
                     : null;
                 result = EmitNode(roots[0], parent: null);
             }
         }
 
+        _composing.RemoveAt(_composing.Count - 1);
         _file = savedFile;
         _code = savedCode;
         _regions = savedRegions;

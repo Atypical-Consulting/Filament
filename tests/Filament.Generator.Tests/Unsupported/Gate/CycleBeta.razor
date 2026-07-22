@@ -1,0 +1,8 @@
+@* The other half of the MUTUAL cycle (CycleMutual.razor). Its own guard is false for the Label
+   Alpha passes it, so the Blazor render stops here; the INLINER does not, because it never asks
+   what Label is. *@
+<em class="beta">@Label@if (Label == "deeper") { <CycleAlpha Label="a" /> }</em>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+}

@@ -1,0 +1,7 @@
+@* The shared bottom of Diamond.razor: reached through DiamondLeft, through DiamondRight, and twice
+   directly. Four occurrences of one file, none of them a cycle. *@
+<b class="leaf">@V</b>
+
+@code {
+    [Parameter] public string V { get; set; } = "";
+}

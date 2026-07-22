@@ -1,0 +1,7 @@
+@* The host for CycleCard.razor -- the cycle that runs through a component's own markup while it
+   also owns a RenderFragment (decision 169). Refused at the recursive use inside CycleCard.razor,
+   with the same located FIL0003 the markup-only cycles get.
+
+   Its twin Supported/Composition/NestedSame.razor is the shape that must NOT be refused: same two
+   tags, but the nesting is written by the parent and terminates. *@
+<div id="wrap"><CycleCard><b>y</b></CycleCard></div>
