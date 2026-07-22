@@ -239,6 +239,46 @@ public sealed class CSharpFrontEnd
         if (handlers is not null) foreach (var kv in handlers) _paramHandlers[kv.Key] = kv.Value;
     }
 
+    /// <summary>
+    /// The route parameters this page's own `@page` template declares, keyed by name (decision 163).
+    /// Blazor matches a route parameter to its `[Parameter]` case-INSENSITIVELY, and so does this.
+    /// </summary>
+    readonly Dictionary<string, RouteSegment> _routeParams = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The route parameters that found their `[Parameter]`, in declaration order: the route
+    /// template's spelling of the name, the JS signal it became, the C# name as written, and where —
+    /// the last two only so a name COLLISION can be reported at the declaration that caused it.</summary>
+    readonly List<(string RouteName, string Js, string Name, int At)> _routeSignals = [];
+
+    /// <summary>
+    /// Bind this component's own ROUTE parameters, from its own `@page` directive (decision 163). Call
+    /// BEFORE Compile, exactly like BindParameters.
+    ///
+    /// THE VALUE CHANNEL IS A SIGNAL, AND THAT IS THE WHOLE DESIGN. A composed `[Parameter]` folds to the
+    /// parent's expression because the parent is known at compile time; a ROUTE parameter's value exists
+    /// only while the page runs and CHANGES under it, because Blazor reuses the component when only the
+    /// route parameters moved. So the parameter becomes `const id = signal(__route.Id)`, a read of it is
+    /// the same live effect a reactively-bound parameter already is (decision 90), and the router hands
+    /// new values in through the channel mount() returns. Nothing new is invented: this reuses the
+    /// _paramEnv/_paramReactive path that composition already established.
+    /// </summary>
+    public void BindRouteParameters(IEnumerable<RouteSegment> parameters)
+    {
+        foreach (var s in parameters) _routeParams[s.Text] = s;
+    }
+
+    /// <summary>The route parameters that became signals: what the emitted mount() must accept and what
+    /// its returned channel must re-assign. Empty for every component that declares none, which is what
+    /// keeps `mount(target)` unchanged everywhere else.</summary>
+    public IReadOnlyList<(string RouteName, string Js, string Name, int At)> RouteChannel => _routeSignals;
+
+    /// <summary>Route parameter names that never found a `[Parameter]` to bind to. Blazor accepts this at
+    /// BUILD time and then fails at RUN time (the register measured `blazor-error-ui` on `/e/7`), so
+    /// refusing it is strictly better than what Blazor does, and never wrong.</summary>
+    public IEnumerable<string> UnboundRouteParameters =>
+        _routeParams.Keys.Where(n => !_paramsByName.ContainsKey(n)
+                                     && !_paramsByName.Keys.Any(k => string.Equals(k, n, StringComparison.OrdinalIgnoreCase)));
+
     /// <summary>The parent method an EventCallback [Parameter] aliases, or null (decision 130). The emit
     /// walk resolves `@onclick="OnBump"` through this BEFORE recording the handler, so what it records is
     /// the parent's `Inc` -- the thing that will actually be called.</summary>
@@ -1504,6 +1544,53 @@ public sealed class CSharpFrontEnd
             return;
         }
 
+        // A ROUTE PARAMETER (decision 163) -- this page's own `@page "/item/{Id:int}"` names it, so its
+        // value comes from the URL rather than from a composing parent. It is checked BEFORE the
+        // composition branches because it is a different supplier, not a different kind of parameter.
+        if (_routeParams.TryGetValue(name, out var seg))
+        {
+            // THE DECLARED TYPE MUST AGREE WITH THE CONSTRAINT. Blazor requires it too, and gets it wrong
+            // at RUN time; here it is a build error. The route's constraint decides what the router
+            // converts the segment to -- `:int` produces a JS number -- so a `[Parameter] public string
+            // Id` would receive a number and render it as one while the C# said string.
+            var want = seg.Constraint switch
+            {
+                null => SpecialType.System_String,
+                "int" => SpecialType.System_Int32,
+                "long" => SpecialType.System_Int64,
+                "bool" => SpecialType.System_Boolean,
+                _ => SpecialType.None,
+            };
+            if (type is null || type.SpecialType != want)
+            {
+                Refuse("route-parameter-type",
+                    $"the route parameter '{{{seg.Text}{(seg.Constraint is null ? "" : ":" + seg.Constraint)}}}' " +
+                    $"captures a '{seg.ClrType}', but '{name}' is declared '{type?.ToDisplayString() ?? "?"}'. " +
+                    "The route's constraint is what decides the captured type, so the two must agree -- " +
+                    $"declare it `[Parameter] public {seg.ClrType} {name} {{ get; set; }}` or change the " +
+                    "constraint. Refusing to emit.",
+                    p.Type.SpanStart, "FIL0002");
+                return;
+            }
+
+            // The signal, and the read that resolves to it. `@Id` in the markup becomes a LIVE effect on
+            // this signal for the same reason a reactively-bound parameter does (decision 90): the value
+            // really can change under the page, when the router reuses it across /item/7 -> /item/8.
+            var js = JsName(name);
+            _routeSignals.Add((seg.Text, js, name, p.Identifier.SpanStart));
+            _paramEnv[name] = js + ".value";
+            _paramReactive.Add(name);
+
+            _params.Add(new ParamInfo
+            {
+                Name = name,
+                Symbol = (IPropertySymbol)_model.GetDeclaredSymbol(p)!,
+                Type = type,
+            });
+            _paramsByName[name] = _params[^1];
+            return;
+        }
+
         // AN EVENTCALLBACK PARAMETER -- the child->parent half of composition (decision 130). It is not a
         // value the child holds: at the composition site it ALIASES one of the parent's methods, and the
         // child inlines into the parent's mount(), so raising it IS calling that method. The compiler
@@ -1882,9 +1969,12 @@ public sealed class CSharpFrontEnd
                 {
                     Refuse("unsupported-lifecycle",
                         $"'{name}' is not in the subset. A Filament module renders through signals -- there is " +
-                        "no re-render pass to hook and no parameter re-set to observe, so only the INIT pair has " +
-                        "a faithful meaning: OnInitialized/OnInitializedAsync run once, before the first paint " +
-                        "(decision 156). Refusing to emit.",
+                        "no re-render pass to hook, so only the INIT pair has a faithful meaning: " +
+                        "OnInitialized/OnInitializedAsync run once, before the first paint (decision 156). " +
+                        "A ROUTE parameter really is re-set on a parameter-only navigation (decision 163), but " +
+                        "it is re-set by assigning its signal, and every read of it is already an effect -- so " +
+                        "the re-render OnParametersSet exists to request has happened before it could run. " +
+                        "Refusing to emit.",
                         method.Identifier.SpanStart);
                     return;
                 }
@@ -2366,6 +2456,15 @@ public sealed class CSharpFrontEnd
     public List<string> EmitPrologue(IReadOnlySet<string> inlined)
     {
         var lines = new List<string>();
+
+        // ROUTE PARAMETERS FIRST (decision 163), because Blazor sets a component's parameters BEFORE
+        // anything else runs on it: a field initialiser or an OnInitialized body may read one, and it has
+        // to already hold the URL's value when it does.
+        foreach (var (routeName, js, _, _) in _routeSignals)
+        {
+            _primitives.Add("signal");
+            lines.Add($"const {js} = signal(__route.{routeName});");
+        }
 
         foreach (var f in _fields)
         {
@@ -4087,9 +4186,20 @@ public sealed class CSharpFrontEnd
     static string JsName(string name) =>
         name.Length > 0 && char.IsUpper(name[0]) ? char.ToLowerInvariant(name[0]) + name[1..] : name;
 
+    /// <summary>
+    /// Two C# members that become ONE JS binding.
+    ///
+    /// ROUTE PARAMETERS ARE IN THIS SET (decision 163), and they were added because leaving them out was
+    /// MEASURED, not imagined: `[Parameter] public int Id` beside `private int id` — legal C#, legal
+    /// Blazor — emitted `const id = signal(__route.Id);` followed by `const id = 5;`. That is invalid
+    /// JavaScript written at exit 0: a module that looks fine and does not load. A route parameter
+    /// declares a binding in mount()'s scope exactly as a field does, so it belongs to the same rule.
+    /// </summary>
     bool CheckJsNameCollisions()
     {
-        var all = _fields.Select(f => (f.Name, f.Js, f.At)).Concat(_methods.Select(m => (m.Name, m.Js, m.At)));
+        var all = _fields.Select(f => (f.Name, f.Js, f.At))
+            .Concat(_methods.Select(m => (m.Name, m.Js, m.At)))
+            .Concat(_routeSignals.Select(r => (r.Name, r.Js, r.At)));
         var dup = all.GroupBy(x => x.Js, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
         if (dup is null) return true;
 
@@ -4104,6 +4214,7 @@ public sealed class CSharpFrontEnd
     /// <summary>Every JS binding @code puts in mount()'s scope. The template must not shadow one.</summary>
     public bool IsJsNameTaken(string js) =>
         _fields.Any(f => f.Js == js) || _methods.Any(m => m.Js == js) ||
+        _routeSignals.Any(r => r.Js == js) ||
         _fields.Any(f => f.List is { } l && (l.Version == js || l.Changed == js));
 
     /// <summary>A synthesised binding name that cannot collide with one the author chose.</summary>

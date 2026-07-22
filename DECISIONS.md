@@ -5418,3 +5418,106 @@ incrémente le compteur de la carte ; #toggle démonte ET remonte les régions d
 formulaire), et le @bind PROPRE à la région du formulaire (frappe puis submit). Suite : **537
 tests** (453 générateur / 60 subset / 24 analyzer) + 214 runtime. Ceci est du travail d'honnêteté,
 pas de surface : un plantage et une perte silencieuse, tous deux sur des sources que Blazor compile.
+
+## 163. Les paramètres de route — le matcher réel, la préséance calculée à la COMPILATION, et la réutilisation d'instance
+
+**2026-07-22.** Ferme A9 et D12 du registre d'honnêteté. La 139 avait livré un routeur dont la table est
+appariée par ÉGALITÉ DE CHAÎNE. Pour `/` et `/about` ce n'est pas une approximation — c'est exact, et
+c'est ce que BENCH n°57 a mesuré. Pour `@page "/item/{Id:int}"` c'est un ÉCRAN BLANC : le littéral de
+route entrait verbatim dans la table, `/item/7` n'égalait rien, exit 0, aucun diagnostic — sur une page
+que Blazor rend parfaitement. `/h/{Id`, accolade non fermée, était admis pareil.
+
+**D12 avait RÉFUTÉ chaque pièce proposée, une par une, contre du Blazor réel.** Cette tranche répond à
+chacune, et la réponse est mesurée, pas argumentée :
+
+- **Le canal de valeur.** `mount(target)` n'avait qu'un argument : un groupe capturé n'avait nulle part
+  où aller. Une page qui capture prend désormais `mount(target, __route = {})`. Le défaut `= {}` est ce
+  qui laisse une page paramétrée se monter seule, sans routeur, comme tout autre module.
+- **La réutilisation d'instance.** Blazor NE recrée PAS un composant quand seuls ses paramètres de route
+  ont changé : son état survit et `OnInitialized` ne rejoue pas (le registre a mesuré n=3 à travers
+  `/item/7 -> /item/8`). Un routeur qui remonte inconditionnellement remet la page à zéro. Donc chaque
+  paramètre de route devient un SIGNAL — toute lecture de `@Id` est déjà un effet, par la 90 — et la page
+  RENVOIE le canal que le routeur appelle À LA PLACE d'un remontage. Rien n'est inventé : c'est le chemin
+  `_paramEnv`/`_paramReactive` que la composition avait déjà établi.
+- **La préséance.** D12 objectait qu'un classement serait DE NOUVEAUX OCTETS de routeur, contredisant la
+  revendication de coût. Il a raison — au RUNTIME. Alors la table est TRIÉE À LA COMPILATION, par les
+  chiffres de préséance d'ASP.NET Core eux-mêmes (littéral 1, paramètre contraint 2, paramètre nu 3, le
+  segment antérieur dominant) : le routeur garde son balayage linéaire et rencontre les routes dans
+  l'ordre de Blazor. L'ordre de Blazor, à ZÉRO octet.
+- **`:int`.** `NumberStyles.Integer` (espaces, un signe, rien d'autre) PLUS la plage Int32 — exactement
+  la paire que `TemplateCompiler` applique déjà à un `@bind` int, et pour la même raison. Blazor ne route
+  pas `/item/2147483648` ; un `Number()` nu y rend une page.
+- **`:long`.** BigInt (112). `/big/9007199254740993` est 2^53 + 1 ; un double rend ...992.
+- **Le catch-all et `:guid` sont REFUSÉS, pas approximés.** `/files` rend la page de `/files/{*Rest}`
+  avec `Rest = null` chez Blazor, donc un matcher qui exige les segments de queue tombe sur une AUTRE
+  page — D12 avait mesuré ça, et un refus n'est jamais faux là où un mauvais appariement rend la mauvaise
+  page. `:guid` : `System.Guid` n'est pas dans le sous-ensemble de types, donc le `[Parameter]` à nourrir
+  ne peut pas être déclaré ; et Blazor NORMALISE (formats N/B/P, rendu minuscule-tireté).
+
+**PAYER CE QU'ON UTILISE, UN CRAN PLUS BAS — et c'est ce qui garde la 139 intacte.** Une table SANS
+paramètre émet toujours le routeur de la 139, OCTET POUR OCTET : `samples/Routing/router.js` est
+inchangé, son snapshot tient, et BENCH n°57 n'est pas invalidé. Seule une table qui déclare un `{…}`
+reçoit le matcher segmenté, et seuls les convertisseurs ATTEIGNABLES sont émis (une app sans `:long`
+n'embarque pas BigInt). Côté page, pareil : `Home.g.js` garde `mount(target)`, sans second argument ni
+canal, alors même qu'il est compilé dans la même app que `Item.g.js`. Coût mesuré à nombre de pages ÉGAL
+(BENCH n°69) : **+298 B gzip / +255 B brotli**, et **0** pour qui ne s'en sert pas.
+
+**DEUX PORTES, ET AUCUNE NE SUBSUME L'AUTRE.** `canon` décide les OCTETS (ALPHA-ÉQUIVALENT à
+`samples/RouteParams/router.js`, 1 746 B minifiés / 730 tokens des deux côtés). Il ne peut pas décider le
+COMPORTEMENT — et sa propre limitation L3 dit que les clés de littéral objet lui sont invisibles, or la
+table de conversion EST un littéral objet. Donc `tools/route-contract.mjs` EXÉCUTE les octets émis dans
+un DOM : 20 étapes. **Chaque affirmation a un contrôle qui la fait ÉCHOUER**, et les quatre reproduisent
+exactement la divergence que D12 avait prédite :
+
+| contrôle | ce qu'on neutralise | ce que le contrat rapporte |
+|---|---|---|
+| 1 | le chemin de réutilisation | `#seen` attendu `"3"`, obtenu `"0"` — la divergence du registre, à l'identique |
+| 2 | le tri de préséance | `/tag/all` rend `"tag"` au lieu de `"all-tags"` |
+| 3 | le contrôle de plage Int32 | `/item/2147483648` rend une page que Blazor ne route pas |
+| 4 | BigInt remplacé par un double | `...993` rendu `...992` |
+
+**LE TÉMOIN DE PRÉSÉANCE A DÛ ÊTRE REFAIT, et c'est le contrôle qui l'a dit.** Le premier était
+`/item/new` contre `/item/{Id:int}` — ça RESSEMBLE à un test de préséance et n'en est pas un : `:int`
+rejette "new", donc le balayage atteint la page littérale quel que soit l'ordre. Contrôle 2 est resté
+VERT sur ce témoin. `/tag/all` contre `/tag/{Slug}` n'a pas d'échappatoire : un paramètre NU apparie
+"all" très bien, seul le rang décide. Les deux sont gardés, le faible étiqueté comme tel. Un cinquième
+contrôle — renommer les clés de `convert{}` — a servi à VÉRIFIER le partage des rôles entre les deux
+portes plutôt qu'à le supposer.
+
+**LE TÉMOIN `relative` A ÉTÉ RETIRÉ DU THEORY, pour la même raison.** `@page "relative"` n'atteint jamais
+le contrôle de slash initial du parser : Razor refuse la directive à `RZ9988` avant. Le contrôle reste
+(le parser doit être TOTAL), mais le test épingle désormais le message que l'utilisateur voit VRAIMENT —
+épingler le nôtre aurait documenté une règle que personne ne peut déclencher.
+
+**UN DÉFAUT INTRODUIT PAR CETTE TRANCHE, TROUVÉ EN LA SONDANT, ET FERMÉ.** Un paramètre de route déclare
+une liaison dans la portée de `mount()` exactement comme un champ, mais `CheckJsNameCollisions` ne
+regardait que `_fields` et `_methods`. Donc `[Parameter] public int Id` À CÔTÉ DE `private int id` — du
+C# légal, du Blazor légal — émettait `const id = signal(__route.Id);` puis `const id = 5;` : du
+JavaScript INVALIDE, écrit à exit 0. Un module qui a l'air correct et ne charge pas, c'est-à-dire
+précisément le mal-compilé silencieux que la section 10 interdit. Les paramètres de route rejoignent
+l'ensemble de collision ; refusé désormais `[name-collision]`, localisé sur la déclaration fautive,
+aucun fichier écrit. Trouvé en SONDANT le cas, pas en le raisonnant — et épinglé par
+`ARouteParameterThatCollidesWithAField_IsRefused_NotEmittedAsInvalidJs`.
+
+**ET UN SECOND, PRÉEXISTANT, RAMASSÉ EN PASSANT.** Le mode `--router` écrivait chaque page sur le disque
+AU FUR ET À MESURE de sa compilation, alors que les portes au NIVEAU DE L'APP — doublon (139), et
+désormais ambiguïté — ne tombent qu'après. Une table de routes non routable laissait donc une app à
+moitié émise : les modules de page présents, pas de routeur, exit 1. « Un refus n'écrit aucun fichier »
+est la règle que tout le reste de ce compilateur tient (`TemplateCompiler.Compile` la commente). Les
+pages sont maintenant RETENUES en mémoire jusqu'à ce que toutes les portes soient passées, puis écrites
+d'un bloc, routeur en dernier. Épinglé dans le test d'ambiguïté par `Assert.Empty(GetFiles("*.g.js"))`.
+
+**GÉNÉRATEUR SEUL, ZÉRO PRIMITIVE.** `git diff -- src/filament-runtime` VIDE : le routeur est du code
+d'APP, il n'importe aucune primitive, et le canal de paramètre est une affectation de signal. Le
+sous-ensemble de types est inchangé. `OnParametersSet` reste REFUSÉ — mais son message est corrigé, car
+il disait « aucun re-set de paramètre à observer » et c'est désormais faux : le re-set existe, il est
+l'affectation du signal, et le rendu qu'`OnParametersSet` sert à demander a déjà eu lieu avant qu'il pût
+tourner. Suite : **557 tests** (473 générateur / 60 subset / 24 analyzer) + 214 runtime.
+
+**RÉSERVE OUVERTE, DISCLOSÉE.** L'oracle est la sémantique Blazor DOCUMENTÉE plus `dotnet build` sur
+`baseline/RouteParams.Blazor` (Build succeeded, 0 warning) — PAS un pilotage navigateur du Blazor réel :
+le harnais Playwright n'est pas installable dans l'environnement où cette tranche a été écrite. Les
+divergences citées (réutilisation n=3, plage Int32, normalisation guid, préfixe catch-all) viennent des
+mesures que le registre avait DÉJÀ prises contre du Blazor réel ; ce qui n'a pas été re-mesuré en
+navigateur, c'est le contrat des 20 étapes CÔTÉ BLAZOR. À faire avant de citer cette tranche comme
+app-level.

@@ -160,6 +160,20 @@ public static class RazorFrontEnd
         return raw[1..^1];
     }
 
+    /// <summary>
+    /// A refusal ABOUT the route, located at the `@page` directive the author wrote (decision 163).
+    ///
+    /// The span is available for exactly the reason DirectiveSpyPass exists: Razor lowers `@page` into a
+    /// route-attribute node that keeps the value and LOSES the source, and a diagnostic without a
+    /// location is one the author cannot act on. FIL0003 — this is an out-of-subset Razor construct, and
+    /// the route template is Razor.
+    /// </summary>
+    public static Diagnostic RouteDiagnostic(ParseResult parse, string message)
+    {
+        var page = parse.Directives.FirstOrDefault(d => d.Name == "page");
+        return new Diagnostic("FIL0003", "unsupported-route", message, page.Source);
+    }
+
     /// <summary>An `@inject T Name` site, read back off the lowered IR (decision 133).</summary>
     public readonly record struct InjectSite(string TypeName, string MemberName);
 

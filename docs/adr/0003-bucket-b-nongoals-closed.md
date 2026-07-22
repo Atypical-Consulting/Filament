@@ -125,6 +125,18 @@ does not have to rediscover it:
 > `--router` mode, because a router genuinely needs the *set* of pages: the structural assumption ADR 0002
 > correctly identified.
 
+> **AMENDED (#163, BENCH n°69) — "routing" was closed; ROUTE PARAMETERS were not, and this ADR read as
+> though they were.** The router #139 shipped matches its table by *string equality*, which is exactly
+> right for `/` and `/about` and a **blank screen at exit 0** for `@page "/item/{Id:int}"` — the honesty
+> register logged that as A9 and logged as D12 the measurements refuting every naive fix. Closing it
+> needed a real matcher, Blazor's precedence, and a channel carrying captured values into the page.
+> The same pay-for-what-you-use rule was applied one level down, so **this outcome's numbers still
+> stand**: a table with no parameters emits #139's router byte for byte, and only a table declaring a
+> `{…}` pays the measured **+298 B gzip** (isolated at equal page count). Blazor's most-specific-wins
+> ordering costs **zero**, because the compiler sorts the table rather than the router ranking it at run
+> time. `:guid`, catch-all `{*Rest}` and optional `{id?}` remain **refused with a located diagnostic**,
+> which is what A9 asked for and what the register said a naive matcher must not do.
+
 ## Decision
 
 1. **Record all eleven as closed and measured** (#130–#139, BENCH n°49–n°57), each with its boundary

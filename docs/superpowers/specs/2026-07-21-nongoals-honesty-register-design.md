@@ -45,7 +45,7 @@ is also a result.
 | A6 | A named slot colliding with a sibling `.razor` emits the **decoy component** | A | `RenderFragment` #131 | `TemplateCompiler.cs:1808` `fragmentNodes`, resolved after sibling lookup |
 | A7 | A fragment forwarded two levels is **silently dropped** | A | `RenderFragment` #131 | `TemplateCompiler.cs:1512` `_fragment = null` in `EmitFragment` |
 | A8 | `@ref` on an element inside a region compiles to a free variable | A | `@ref` #132 | `TemplateCompiler.cs:1436` `RefTargetJs` |
-| A9 | A parameterised/constrained `@page` is emitted verbatim into an equality table | A | routing #139 | `RouterEmitter.cs:73`, `RazorFrontEnd.cs:152` `RouteOf` |
+| A9 | A parameterised/constrained `@page` is emitted verbatim into an equality table → **CLOSED #163** | A | routing #139 | `RouterEmitter.cs:73`, `RazorFrontEnd.cs:152` `RouteOf` |
 | A10 | Second and later `@page` directives are silently dropped | A | routing #139 | `RazorFrontEnd.cs:152` `RouteOf` = `FirstOrDefault` |
 | A11 | `EndsWith("HttpClient")` admits a valid typed client and rewrites its URL | A | DI #133/#147 | `TemplateCompiler.cs:381` |
 | A12 | `<CascadingValue IsFixed="true">` is silently ignored | A | cascade #134 | `TemplateCompiler.cs:1532` `EmitCascadingValue` (reads `Value`/`Name` only) |
@@ -76,7 +76,7 @@ is also a result.
 | D9 | Named fragment elements / multiple named fragments — **naive mapping refuted** | D | `RenderFragment` #131 | `TemplateCompiler.cs:1808` |
 | D10 | Explicit type argument `<Box TItem="int">` — **naive mapping refuted** | D | generics #135 | `TemplateCompiler.cs:1838` unknown-parameter check |
 | D11 | Namespace-qualified / subfolder `@inherits` base — **naive mapping refuted** | D | `@inherits` #136 | `TemplateCompiler.cs:333` |
-| D12 | Route parameters as a whole — **every proposed piece refuted** | D | routing #139 | `RouterEmitter.cs:44`, `mount(target)` has no parameter channel |
+| D12 | Route parameters as a whole — **every proposed piece refuted** → **CLOSED #163** | D | routing #139 | `RouterEmitter.cs:44`, `mount(target)` has no parameter channel |
 
 ---
 
@@ -354,6 +354,15 @@ last-created-wins, and `list()` never re-runs `create` for a persisting key, so 
 from Blazor's capture. That variant needs a Blazor browser oracle before it ships.
 
 ### A9 — a parameterised or constrained `@page` becomes a blank screen
+
+> **CLOSED — decision 163, BENCH n°69 (2026-07-22).** Not by the "honest floor" proposed below, but by
+> the larger slice D12 describes. A route template is now PARSED and gated: `{Id}`, `:int`, `:long` and
+> `:bool` compile through a real segment matcher, and every shape that cannot be converted exactly —
+> including `Hmalformed`'s `/h/{Id`, `Dcatch`'s `/{*slug}`, `Fopt`'s `/f/{Id:int?}`, `Gbogus`'s
+> `:notaconstraint` and `:guid` — is refused with a **located FIL0003**, which is what this entry asked
+> for. `Cdecl`'s "declared and simply unread" case compiles and renders. The correction recorded below —
+> that a route parameter with no matching `[Parameter]` is runtime-invalid Blazor — became its own
+> refusal rather than being imitated.
 
 **Witnesses.** `Cdecl.razor` (`@page "/c/{Id:int}"` + `[Parameter] public int Id`, unused in markup),
 `Dcatch` (`/{*slug}`), `Eplain` (`/e/{Id}`), `Fopt` (`/f/{Id:int?}`), `Gbogus` (`/g/{Id:notaconstraint}`),
@@ -1220,6 +1229,19 @@ have.
 to pass values into `mount()` — and it costs generated app bytes that must be disclosed in BENCH, exactly as
 decision 139 did.
 
+> **CLOSED — decision 163, BENCH n°69 (2026-07-22), on exactly those terms.** All three pieces shipped
+> together. The **value channel** is `mount(target, __route = {})`, added only to a page that captures.
+> **Instance reuse** is a channel the page RETURNS and the router calls instead of re-mounting, so the
+> `n=3` measurement above is reproduced rather than broken — neutralising that path is control 1, and it
+> reports `expected "3", got "0"`. **`:int`** ships `NumberStyles.Integer` + the Int32 range, the pair
+> this entry pointed at in `TemplateCompiler.cs:1412-1414`. **Precedence** is the one objection answered
+> by moving rather than paying: ranking at run time WOULD be new router bytes, so the compiler sorts the
+> table by ASP.NET Core's own precedence digits and the router keeps its linear scan — Blazor's ordering
+> at zero bytes. **`:guid` and the catch-all were NOT shipped**: both are refused with a located
+> diagnostic, because this entry's measurements are precisely why a naive version of either is wrong.
+> Cost disclosed as decision 139 did: **+298 B gzip**, isolated at equal page count, and **0** for an app
+> that declares no route parameter.
+
 ---
 
 ## Dismissed — probed, and not a defect
@@ -1312,6 +1334,18 @@ same-component route change does not tear down. Witnesses `Cdecl`, `Dcatch`, `Ep
 `Hmalformed`, `Two.razor`. **Generator-only in the sense that matters — `git diff -- src/filament-runtime` stays
 empty — but step (b)'s identity guard costs generated app bytes and must be disclosed in BENCH**, which is ADR
 0003's routing rule.
+
+> **STEP (a) SHIPPED — and went further than "refuse"; STEP (b) DID NOT.** Decision 163 / BENCH n°69.
+> Rather than refusing every `{`, the compiler now MATCHES `{Id}`, `:int`, `:long` and `:bool` and
+> refuses only what it cannot convert exactly (`*`, `?`, `:guid`, unknown constraints, malformed braces)
+> — the refusal this section asked for is what those shapes get, located, from the `@page` span. C5's
+> misdirected `[unresolved-name]` is gone: a route `[Parameter]` binds, and a mismatched one gets
+> `[route-parameter-type]`. The identity guard of step (b) shipped as part of it and its bytes are
+> disclosed (**+298 B gzip**, isolated).
+>
+> **A10 IS STILL OPEN.** `RouteOf` is still `Directives.FirstOrDefault(d => d.Name == "page")`, so a
+> component carrying two `@page` directives still has the second one silently dropped. Nothing in
+> decision 163 touched it, and the `Two.razor` witness still reproduces it.
 
 ### S7 — `@inject` gates tell the truth *(A11, C1, C7)*
 

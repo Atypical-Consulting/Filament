@@ -1,0 +1,13 @@
+@page "/flag/{On:bool}"
+
+@* `:bool` -- bool.TryParse, which is case-insensitive, so /flag/True and /flag/true both match and
+   /flag/yes matches NOTHING (there is no other two-segment /flag route, so it is the not-found page).
+
+   The value is read through an @if rather than rendered directly, and that is deliberate: C# renders a
+   bool as "True"/"False" and JS renders "true"/"false", so `@On` as text would be a casing divergence
+   that has nothing to do with routing. The branch witnesses the captured value without it. *@
+<div id="page"><h2 id="where">flag</h2>@if (On) { <span id="state">on</span> } else { <span id="state">off</span> }<a id="to-home" href="/">home</a></div>
+
+@code {
+    [Parameter] public bool On { get; set; }
+}

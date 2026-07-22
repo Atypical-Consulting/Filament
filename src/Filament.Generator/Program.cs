@@ -91,6 +91,7 @@ try
         var routerRuntime = ArgValue(args, "--runtime") ?? ResolveRuntimeSpecifier(routerOut);
 
         var pages = new List<RouterEmitter.Page>();
+        var emitted = new List<(string Out, string Js, string Source, string Route)>();
         foreach (var pageFile in pageFiles)
         {
             var pageParse = RazorFrontEnd.Parse(pageFile);
@@ -106,6 +107,16 @@ try
                 return 1;
             }
 
+            // THE ROUTE'S SHAPE IS GATED (decision 163). Before this, the literal was copied into an
+            // equality table unexamined, so `/item/{Id:int}` -- and even the unbalanced `/h/{Id` -- was
+            // admitted at exit 0 and became a blank screen with no diagnostic (register A9).
+            if (RouteTemplateParser.TryParse(route, out var routeError) is not { } template)
+            {
+                Console.Error.WriteLine($"{Path.GetFileName(pageFile)}: refusing to emit (1 diagnostic(s)):");
+                Console.Error.WriteLine($"  error {RazorFrontEnd.RouteDiagnostic(pageParse, routeError!)}");
+                return 1;
+            }
+
             var pageCompiler = new TemplateCompiler();
             var pageJs = pageCompiler.Compile(pageParse, routerRuntime, Path.GetFileName(pageFile));
             if (pageCompiler.Diagnostics.Count > 0)
@@ -116,20 +127,48 @@ try
                 return 1;
             }
 
+            // HELD, NOT WRITTEN YET (decision 163). The app-level checks below can still refuse the
+            // whole app, and "a refused compile writes no file" is the rule the rest of this compiler
+            // keeps. Writing each page as it compiled left a half-emitted app on disk whenever the
+            // route table turned out to be unroutable -- page modules present, no router, exit 1.
             var name = Path.GetFileNameWithoutExtension(pageFile);
-            var pageOut = Path.Combine(outDir, name + ".g.js");
-            File.WriteAllText(pageOut, pageJs);
-            Console.Error.WriteLine($"{pageFile} -> {pageOut} ({System.Text.Encoding.UTF8.GetByteCount(pageJs)} B)  route {route}");
-            pages.Add(new RouterEmitter.Page($"./{name}.g.js", route, "mount" + name));
+            emitted.Add((Path.Combine(outDir, name + ".g.js"), pageJs, pageFile, route));
+            pages.Add(new RouterEmitter.Page($"./{name}.g.js", template, "mount" + name));
         }
 
-        var duplicate = pages.GroupBy(p => p.Route, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1);
-        if (duplicate is not null)
+        // AMBIGUITY, which is duplication generalised (decision 163). Two IDENTICAL routes were already
+        // refused; `/item/{Id:int}` and `/item/{Slug}` are the same problem wearing a parameter -- Blazor
+        // throws on both ("The following routes are ambiguous"), because no ordering makes the second
+        // reachable. Constraints are deliberately NOT consulted, which is Blazor's own coarse rule.
+        for (var i = 0; i < pages.Count; i++)
+            for (var j = i + 1; j < pages.Count; j++)
+                if (pages[i].Route.Overlaps(pages[j].Route))
+                {
+                    Console.Error.WriteLine(
+                        $"error: the routes '{pages[i].Route.Raw}' and '{pages[j].Route.Raw}' are ambiguous - no " +
+                        "ordering makes both reachable, so one page would be unreachable. This is refused " +
+                        "rather than resolved by file order.");
+                    return 1;
+                }
+
+        // BLAZOR'S ORDER, DECIDED HERE SO THE ROUTER DOES NOT HAVE TO (decision 163). Blazor is
+        // most-specific-wins independently of declaration order; the emitted table is a linear scan. The
+        // ranking is therefore done at BUILD time -- it costs zero shipped bytes -- and only when a
+        // parameter exists, because sorting an all-literal table would reorder decision 139's emission
+        // for no gain and those routes are mutually exclusive anyway.
+        if (pages.Any(p => p.Route.HasParameters))
+            pages = pages
+                .OrderBy(p => p.Route.Precedence, StringComparer.Ordinal)
+                .ThenBy(p => p.Route.Segments.Count)
+                .ThenBy(p => p.Route.Raw, StringComparer.Ordinal)
+                .ToList();
+
+        // Every gate passed: NOW the app goes to disk, pages first, router last.
+        foreach (var (pageOut, pageJs, source, route) in emitted)
         {
+            File.WriteAllText(pageOut, pageJs);
             Console.Error.WriteLine(
-                $"error: two pages declare the route '{duplicate.Key}'. The first would always win and the " +
-                "second would be unreachable, so this is refused rather than resolved by file order.");
-            return 1;
+                $"{source} -> {pageOut} ({System.Text.Encoding.UTF8.GetByteCount(pageJs)} B)  route {route}");
         }
 
         var routerJs = RouterEmitter.Emit(pages);

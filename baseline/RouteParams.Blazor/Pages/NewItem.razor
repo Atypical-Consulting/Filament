@@ -1,0 +1,10 @@
+@page "/item/new"
+
+@* THE PRECEDENCE WITNESS. `/item/new` and `/item/{Id:int}` both have two segments and both could be
+   asked to match `/item/new`; Blazor picks this one, because a LITERAL segment is more specific than a
+   parameter -- and it picks it regardless of which page was declared first.
+
+   The emitted router is a linear scan, so the compiler sorts the table by ASP.NET Core's own precedence
+   digits before emitting it. That is why this page needs no ordering hint of its own, and why the
+   ranking costs zero bytes on the wire (decision 163). *@
+<div id="page"><h2 id="where">new</h2><a id="to-home" href="/">home</a></div>

@@ -257,6 +257,33 @@ public static class RepoPaths
     /// <summary>The router SPEC (decisions 51/139). Never edited to make a gate pass.</summary>
     public static string RouterAnswerKey => Path.Combine(Root, "samples", "Routing", "router.js");
 
+    /// <summary>
+    /// The ROUTE-PARAMETER app's pages (decision 163). A separate baseline from Routing.Blazor on
+    /// purpose: that app has no parameters, its router is decision 139's byte for byte, and BENCH n°57
+    /// measured it — widening it would have moved a number that is already published.
+    ///
+    /// The set is a deliberate spread rather than one example of each: every admitted constraint, a
+    /// literal that must outrank a bare parameter (TagAll), a literal that only LOOKS like it must
+    /// (NewItem — ':int' rejects "new" anyway, so it is the weak case, kept and labelled), and a page
+    /// with state of its own so instance reuse across a parameter-only navigation can be observed.
+    /// </summary>
+    public static string[] RouteParamsPages =>
+    [
+        Path.Combine(Root, "baseline", "RouteParams.Blazor", "Pages", "Home.razor"),
+        Path.Combine(Root, "baseline", "RouteParams.Blazor", "Pages", "Item.razor"),
+        Path.Combine(Root, "baseline", "RouteParams.Blazor", "Pages", "NewItem.razor"),
+        Path.Combine(Root, "baseline", "RouteParams.Blazor", "Pages", "Tag.razor"),
+        Path.Combine(Root, "baseline", "RouteParams.Blazor", "Pages", "TagAll.razor"),
+        Path.Combine(Root, "baseline", "RouteParams.Blazor", "Pages", "Big.razor"),
+        Path.Combine(Root, "baseline", "RouteParams.Blazor", "Pages", "Flag.razor"),
+    ];
+
+    /// <summary>The route-parameter router SPEC (decisions 51/163). Never edited to make a gate pass.</summary>
+    public static string RouteParamsAnswerKey => Path.Combine(Root, "samples", "RouteParams", "router.js");
+
+    /// <summary>The behavioural contract driver — what canon cannot decide (decision 163).</summary>
+    public static string RouteContract => Path.Combine(Root, "tools", "route-contract.mjs");
+
     public static string FormsRazor => Path.Combine(Root, "baseline", "Forms.Blazor", "App.razor");
 
     /// <summary>The forms SPEC (decisions 51/138). Never edited to make a gate pass.</summary>

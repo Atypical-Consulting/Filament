@@ -1,0 +1,12 @@
+@page "/tag/all"
+
+@* THE PRECEDENCE WITNESS THAT ACTUALLY BITES, and it exists because the obvious one does not.
+
+   `/item/new` against `/item/{Id:int}` looks like a precedence test and is not: ':int' REJECTS "new", so
+   the scan reaches the literal page whatever order the table is in. Neutralising the sort left the
+   contract green, which is how that was found.
+
+   This pair has no such escape. `/tag/{Slug}` is a BARE parameter, so it matches "all" perfectly well;
+   the only thing that sends /tag/all here rather than there is that a literal segment outranks a
+   parameter. Blazor picks this page, and it picks it regardless of declaration order. *@
+<div id="page"><h2 id="where">all-tags</h2><a id="to-home" href="/">home</a></div>

@@ -149,7 +149,7 @@ Across **161 recorded decisions** and **67 measured bench entries**, the compila
 | **Composition** | static-leaf, bound-parameter (reactive), multi-parameter and nested; `EventCallback` (child→parent); `RenderFragment`/`ChildContent` |
 | **Framework** | `@ref` · `@inject` (`IJSRuntime` + `HttpClient`) · JS interop · resolving `@using` · `CascadingParameter` · generics (`@typeparam`) · `@inherits` — all compiled away, [zero runtime bytes](./docs/adr/0003-bucket-b-nongoals-closed.md) |
 | **Forms** | `<EditForm>` · `<InputText>` · `@bind-Value` onto a model property (validation refused, not ignored) |
-| **Routing** | `@page` + a router **generated into the app** (425 B gzip; the shared runtime is untouched) |
+| **Routing** | `@page` + a router **generated into the app** (425 B gzip; the shared runtime is untouched) · **route parameters** — `{Id}`, `:int`, `:long`, `:bool` — with Blazor's precedence ranked at build time and **instance reuse** on a parameter-only navigation |
 | **Real-world I/O** | `DateTime.UtcNow`/`Now`/`Today` (the wall clock) · `Random` (seeded = the **exact** BCL sequence) · `HttpClient`→`fetch` + JSON (shape-gated) · **`JsonSerializer` + `localStorage` persistence** (the stored string byte-equal to System.Text.Json's) · **`OnInitialized(Async)`** (once, before first paint) |
 | **Tailwind / CSS** | every utility shape byte-faithful (variant `:`, fraction `/`, `[arbitrary]`, `-neg`) · reactive row classes on the loop variable · a scanned-sources build with a coverage gate ([the todo example](./examples/TodoTailwind)) |
 
@@ -179,6 +179,19 @@ exists only while the page runs, and pages un-mounted and re-mounted as it chang
 not a lookup. So the router is **generated into the app, never added to the shared runtime**: an app
 that does not route still pays nothing, and the routed app measures **1,641 B gzip**, 6.1× under C1.
 That number is reported *because* this is the one feature that could not be compiled away.
+
+**Route parameters cost a further 298 B gzip — and only if you use one.** `@page "/item/{Id:int}"` used
+to be a **blank screen at exit 0**: the route literal went into a string-equality table, nothing ever
+equalled it, and no diagnostic said so. Closing that meant a real matcher, Blazor's precedence, and a
+channel carrying captured values into the page (decision 163). The same pay-for-what-you-use rule
+applies one level down: a route table with **no** parameters still emits decision 139's router *byte for
+byte*, and only a table that declares a `{…}` pays the +298 B. Blazor's most-specific-wins ordering
+costs **zero** bytes, because the compiler sorts the table instead of the router ranking it at run time.
+Two things are deliberately still refused rather than approximated — **catch-all** `{*Rest}` (Blazor
+renders the page for the prefix too, so a naive matcher routes to the *wrong page*) and **`:guid`**
+(`System.Guid` is not in the type subset, and Blazor normalises the value). The claims are *run*, not
+asserted: `node tools/route-contract.mjs` drives the emitted bytes through 20 steps in a DOM, each with
+a control that makes it fail.
 
 **Two are closed narrowly, and say so:** `@inject` admits exactly the services with a compile-time
 meaning — `IJSRuntime` (the host scope) and `HttpClient` (fetch) — because a general container

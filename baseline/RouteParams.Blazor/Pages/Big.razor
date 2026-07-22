@@ -1,0 +1,10 @@
+@page "/big/{N:long}"
+
+@* `:long` -> BigInt (decision 112, applied to a route parameter). 9007199254740993 is one past 2^53:
+   a JS number CANNOT hold it and would render ...992. The URL in Home.razor is that exact value, so the
+   rendered text is the measurement -- a number-backed converter shows the wrong digit. *@
+<div id="page"><h2 id="where">big</h2><span id="n">@N</span><a id="to-home" href="/">home</a></div>
+
+@code {
+    [Parameter] public long N { get; set; }
+}

@@ -405,8 +405,35 @@ public sealed class TemplateCompiler
     {
         _file = parse.FilePath;
 
+        // THE PAGE COMPILES ITS OWN ROUTE PARAMETERS, FROM ITS OWN @page (decision 163) -- the router is
+        // not consulted, and that is deliberate. A page module is byte-identical whether it is routed or
+        // compiled on its own (decision 139's claim, and RoutingTests asserts it); if the parameters came
+        // from the router, the same file would compile to two different modules. The route template is in
+        // the file, so the file is where it is read.
+        RouteTemplate? route = null;
+        if (RazorFrontEnd.RouteOf(parse) is { } raw)
+        {
+            route = RouteTemplateParser.TryParse(raw, out var routeError);
+            if (route is null)
+                _diagnostics.Add(RazorFrontEnd.RouteDiagnostic(parse, routeError!));
+            else
+                _code.BindRouteParameters(route.Parameters);
+        }
+
         var (method, regions) = PrepareComponent(parse, _code);
         _regions = regions;
+
+        // A ROUTE PARAMETER WITH NO [Parameter] IS REFUSED. Blazor accepts this at build time and then
+        // FAILS at run time -- the register measured `blazor-error-ui` and an empty page on `/e/7` -- so
+        // refusing is strictly better than what Blazor does here, and it can never be wrong: the value
+        // the router captured would otherwise have nowhere to go.
+        if (route is not null)
+            foreach (var unbound in _code.UnboundRouteParameters)
+                _diagnostics.Add(RazorFrontEnd.RouteDiagnostic(parse,
+                    $"the route template '{route.Raw}' captures '{{{unbound}}}', but this page declares no " +
+                    $"matching `[Parameter]`. Blazor compiles that and then fails in the browser; the captured " +
+                    $"value has nowhere to go. Add `[Parameter] public … {unbound} {{ get; set; }}` or drop the " +
+                    "parameter from the route. Refusing to emit."));
 
         // NOT an early return, on purpose: the template gate must report too. A file
         // whose @code is out of subset AND whose template is out of subset should say
@@ -2747,7 +2774,13 @@ public sealed class TemplateCompiler
             sb.Append('\n');
         }
 
-        sb.Append("export function mount(target) {\n");
+        // ROUTE PARAMETERS WIDEN mount()'s SIGNATURE, AND ONLY THEIRS (decision 163). A page that
+        // captures nothing keeps `mount(target)` byte for byte -- the register's D12 named the missing
+        // second argument as the blocker, and the fix is to add it exactly where it is earned. The
+        // default `= {}` is what lets a parameterised page still be mounted directly, without a router,
+        // the way every other sample module is.
+        var channel = _code.RouteChannel;
+        sb.Append(channel.Count > 0 ? "export function mount(target, __route = {}) {\n" : "export function mount(target) {\n");
 
         if (prologue.Count > 0)
         {
@@ -2781,6 +2814,21 @@ public sealed class TemplateCompiler
 
         sb.Append("\n  // -- attach: last, so the effects' first run made no MutationRecord ----------\n");
         Emit(sb, _attach);
+
+        // THE REUSE CHANNEL (decision 163). Blazor does NOT re-create a component when only its route
+        // parameters changed: the instance is reused, its state survives, and OnInitialized does not run
+        // again -- the register measured exactly that (n=3 across /item/7 -> /item/8). Assigning the
+        // signals is all it takes to reproduce it, because every read of a route parameter is already an
+        // effect on them; the router calls this instead of clearing the target and mounting afresh.
+        if (channel.Count > 0)
+        {
+            sb.Append("\n  // -- the route-parameter channel: the router calls this instead of re-mounting --\n");
+            sb.Append("  return (__p) => {\n");
+            foreach (var (routeName, js, _, _) in channel)
+                sb.Append($"    {js}.value = __p.{routeName};\n");
+            sb.Append("  };\n");
+        }
+
         sb.Append("}\n");
         return sb.ToString();
     }

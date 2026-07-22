@@ -5608,3 +5608,107 @@ pas du Blazor valide n'est pas un témoin (RZ9979). §8 inchangé.
 ---
 
 *Fin de l'entrée n°68. Ne pas modifier — ajouter une entrée n°69 pour toute rectification.*
+
+## Entrée n°69 — 2026-07-22 — Phase 4 : les paramètres de route — le coût du matcher, isolé, et 20 étapes exécutées
+
+**Ce qui est mesuré.** Deux choses, et elles sont séparées exprès : (1) le COÛT du matcher paramétré
+sur le fil, isolé à nombre de pages ÉGAL ; (2) le COMPORTEMENT des octets émis, exécuté dans un DOM.
+Décision 163, qui ferme A9 et D12 du registre d'honnêteté.
+
+**Pourquoi ce n'est PAS une re-mesure de BENCH n°57.** La 139 a livré un routeur apparié par égalité de
+chaîne, mesuré à 425 B gzip. Cette tranche ne le modifie pas : une table de routes SANS paramètre émet
+toujours ces octets-là, à l'identique — `samples/Routing/router.js` est inchangé et son snapshot tient.
+L'entrée n°57 n'est donc ni corrigée ni supersédée. Ce qui est ajouté ici est une SECONDE émission, que
+seule une table déclarant un `{…}` reçoit.
+
+### 1. Le coût, isolé
+
+Deux apps de **deux pages chacune**. La seule variable est de savoir si l'une des routes capture une
+valeur — pas le nombre de pages, pas la taille des pages.
+
+```
+dotnet run --project src/Filament.Generator -- --router <out>/Router.g.js Home.razor About.razor    # / + /about
+dotnet run --project src/Filament.Generator -- --router <out>/Router.g.js Home.razor Item.razor     # / + /item/{Id:int}
+# esbuild 0.28.1 --minify --target=es2022 ; gzip niveau 9 ; brotli par défaut
+```
+
+| Table de routes | minifié | gzip | brotli |
+|---|---:|---:|---:|
+| `/` + `/about` (littéral — le routeur de la 139) | 681 B | **402 B** | 332 B |
+| `/` + `/item/{Id:int}` (matcher segmenté) | 1 205 B | **700 B** | 587 B |
+| **le matcher paramétré coûte** | **+524 B** | **+298 B** | **+255 B** |
+
+**Et il coûte 0 à qui ne s'en sert pas** — ce n'est pas une figure de style, c'est la ligne du haut : la
+même app littérale émet exactement les octets qu'elle émettait avant la tranche. La préséance de Blazor,
+elle, coûte **zéro dans les deux cas** : la table est triée à la COMPILATION, le routeur garde son
+balayage linéaire. Les convertisseurs sont émis PAR ESPÈCE atteignable — une app sans `:long` n'embarque
+pas BigInt (épinglé par `OnlyTheConvertersTheAppCanReach_AreEmitted`).
+
+L'app témoin complète (7 pages, les quatre espèces de paramètre) : **4 947 B** bruts, **1 746 B**
+minifiés, **896 B** gzip, **774 B** brotli.
+
+### 2. Le comportement, exécuté
+
+`canon` décide les octets : **ALPHA-ÉQUIVALENT** à `samples/RouteParams/router.js`, 1 746 B minifiés /
+**730 tokens des deux côtés**. Il ne décide PAS le comportement, et sa limitation **L3** est LIVE pour
+cette paire — les clés de littéral objet lui sont invisibles, or la table de conversion EST un littéral
+objet. D'où la seconde porte :
+
+```
+node tools/route-contract.mjs <dir-avec-Router.g.js>
+```
+
+esbuild bundle le routeur ÉMIS et ses pages (define `__FILAMENT_STATS__=false` — le runtime de PROD),
+happy-dom fournit le DOM, et les globales sont PUBLIÉES et non injectées : ce qui tourne est le code
+livré, pas une variante.
+
+**20/20 étapes.** Appariement, les quatre convertisseurs, préséance, décodage d'URL, les règles de
+segment de Blazor (slash final, slash doublé, littéral insensible à la casse), nettoyage de la cible sur
+un non-appariement, et la réutilisation d'instance.
+
+**CHAQUE AFFIRMATION A UN CONTRÔLE QUI LA FAIT ÉCHOUER** — une porte verte qui ne peut pas rougir ne
+mesure rien (c'est la 71). Les quatre reproduisent exactement la divergence que D12 avait prédite :
+
+| # | ce qu'on neutralise dans les octets émis | verdict | ce que le contrat rapporte |
+|---|---|---|---|
+| 1 | le chemin de réutilisation (le routeur remonte, comme la 139) | **19/20** | `#seen` attendu `"3"`, obtenu `"0"` |
+| 2 | le tri de préséance (`/tag/all` remis après `/tag/{Slug}`) | **19/20** | rend `"tag"` au lieu de `"all-tags"` |
+| 3 | le contrôle de plage Int32 (`Number()` nu) | **19/20** | `/item/2147483648` attendu `null`, obtenu `"item"` |
+| 4 | BigInt remplacé par un double pour `:long` | **19/20** | `["big","9007199254740993"]` obtenu `["big","9007199254740992"]` |
+
+**Le témoin de préséance a été REFAIT parce que le contrôle 2 est resté vert sur le premier.**
+`/item/new` contre `/item/{Id:int}` ressemble à un test de rang et n'en est pas un : `:int` rejette
+"new", donc la page littérale est atteinte quel que soit l'ordre. `/tag/all` contre `/tag/{Slug}` n'a pas
+d'échappatoire — un paramètre NU apparie "all", seul le rang décide. Les deux sont gardés, le faible
+étiqueté comme faible dans le contrat lui-même.
+
+**Invariants.** `git diff -- src/filament-runtime` **VIDE** — générateur seul, ZÉRO primitive : le
+routeur est du code d'APP et n'importe aucune primitive du runtime (épinglé par
+`EmittedRouter_ImportsNoRuntimePrimitive`), et le canal de paramètre est une affectation de signal. La
+porte de taille du runtime **PASSE**. Suite : **557 tests** (473 générateur / 60 subset / 24 analyzer)
++ 214 runtime.
+
+**ÉCART DE MESURE SUR LA PORTE DE TAILLE, RELEVÉ ET NON ABSORBÉ.** `npm run size` rapporte ici
+**1 950 B / 2 048 B** (PASS, marge 98 B), là où le dépôt publie **1 943 B** partout ailleurs. Ce n'est
+PAS cette tranche : `git diff -- src/filament-runtime` est vide et `git status` sur ce dossier aussi —
+aucun octet de runtime n'a bougé. La cause probable est l'environnement, pas la source : la mesure de
+référence a été prise sous **Node v26.5.0** et celle-ci sous **v25.6.1**, et la taille gzip dépend de
+l'implémentation qui compresse. C'est relevé ici plutôt que corrigé en silence, parce qu'un chiffre
+publié qui ne se reproduit pas est exactement ce que ce registre existe pour ne pas laisser passer. À
+re-mesurer sous l'environnement épinglé avant de citer 1 943 B à nouveau.
+
+**RÉSERVE, OUVERTE ET DISCLOSÉE — à lire avant de citer cette entrée.** L'oracle Blazor est
+DOCUMENTAIRE plus `dotnet build baseline/RouteParams.Blazor` (Build succeeded, 0 Warning, 0 Error :
+les sept pages sont du Blazor valide). Le contrat des 20 étapes n'a **PAS** été exécuté CÔTÉ BLAZOR —
+le harnais Playwright n'était pas installable dans l'environnement de cette tranche. Les divergences
+citées (réutilisation n=3, plage Int32, normalisation `:guid`, préfixe catch-all) proviennent de mesures
+que le registre d'honnêteté avait déjà prises contre du Blazor RÉEL, pas de cette entrée. Cette entrée
+mesure donc **le coût sur le fil** et **la conformité de Filament à un contrat écrit**, et non une
+égalité observée des deux côtés comme l'entrée n°68. Un contrat côté Blazor est le préalable à toute
+citation app-level de cette tranche.
+
+**ET AUCUN LABEL BENCH N'A ÉTÉ AJOUTÉ, EXPRÈS.** `bench/build-filament.sh` ne connaît pas de
+`filament-routeparams-gen`, et `baseline/RouteParams.Blazor` n'est pas publié dans `bench/publish/`.
+Câbler un label que personne n'a jamais construit ni mesuré le ferait passer pour un membre de
+l'ensemble mesuré alors qu'il ne l'est pas — ce serait contredire la réserve ci-dessus d'une ligne plus
+bas. Le label s'ajoute AVEC la première exécution navigateur des deux côtés, pas avant.

@@ -1,0 +1,20 @@
+@page "/item/{Id:int}"
+
+@* THE INSTANCE-REUSE WITNESS, and the reason this page carries state it does not otherwise need.
+
+   Blazor does NOT re-create a component when only its route parameters changed: navigating /item/7 ->
+   /item/8 reuses the instance, so #seen keeps whatever it was bumped to and OnInitialized does not run
+   again. Only #id changes. A router that re-mounts unconditionally shows #seen back at 0, which is the
+   divergence the honesty register measured (n=3 -> n=0) and decision 163 closes. *@
+<div id="page"><h2 id="where">item</h2><span id="id">@Id</span><span id="seen">@seen</span><button id="bump" @onclick="Bump">bump</button><a id="to-8" href="/item/8">8</a><a id="to-home" href="/">home</a></div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private int seen = 0;
+
+    private void Bump()
+    {
+        seen++;
+    }
+}

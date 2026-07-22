@@ -2,10 +2,11 @@
   "name": "filament-tools",
   "version": "0.0.0",
   "private": true,
-  "description": "Repo-root tooling dependencies. tools/canon.mjs — the alpha-equivalence checker the generator test suite gates on — minifies through esbuild, resolved as `npx --no-install esbuild` from the repo root. Declaring it here is what makes that resolve on a clean clone; without it the call silently depends on a warm ~/.npm/_npx cache and the gate tests fail everywhere else. Pinned exactly: canon.mjs asserts this version (EXPECTED_ESBUILD) because the minified token stream is what alpha-equivalence is computed over, so a different esbuild is a different answer key.",
+  "description": "Repo-root tooling dependencies. tools/canon.mjs — the alpha-equivalence checker the generator test suite gates on — minifies through esbuild, resolved as `npx --no-install esbuild` from the repo root. Declaring it here is what makes that resolve on a clean clone; without it the call silently depends on a warm ~/.npm/_npx cache and the gate tests fail everywhere else. Pinned exactly: canon.mjs asserts this version (EXPECTED_ESBUILD) because the minified token stream is what alpha-equivalence is computed over, so a different esbuild is a different answer key. happy-dom is here for the same reason one level on: tools/route-contract.mjs RUNS the emitted router in a DOM (decision 163), because alpha-equivalence proves the bytes and only execution proves the behaviour — and a tool under tools/ resolves from this file, not from src/filament-runtime's.",
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",
     "esbuild": "0.28.1",
+    "happy-dom": "20.0.11",
     "tailwindcss": "4.3.3"
   }
 }

@@ -106,6 +106,14 @@ examples/TodoTailwind/wwwroot/app.css
 # it is committed.
 tests/Filament.Generator.Tests/Snapshots/*.received.js
 
+# RouteParamTests emits its routed app INSIDE the repo (decision 163) rather than into the system
+# temp dir, because the behavioural contract RESOLVES the runtime import and bundles it -- a fixture
+# outside the tree cannot reach src/filament-runtime, and the generator dies at FIL-WIRING before it
+# ever parses the route. Every test deletes its own directory; these patterns are the backstop for a
+# run that was killed between the emit and the cleanup.
+samples/RouteParams/.gen-*/
+samples/RouteParams/.route-*/
+
 # Editor/tooling scratch, never committed.
 .idea/
 .claude/

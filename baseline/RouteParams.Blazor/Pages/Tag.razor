@@ -1,0 +1,9 @@
+@page "/tag/{Slug}"
+
+@* A BARE parameter: no constraint, so the captured value is the URL segment as a string -- URL-DECODED,
+   which is what makes /tag/hello%20world render "hello world" rather than the escape. *@
+<div id="page"><h2 id="where">tag</h2><span id="slug">@Slug</span><a id="to-home" href="/">home</a></div>
+
+@code {
+    [Parameter] public string Slug { get; set; } = "";
+}

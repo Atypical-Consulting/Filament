@@ -432,6 +432,22 @@ public static class Run
         return Exec("dotnet", args);
     }
 
+    /// <summary>
+    /// --router with an explicit runtime specifier. The overload above hardcodes a depth-2 relative
+    /// path, which is right for the canon gates -- they never RESOLVE the import, they only compare
+    /// tokens. The behavioural contract (decision 163) does resolve it: it bundles the emitted app and
+    /// runs it, so it needs an output directory whose depth it can state.
+    /// </summary>
+    public static (int exit, string stdout, string stderr) RouterWithRuntime(
+        string routerOut, string runtime, params string[] pages)
+    {
+        var dll = Path.Combine(RepoPaths.Root, "src", "Filament.Generator", "bin",
+            Configuration, "net8.0", "Filament.Generator.dll");
+        Assert.True(File.Exists(dll), $"generator not built at {dll}");
+        string[] args = [dll, "--router", routerOut, .. pages, "--runtime", runtime];
+        return Exec("dotnet", args);
+    }
+
     public static (int exit, string stdout, string stderr) Node(params string[] args) => Exec("node", args);
 
     const string Configuration =

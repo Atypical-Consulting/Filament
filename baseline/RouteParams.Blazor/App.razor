@@ -1,0 +1,8 @@
+@* Blazor's routing host, identical to Routing.Blazor's -- see that file for why Filament has no
+   equivalent of it. What this baseline adds over that one is PARAMETERS: the routes below capture
+   values out of the URL, which is the thing decision 163 measures. *@
+
+<Router AppAssembly="@typeof(Program).Assembly">
+    <Found Context="routeData"><RouteView RouteData="@routeData" /></Found>
+    <NotFound><p id="missing">not found</p></NotFound>
+</Router>
