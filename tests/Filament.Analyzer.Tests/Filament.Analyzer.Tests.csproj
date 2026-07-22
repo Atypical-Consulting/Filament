@@ -8,7 +8,7 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" Version="1.1.2" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Analyzer.Testing" Version="1.1.4" />
     <!-- Raise the Roslyn floor to the analyzer's 4.8.0; the testing package declares only a floor,
          so NuGet otherwise resolves 1.0.1 and the analyzer fails to load (CS1705). Proven in Task 0. -->
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
