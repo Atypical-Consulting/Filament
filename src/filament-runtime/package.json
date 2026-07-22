@@ -26,7 +26,7 @@
     "verify": "npm run build && npm run typecheck && FILAMENT_REQUIRE_DIST=1 npm test && npm run size"
   },
   "devDependencies": {
-    "esbuild": "^0.25.10",
+    "esbuild": "^0.28.0",
     "happy-dom": "^20.0.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4"
