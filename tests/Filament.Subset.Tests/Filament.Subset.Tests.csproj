@@ -10,7 +10,7 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
     <!-- Filament.Subset marks Roslyn PrivateAssets=all, so it does not flow transitively;
          the tests construct real compilations and need their own Roslyn reference. -->
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/Filament.Subset/Filament.Subset.csproj" />
