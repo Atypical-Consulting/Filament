@@ -1739,6 +1739,10 @@ public sealed class TemplateCompiler
     /// parent's translated expression in scope, keyed by its C# TYPE, for the duration of its children.
     /// Because the whole composition inlines into one mount(), a descendant's [CascadingParameter] then
     /// binds to that expression directly -- the cascade IS lexical scope, and it costs nothing at runtime.
+    ///
+    /// IsFixed IS REFUSED (decision 167), and it used to be IGNORED: it changes the cascade's UPDATE
+    /// SEMANTICS for its consumers, both candidate mappings were measured against Blazor, and both
+    /// render the wrong DOM. See the block below for the numbers.
     /// </summary>
     void EmitCascadingValue(ComponentIntermediateNode node, string? parent)
     {
@@ -1752,6 +1756,36 @@ public sealed class TemplateCompiler
                 "<CascadingValue> needs a Value=\"@…\" expression. A cascade with nothing to cascade would " +
                 "put the type's default in scope and let descendants render it as real data. Refusing to emit.",
                 node.Source);
+            return;
+        }
+
+        // IsFixed IS NOT DECORATION (decision 167). It changes WHEN a consumer sees a new value: a fixed
+        // cascade registers no subscription, so a consumer whose own parameters do not change never sees
+        // one again -- while a consumer re-parameterised for any OTHER reason is still re-supplied the
+        // supplier's LIVE value. Measured on two consumers under one fixed cascade, Blazor renders
+        // 1,1,1 for the static one and 1,2,3 for the re-parameterised one.
+        //
+        // Here a cascade is LEXICAL SCOPE and the whole composition inlines into one mount(): there is no
+        // per-consumer render pass for that rule to hang on. The obvious approximation -- fold the value
+        // once at mount -- was MEASURED too, and it renders 1,1,1 for BOTH: it fixes the first consumer
+        // and breaks the second. So this is refused rather than approximated, and refused for ANY value:
+        // admitting the literal `false` would be a second matching rule and a second set of failure modes
+        // (@expr, casing, an unquoted token) for a form that is already the default, exactly the argument
+        // that keeps Name out below.
+        if (node.Children.OfType<ComponentAttributeIntermediateNode>()
+                .FirstOrDefault(a => a.AttributeName == "IsFixed") is { } isFixed)
+        {
+            Diag("unsupported-cascade",
+                "<CascadingValue IsFixed=\"…\"> changes the UPDATE SEMANTICS of the cascade for its " +
+                "consumers, and this compiler will not approximate it. Blazor's fixed cascade registers no " +
+                "subscription: a consumer whose own parameters never change never sees a new value again, " +
+                "while a consumer re-parameterised for any other reason IS re-supplied the live one -- " +
+                "measured on two consumers under one fixed cascade, Blazor renders 1,1,1 and 1,2,3. A " +
+                "cascade here is LEXICAL SCOPE, inlined into one mount(), with no per-consumer render for " +
+                "that rule to attach to; freezing the value at mount was measured and renders 1,1,1 for " +
+                "BOTH, right for the first consumer and wrong for the second. Drop IsFixed: the live " +
+                "cascade is faithful and costs nothing to keep. Refusing to emit rather than ignore it.",
+                isFixed.Source ?? node.Source);
             return;
         }
 

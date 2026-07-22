@@ -1,0 +1,32 @@
+@* THE SILENT DIVERGENCE decision 167 CLOSED, found by PROBING the eleven spec 3 non-goals ADR 0003
+   declared closed (register defect A12).
+
+   <CascadingValue IsFixed="true"> used to compile at exit 0 with NO diagnostic, emitting the exact
+   bytes the same source without IsFixed emits -- the attribute erased, not implemented. Measured
+   against Blazor on this very shape:
+
+     BLAZOR   : {"initial":{"a":"1","b":"1"},"afterClick1":{"a":"1","b":"2"},"afterClick2":{"a":"1","b":"3"}}
+     FILAMENT : {"initial":{"a":"1","b":"1"},"afterClick1":{"a":"2","b":"2"},"afterClick2":{"a":"3","b":"3"}}
+
+   IsFixed IS NOT "read the value once". A fixed cascade registers no subscription, so #a -- whose own
+   [Parameter] Tag never changes and which is therefore never re-parameterised -- never sees a new
+   value. #b's Tag DOES change on every click, so Blazor re-parameterises it and re-supplies the
+   supplier's LIVE value: it advances 1 -> 2 -> 3 UNDER A FIXED CASCADE.
+
+   THE OBVIOUS FIX IS ALSO WRONG, AND THAT IS WHY THIS IS A REFUSAL. Folding the value once at mount
+   (`const _casc0 = level.value;`) renders 1,1,1 for BOTH consumers: right for #a, wrong for #b. A
+   cascade here is LEXICAL SCOPE inlined into one mount(), and there is no per-consumer render pass
+   for "re-supplied on re-parameterisation" to attach to. Refused, located on the IsFixed value, with
+   the remedy in the message.
+
+   Supported/Gate/CascadeTwoConsumers.razor is THE SAME FILE WITHOUT IsFixed, and it compiles: this
+   fixture refuses for IsFixed and for nothing else.
+
+   VALID BLAZOR: dotnet build of this source in a real Blazor WebAssembly project succeeds. *@
+<div id="wrap"><CascadingValue Value="@level" IsFixed="true"><GaugeA Tag="static" /><GaugeB Tag="@tick" /></CascadingValue><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int level = 1;
+    private string tick = "t";
+    void Inc() { level++; tick = tick + "!"; }
+}

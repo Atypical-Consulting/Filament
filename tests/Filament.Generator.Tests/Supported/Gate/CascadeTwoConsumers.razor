@@ -1,0 +1,17 @@
+@* THE CONTROL FOR decision 167, AND IT IS THE SAME FILE ONE ATTRIBUTE SHORTER.
+
+   Character for character Unsupported/Gate/CascadeIsFixed.razor without ` IsFixed="true"`. It
+   compiles clean, so the refusal next door is located on IsFixed and on NOTHING else -- not on the
+   two consumers under one cascade, not on GaugeB's bound Tag, not on the shape of the markup.
+
+   It is also the WORKAROUND the diagnostic names: dropping IsFixed leaves a live cascade, which is
+   the one measured against Blazor by the 'cascade' contract (BENCH n°53) and costs nothing to keep.
+
+   VALID BLAZOR: dotnet build of this source in a real Blazor WebAssembly project succeeds. *@
+<div id="wrap"><CascadingValue Value="@level"><GaugeA Tag="static" /><GaugeB Tag="@tick" /></CascadingValue><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int level = 1;
+    private string tick = "t";
+    void Inc() { level++; tick = tick + "!"; }
+}

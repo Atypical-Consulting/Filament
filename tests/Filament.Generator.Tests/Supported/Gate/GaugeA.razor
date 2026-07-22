@@ -1,0 +1,9 @@
+@* The static consumer of CascadeTwoConsumers.razor's cascade -- the sibling child composition
+   resolves. Identical to Unsupported/Gate/GaugeA.razor: a child is resolved as a SAME-DIRECTORY
+   .razor, so the control needs its own copy beside the parent that composes it. *@
+<span id="a">@Level</span>
+
+@code {
+    [Parameter] public string Tag { get; set; } = "";
+    [CascadingParameter] public int Level { get; set; }
+}
