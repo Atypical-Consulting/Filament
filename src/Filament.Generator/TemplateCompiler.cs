@@ -402,9 +402,9 @@ public sealed class TemplateCompiler
 
         // @inject (decision 133), harvested BEFORE the compilation so the injected name RESOLVES in it.
         // Razor drops the directive's span during lowering, so the location comes from DirectiveSpyPass.
-        foreach (var inject in RazorFrontEnd.Injects(cls))
+        var bound = new HashSet<InjectedService>();
+        foreach (var (inject, span) in InjectsInSourceOrder(parse, cls))
         {
-            var span = parse.Directives.FirstOrDefault(d => d.Name == "inject").Source;
             var typeName = inject.TypeName.Trim();
             var member = inject.MemberName.Trim();
 
@@ -416,12 +416,41 @@ public sealed class TemplateCompiler
             // implementations at RUNTIME, which a static module has no home for, and a user's own service
             // type lives in a .cs file this compiler never sees. Both are separate questions; neither is
             // quietly approximated here.
-            if (typeName.EndsWith("IJSRuntime", StringComparison.Ordinal) && member.Length > 0)
+            //
+            // The test is on the type NAME, EXACTLY as written, and decision 166 is why it is not a
+            // suffix. `EndsWith("HttpClient")` admitted `@inject WrapperHttpClient Api` -- a typed client
+            // registered with `AddHttpClient<WrapperHttpClient>(c => c.BaseAddress = new Uri(".../api/"))`,
+            // valid Blazor, measured on the wire as a request for `/api/weather` -- and erased its call to
+            // `fetch('weather')`, a DOCUMENT-relative URL. A different request, with no diagnostic. Two
+            // characters of a name are not a type.
+            var service = InjectableService(typeName);
+
+            // ONE NAME PER SERVICE, and the SECOND one is refused rather than dropped. Blazor happily
+            // takes two `@inject HttpClient` under two names: it holds two references to one object. This
+            // compiler holds a NAME, because the service is erased and the name is the only trace of it
+            // left -- so a second binding overwrites the first, and the overwritten name goes on LOOKING
+            // declared while resolving to nothing. Which of the two got dropped even depended on the walk
+            // order this same decision just corrected. A located refusal naming the workaround is the
+            // honest answer; binding both would mean carrying a set through every erasure site, which is a
+            // different question and is not quietly approximated here.
+            if (service != InjectedService.None && member.Length > 0 && !bound.Add(service))
+            {
+                Diag("unsupported-directive",
+                    $"@inject {typeName} {member} is a SECOND @inject of {typeName} in this component. " +
+                    "Filament binds one name per injectable service: the service itself is ERASED at " +
+                    "compile time (decisions 133/147), so the name is all that is left of it, and a second " +
+                    "name would silently resolve to nothing while still looking declared. Inject it once " +
+                    "and use that one name. Refusing to emit.",
+                    span);
+                continue;
+            }
+
+            if (service == InjectedService.JsRuntime && member.Length > 0)
             {
                 code.BindJsRuntime(member);
                 continue;
             }
-            if (typeName.EndsWith("HttpClient", StringComparison.Ordinal) && member.Length > 0)
+            if (service == InjectedService.HttpClient && member.Length > 0)
             {
                 code.BindHttpClient(member);
                 continue;
@@ -449,6 +478,75 @@ public sealed class TemplateCompiler
         _diagnostics.AddRange(code.Diagnostics);
 
         return (method, plan.Regions.Select(r => r.Container).ToHashSet());
+    }
+
+    /// <summary>The two services an <c>@inject</c> may name, or neither (decision 166).</summary>
+    enum InjectedService { None, JsRuntime, HttpClient }
+
+    /// <summary>
+    /// Which framework service an <c>@inject</c> names — read from the type EXACTLY as the author wrote
+    /// it, because that string is the only evidence there is.
+    ///
+    /// WHY A NAME AND NOT A SYMBOL. The gate runs BEFORE <c>code.Compile(…)</c> builds the semantic
+    /// model, and it has to: the injected member must be declared into the compiled source or the name
+    /// does not bind at all. So there is no symbol to ask. That is a real limit, and it is stated rather
+    /// than papered over: a user type genuinely SPELLED <c>IJSRuntime</c> or <c>HttpClient</c> in a
+    /// namespace this compiler never reads would still be taken for the framework's. What decision 166
+    /// closes is the far wider hole a SUFFIX left open — every name merely ENDING in one of the two.
+    ///
+    /// <c>global::</c> is stripped because the alias qualifier denotes the same type and nothing else;
+    /// any other spelling (an alias, a partially-qualified name, a nested type) is refused, with the
+    /// message naming the two that are admitted.
+    /// </summary>
+    static InjectedService InjectableService(string typeName)
+    {
+        const string alias = "global::";
+        var t = typeName.StartsWith(alias, StringComparison.Ordinal) ? typeName[alias.Length..] : typeName;
+        return t switch
+        {
+            "IJSRuntime" or "Microsoft.JSInterop.IJSRuntime" => InjectedService.JsRuntime,
+            "HttpClient" or "System.Net.Http.HttpClient" => InjectedService.HttpClient,
+            _ => InjectedService.None,
+        };
+    }
+
+    /// <summary>
+    /// Every <c>@inject</c> paired with the span the author wrote it at, IN SOURCE ORDER.
+    ///
+    /// THE TWO LISTS ARE ANTI-PARALLEL, measured (decision 166). <c>DirectiveSpyPass</c> records the
+    /// directives in document order; the lowered <c>ComponentInjectIntermediateNode</c> children arrive
+    /// in REVERSE document order, and both are spanless by the time the emitter walks them. Pairing them
+    /// by INDEX therefore looks right and is wrong in the one direction nobody checks — which is exactly
+    /// how the old <c>FirstOrDefault(d => d.Name == "inject")</c> came to point every refusal at the
+    /// FIRST inject in the file, an @inject that is often the admitted one.
+    ///
+    /// So they are paired by the directive's own TOKENS — the type and the member, as written, which is
+    /// the same text the lowered node carries. Each site is CLAIMED once, so two injects that differ only
+    /// in position still get distinct carets. A site that matches nothing yields a null span: a caret this
+    /// compiler cannot justify is not printed, and it is never guessed.
+    /// </summary>
+    static List<(RazorFrontEnd.InjectSite Site, SourceSpan? Span)> InjectsInSourceOrder(
+        ParseResult parse, IntermediateNode cls)
+    {
+        var sites = parse.Directives.Where(d => d.Name == "inject").ToList();
+        var claimed = new bool[sites.Count];
+        var paired = new List<(RazorFrontEnd.InjectSite Site, SourceSpan? Span, int Order)>();
+
+        foreach (var inject in RazorFrontEnd.Injects(cls))
+        {
+            var at = -1;
+            for (var i = 0; i < sites.Count && at < 0; i++)
+                if (!claimed[i] && sites[i].Tokens.Count >= 2 &&
+                    string.Equals(sites[i].Tokens[0].Trim(), inject.TypeName.Trim(), StringComparison.Ordinal) &&
+                    string.Equals(sites[i].Tokens[1].Trim(), inject.MemberName.Trim(), StringComparison.Ordinal))
+                    at = i;
+
+            if (at >= 0) claimed[at] = true;
+            paired.Add((inject, at >= 0 ? sites[at].Source : null, at >= 0 ? at : int.MaxValue));
+        }
+
+        // OrderBy is stable, so unmatched sites keep their relative order at the end rather than shuffling.
+        return paired.OrderBy(p => p.Order).Select(p => (p.Site, p.Span)).ToList();
     }
 
     public string Compile(ParseResult parse, string runtimeSpecifier, string sourceName)

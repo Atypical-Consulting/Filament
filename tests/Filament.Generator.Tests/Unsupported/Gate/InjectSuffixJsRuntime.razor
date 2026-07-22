@@ -1,0 +1,10 @@
+@inject MyIJSRuntime JS
+
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private async Task Go()
+    {
+        await JS.InvokeVoidAsync("localStorage.setItem", "fil", "hello");
+    }
+}

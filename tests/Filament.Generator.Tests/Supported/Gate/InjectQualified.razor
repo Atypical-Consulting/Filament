@@ -1,0 +1,16 @@
+@using Microsoft.JSInterop
+@inject global::Microsoft.JSInterop.IJSRuntime JS
+@inject System.Net.Http.HttpClient Http
+
+<p id="out">@msg</p>
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private string msg = "idle";
+
+    private async Task Go()
+    {
+        msg = await Http.GetStringAsync("data/hello.txt");
+        await JS.InvokeVoidAsync("localStorage.setItem", "fil", msg);
+    }
+}

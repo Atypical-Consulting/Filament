@@ -1,0 +1,13 @@
+@inject WrapperHttpClient Api
+
+<p id="out">@val</p>
+<button id="go" @onclick="Go">go</button>
+
+@code {
+    private string val = "idle";
+
+    private async Task Go()
+    {
+        val = await Api.GetStringAsync("weather");
+    }
+}

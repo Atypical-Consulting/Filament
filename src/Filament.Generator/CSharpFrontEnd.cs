@@ -169,6 +169,23 @@ public sealed class CSharpFrontEnd
 
     public void BindJsRuntime(string name) => _jsRuntime = name;
 
+    /// <summary>
+    /// Is this identifier the name an <c>@inject</c> bound, and if so WHICH service — so a bare read of it
+    /// is refused for the true reason instead of being reported as an undeclared name (decision 166).
+    ///
+    /// It answers with the three things the message needs: what the service IS, the calls that erase it,
+    /// and the decision that says why. Kept here, next to the two fields, because those fields are the
+    /// only record this compiler keeps of an <c>@inject</c> ever having happened.
+    /// </summary>
+    (string Type, string Calls, string Decision)? InjectedServiceName(string name) =>
+        _jsRuntime is { } js && string.Equals(js, name, StringComparison.Ordinal)
+            ? ("IJSRuntime", "InvokeVoidAsync(\"path\", …) and InvokeAsync<T>(\"path\", …), whose dotted " +
+               "path IS the emitted JS call", "decision 133: the service denotes the host global scope")
+        : _httpClient is { } http && string.Equals(http, name, StringComparison.Ordinal)
+            ? ("HttpClient", "GetFromJsonAsync<T>(url), GetStringAsync(url) and PostAsJsonAsync(url, value), " +
+               "which become the fetch itself", "decision 147: in a browser an HttpClient IS fetch")
+        : null;
+
     /// <summary>Every method body, TRANSLATED DURING Compile() and cached. See _sealed.</summary>
     readonly Dictionary<string, List<string>> _bodies = new(StringComparer.Ordinal);
 
@@ -3422,6 +3439,22 @@ public sealed class CSharpFrontEnd
                     "position its content is inlined at. There is no value here to combine with anything. " +
                     "Refusing to emit.",
                     id.SpanStart);
+
+            // AN INJECTED SERVICE READ AS A VALUE (decision 166). The name is NOT unresolved: the author
+            // wrote the @inject, this compiler admitted it, and the name binds. What it does not have is a
+            // VALUE. Both admitted services are compile-time ERASURES -- IJSRuntime denotes the host global
+            // scope (decision 133), HttpClient denotes fetch (decision 147) -- so the emitted module holds
+            // no binding for either, and `@JS` has nothing to print, concatenate or compare. They are
+            // admitted in ONE position, as the RECEIVER of the calls that erase, and the message says so
+            // instead of telling the author their program has no injected services in it.
+            case var _ when InjectedServiceName(id.Identifier.Text) is { } svc:
+                Refuse("unsupported-expression",
+                    $"'{id.Identifier.Text}' is an @inject'd {svc.Type} read as a VALUE. It is not a value " +
+                    "here: it names a service Filament ERASES at compile time, so the emitted module holds " +
+                    $"no binding for it at all. {svc.Type} is admitted in ONE position, as the receiver of " +
+                    $"the calls that erase -- {svc.Calls} ({svc.Decision}). Refusing to emit.",
+                    id.SpanStart);
+                return "/*refused*/";
 
             default:
                 Refuse("unresolved-name",

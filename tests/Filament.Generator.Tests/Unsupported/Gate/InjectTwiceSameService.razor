@@ -1,0 +1,13 @@
+@inject HttpClient Http
+@inject HttpClient Backup
+
+<p id="out">@msg</p>
+
+@code {
+    private string msg = "idle";
+
+    private async Task Go()
+    {
+        msg = await Http.GetStringAsync("data/hello.txt");
+    }
+}
