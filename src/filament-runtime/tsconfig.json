@@ -13,6 +13,10 @@
     "declaration": true,
     "emitDeclarationOnly": true,
     "outDir": "dist",
+    // Explicit, though TypeScript 5 infers exactly this from include. TypeScript 7 stops inferring
+    // and errors (TS5011) instead, so stating it is what keeps `npm run build` working across both.
+    // Same value either way: the .d.ts layout under dist/ is unchanged, which the build proves.
+    "rootDir": "src",
     "skipLibCheck": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
