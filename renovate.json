@@ -5,8 +5,19 @@
   "baseBranchPatterns": ["main"],
   "packageRules": [
     {
-      "description": "Microsoft.AspNetCore.Razor.Language is deliberately frozen at 6.0.36. The generator reads Razor's internal syntax tree through a narrow seam; a version bump is a migration, not a dependency update. See docs/adr/0001-eol-razor-mitigation.md.",
-      "matchPackageNames": ["Microsoft.AspNetCore.Razor.Language"],
+      "description": "Microsoft.AspNetCore.Razor.Language and Microsoft.CodeAnalysis.Razor are deliberately frozen at 6.0.36. The generator reads Razor's internal syntax tree through a narrow seam; a version bump is a migration, not a dependency update. ADR 0001 pins the pair together (both are listed in its opening snippet), so both are matched here. See docs/adr/0001-eol-razor-mitigation.md.",
+      "matchPackageNames": [
+        "Microsoft.AspNetCore.Razor.Language",
+        "Microsoft.CodeAnalysis.Razor"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Microsoft.CodeAnalysis.CSharp(.Workspaces) is deliberately frozen at 4.8.0. It is not the newest Roslyn that works — it is the LOWEST one the net10 analyzer host will load, chosen by spike so the netstandard2.0 Filament.Analyzer loads across the widest range of IDE/SDK hosts, with TypeSubset.Classify restricted to stable Roslyn surface to keep that floor honest. Raising the reference raises the minimum host Roslyn every consumer needs, and CI cannot catch that: every job runs dotnet-version 10.0.x, so a green run says nothing about the older hosts the pin exists to serve. Moving this floor is a deliberate decision that requires re-running the host-compatibility spike, not a dependency update. See docs/superpowers/plans/2026-07-18-analyzer-csharp-subset.md (Task 0, RESOLVED). Microsoft.CodeAnalysis.CSharp.Analyzer.Testing is deliberately NOT matched here — it is a 1.x test-only helper and tracks its own line.",
+      "matchPackageNames": [
+        "Microsoft.CodeAnalysis.CSharp",
+        "Microsoft.CodeAnalysis.CSharp.Workspaces"
+      ],
       "enabled": false
     }
   ]
