@@ -40,6 +40,15 @@ Blazor's component model is excellent. Its *delivery* is the cost. To render a c
 
 > **The question Filament asks:** what if the component model stayed, and the runtime left?
 
+## Features
+
+- **Razor → JS compiler** — reads the same `.razor` files Blazor compiles and lowers them, with Roslyn, to plain imperative JavaScript at **build time**: no template to parse at runtime, no virtual DOM to diff.
+- **Sub-2 KB signals runtime** — component state becomes a `signal()`, each binding compiles to exactly one `effect()`; the shared runtime stays byte-frozen at **1,943 B** no matter how large the app.
+- **Broad compilable C# subset** — control flow (`@if`/`@foreach`), LINQ, collections, records, `@bind`, `EditForm`/`InputText`, `@inject` (`IJSRuntime`/`HttpClient`), `CascadingParameter`, generics, and routing (incl. typed route parameters) — every widening verified byte-for-byte against a Blazor-faithful answer key.
+- **Fails loud, not silent** — a construct outside the subset raises a located `FIL0001`/`FIL0002` diagnostic and writes no file, instead of emitting silently-wrong JavaScript.
+- **Developer tooling** — `dotnet new filament` project template, `Filament.Sdk` + `Filament.Templates` NuGet packages, a Roslyn analyzer with author-time diagnostics, and a browser demo/playground for trying components live.
+- **Benchmarked against Blazor** — wire weight, DOM writes, and speed are measured against Blazor WASM (interpreted and AOT) on real apps, with every figure and its disclosed reserve logged in [`BENCH.md`](./BENCH.md).
+
 ## How it works
 
 Filament reads the **same `.razor` file Blazor compiles** and lowers it — with Roslyn — to plain, imperative JavaScript at **build time**. Static structure becomes create-once DOM calls. State becomes a **signal**. Each binding becomes exactly one **effect**. There is no template to parse at runtime and no virtual DOM to diff.
@@ -266,6 +275,16 @@ dotnet run --project src/Filament.Generator -- \
 - playwright
 
 <!-- portfolio-techstack:end -->
+
+## Roadmap
+
+- [ ] Support catch-all route segments (`{*Rest}`) and `:guid` route constraints — currently refused rather than approximated
+- [ ] Add form validation (`<DataAnnotationsValidator>` and friends) — currently refused, not silently ignored
+- [ ] Migrate off the pinned, out-of-support `Microsoft.AspNetCore.Razor.Language` 6.0.36 dependency (tracked in [ADR 0001](./docs/adr/0001-eol-razor-mitigation.md))
+- [ ] Broaden `@inject`/`@inherits` beyond the two compile-time-resolvable cases (`IJSRuntime`/`HttpClient`, a sibling Razor base)
+- [ ] Test the compile-time model against a real, larger-scale application — the open question is scale, not surface
+
+See the [open issues](https://github.com/Atypical-Consulting/Filament/issues) for the full list.
 
 <!-- portfolio-sections:start -->
 
