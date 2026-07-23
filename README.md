@@ -256,6 +256,17 @@ dotnet run --project src/Filament.Generator -- \
 
 ---
 
+<!-- portfolio-techstack:start -->
+
+## Tech Stack
+
+- **.NET 10**
+- Microsoft.AspNetCore.Components.WebAssembly
+- Microsoft.AspNetCore.Components.WebAssembly.DevServer
+- playwright
+
+<!-- portfolio-techstack:end -->
+
 <!-- portfolio-sections:start -->
 
 ## Contributing
