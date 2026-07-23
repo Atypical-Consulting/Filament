@@ -6,6 +6,11 @@
     // collection, so tsconfig.json stays on the narrower lib.
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "noEmit": true,
+    // tsconfig.json pins rootDir to src/ so TypeScript 7 stops erroring on the inferred value.
+    // This config also takes in test/ and scripts/, which sit OUTSIDE src/, so it must widen
+    // rootDir back to the package root or every test file fails TS6059. Nothing is emitted here,
+    // so the value only has to contain the inputs; it never shapes an output layout.
+    "rootDir": ".",
     "emitDeclarationOnly": false,
     "declaration": false,
     "noUnusedLocals": false,
