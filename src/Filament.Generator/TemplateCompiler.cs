@@ -404,29 +404,15 @@ public sealed class TemplateCompiler
         // The base must be a SIBLING .razor, because that is the only C# this compiler ever reads: a base
         // in a .cs file is invisible to it, and silently inheriting nothing would produce a module missing
         // exactly the state the author put in the base.
-        if (!string.Equals(cls.BaseType, ComponentBaseType, StringComparison.Ordinal))
-        {
-            var baseName = cls.BaseType ?? "";
-            var basePath = Path.Combine(Path.GetDirectoryName(parse.FilePath)!, baseName + ".razor");
-            var span = parse.Directives.FirstOrDefault(d => d.Name == "inherits").Source;
-
-            if (!File.Exists(basePath))
-            {
-                Diag("unsupported-directive",
-                    $"@inherits {baseName} resolves to a same-directory component {baseName}.razor, which does " +
-                    "not exist. A base component must be a sibling .razor file: it is the only C# this " +
-                    "compiler reads, so a base declared in a .cs file would silently contribute nothing and " +
-                    "leave the module missing exactly the state the base holds. Refusing to emit.",
-                    span);
-            }
-            else
-            {
-                var baseParse = RazorFrontEnd.Parse(basePath);
-                var baseCls = AccountForDocument(baseParse);
-                codeNodes.InsertRange(0, baseCls.Children.OfType<CSharpCodeIntermediateNode>()
-                    .Where(n => !string.IsNullOrWhiteSpace(RawText(n))));
-            }
-        }
+        //
+        // THE CHAIN, base-first, up to ComponentBase (decision 173). `@inherits` composes: a base may
+        // itself `@inherits` a grandparent, and Blazor merges the WHOLE chain. Testing BaseType once, on
+        // the derived, dropped every link past the first -- a grandparent that contributed only a hook
+        // vanished at exit 0 (register A4), and a name that lived a level up became a MISDIRECTED
+        // [unresolved-name] blaming the derived for a member the merge never read (register C6). The loop
+        // walks link by link so the SAME gates -- the missing sibling, the code-behind partial, the cycle
+        // -- guard EVERY link, each refusal located at the `@inherits` that declared that link.
+        MergeBaseChain(parse, cls, codeNodes);
 
         // @typeparam (decision 135), carried into the compilation so `T` RESOLVES there. Without this the
         // author's own type parameter is reported as an unresolved type -- the compiler blaming the author
@@ -512,6 +498,109 @@ public sealed class TemplateCompiler
         _diagnostics.AddRange(code.Diagnostics);
 
         return (method, plan.Regions.Select(r => r.Container).ToHashSet());
+    }
+
+    /// <summary>
+    /// Walk the <c>@inherits</c> chain from <paramref name="cls"/> up to <c>ComponentBase</c>, merging each
+    /// base's <c>@code</c> into <paramref name="codeNodes"/> base-first, and gating every link (decision 173).
+    ///
+    /// ONE link or a HUNDRED, the mapping is unchanged: inheritance is a compile-time question about where a
+    /// member's text lives, so the whole chain's members are merged into ONE compilation and lifted as if
+    /// they had been written here. A single-level chain merges exactly what decision 136 always merged, so
+    /// the shipped Inherits witness stays byte-identical; a deeper chain is the same step, repeated.
+    ///
+    /// Each link is guarded EXACTLY as decision 136 guarded the first, and the guards are why a chain can be
+    /// trusted rather than followed blindly:
+    ///  - a base whose sibling <c>.razor</c> does not exist is REFUSED, located at the <c>@inherits</c> that
+    ///    named it (the register D2 refusal, now firing at every link, not only the first);
+    ///  - a base whose C# is split into a code-behind partial (<c>Base.razor.cs</c> / <c>Base.cs</c>) is
+    ///    REFUSED, because this compiler reads only the <c>.razor</c> half and the partial's members --
+    ///    lifecycle overrides, methods, fields the template never names -- would otherwise be SILENTLY
+    ///    absent (register A3: exit 0, the base's <c>OnInitialized</c> gone, 0 rendered where Blazor renders 7);
+    ///  - a cycle (A : B : A) is REFUSED rather than followed forever;
+    ///  - and the unqualified <c>ComponentBase</c>, with no sibling of that name, IS the framework default --
+    ///    a no-op, exactly as the fully-qualified spelling already was (register C4). A sibling
+    ///    <c>ComponentBase.razor</c> legally shadows it in Blazor, so this fallback fires only AFTER the
+    ///    sibling check fails, never in place of it.
+    /// </summary>
+    void MergeBaseChain(ParseResult parse, ClassDeclarationIntermediateNode cls, List<CSharpCodeIntermediateNode> codeNodes)
+    {
+        // Seed the cycle guard with the derived's own path so a base that points back at it is caught.
+        var visited = new HashSet<string>(StringComparer.Ordinal) { Path.GetFullPath(parse.FilePath) };
+
+        var currentParse = parse;
+        var currentCls = cls;
+
+        while (!string.Equals(currentCls.BaseType, ComponentBaseType, StringComparison.Ordinal))
+        {
+            var baseName = currentCls.BaseType ?? "";
+            var dir = Path.GetDirectoryName(currentParse.FilePath)!;
+            var basePath = Path.Combine(dir, baseName + ".razor");
+            // The @inherits that declared THIS link lives in THIS link's file, so a refusal points there.
+            var span = currentParse.Directives.FirstOrDefault(d => d.Name == "inherits").Source;
+
+            if (!File.Exists(basePath))
+            {
+                // C4: the bare `ComponentBase`, with no sibling of that name to shadow it, is Razor's own
+                // default base -- writing it explicitly changes nothing, so there is nothing to merge and
+                // nothing to refuse. The fully-qualified spelling was already the default (it never entered
+                // this loop); this makes the unqualified one the default too.
+                if (string.Equals(baseName, "ComponentBase", StringComparison.Ordinal)) break;
+
+                Diag("unsupported-directive",
+                    $"@inherits {baseName} resolves to a same-directory component {baseName}.razor, which does " +
+                    "not exist. A base component must be a sibling .razor file: it is the only C# this " +
+                    "compiler reads, so a base declared in a .cs file would silently contribute nothing and " +
+                    "leave the module missing exactly the state the base holds. Refusing to emit.",
+                    span);
+                break;
+            }
+
+            // A CODE-BEHIND PARTIAL is a base whose C# is split across `Base.razor` and `Base.razor.cs`
+            // (or `Base.cs`). The sibling .razor exists, so File.Exists is satisfied -- but this compiler
+            // reads only the .razor, and a `partial class` puts real members (an OnInitialized override, a
+            // method, a field) in the .cs half this compiler never opens. Merging just the .razor half is
+            // inheriting HALF a base: exit 0, no diagnostic, the .cs members silently gone. Refused, located,
+            // rather than emitted wrong (register A3).
+            var codeBehind = new[] { baseName + ".razor.cs", baseName + ".cs" }
+                .Select(f => Path.Combine(dir, f))
+                .FirstOrDefault(File.Exists);
+            if (codeBehind is not null)
+                // REFUSE, but do NOT stop merging the .razor half. The located refusal above is already the
+                // whole answer -- nothing is emitted once a diagnostic exists -- and carrying on to merge the
+                // .razor's own @code keeps a member the author DID write there (register A3's `count`) from
+                // turning into a SECOND, misdirected [unresolved-name] blaming this component for a name that
+                // is declared, just in a half the merge stopped at (register C6). The refusal names the real
+                // cause once; the merge keeps the template honest about the rest.
+                Diag("unsupported-directive",
+                    $"@inherits {baseName} resolves to {baseName}.razor, but a code-behind partial " +
+                    $"{Path.GetFileName(codeBehind)} sits beside it. A partial class splits the base's C# " +
+                    "across files, and this compiler reads only the .razor half -- so the members in " +
+                    $"{Path.GetFileName(codeBehind)} (a lifecycle override, methods, fields) would be " +
+                    "silently absent from the module, leaving it missing exactly the state the base holds. " +
+                    $"Move that C# into {baseName}.razor's @code block, or inline the base. Refusing to emit " +
+                    "rather than inherit half a base.",
+                    span);
+
+            var baseFull = Path.GetFullPath(basePath);
+            if (!visited.Add(baseFull))
+            {
+                Diag("unsupported-directive",
+                    $"@inherits {baseName} closes an inheritance CYCLE -- {baseName}.razor is already a base " +
+                    "of this component through the chain above it. A cycle has no bottom to merge from, so " +
+                    "there is nothing honest to emit. Break the cycle. Refusing to emit.",
+                    span);
+                break;
+            }
+
+            var baseParse = RazorFrontEnd.Parse(basePath);
+            var baseCls = AccountForDocument(baseParse);
+            codeNodes.InsertRange(0, baseCls.Children.OfType<CSharpCodeIntermediateNode>()
+                .Where(n => !string.IsNullOrWhiteSpace(RawText(n))));
+
+            currentParse = baseParse;
+            currentCls = baseCls;
+        }
     }
 
     /// <summary>The two services an <c>@inject</c> may name, or neither (decision 166).</summary>

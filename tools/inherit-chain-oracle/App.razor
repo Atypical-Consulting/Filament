@@ -1,0 +1,17 @@
+@inherits Mid
+
+@* THE THREE-LEVEL @inherits ORACLE (register A4; the S8 slice). App : Mid : Grand : ComponentBase.
+
+   The state and behaviour live THREE levels up, in Grand; Mid is a pure passthrough; this component
+   supplies only the markup that uses them. Blazor merges the WHOLE chain, so #out renders the
+   grandparent's `count` and #inc calls the grandparent's `Inc()`. Two clicks: 0 -> 1 -> 2.
+
+   Before decision 173 Filament tested BaseType once, on the derived, so Grand vanished: a grandparent
+   whose only contribution was a hook dropped at exit 0 (this exact silent divergence, register A4). The
+   fix walks the chain base-first, lifting the grandparent's members as if written here. This oracle is
+   the measurement: Blazor's real ComponentBase + Renderer (bUnit) is the authority, the emitted module
+   in happy-dom must match it, byte for byte.
+
+   Measured browser-free, exactly as method-read-oracle (decision 172) measures reactivity. *@
+
+<div id="wrap"><span id="out">@count</span><button id="inc" @onclick="Inc">inc</button></div>

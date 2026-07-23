@@ -1,0 +1,8 @@
+@* A sibling component NAMED ComponentBase. In Blazor this shadows the framework base of the same
+   simple name, so `@inherits ComponentBase` in ShadowApp resolves HERE. It contributes the state the
+   derived renders. (Same-directory resolution is Filament's documented narrowing, decision 136 / ADR
+   0003 -- Blazor's real name resolution is the project compilation, not a filename lookup.) *@
+
+@code {
+    protected int currentCount = 5;
+}

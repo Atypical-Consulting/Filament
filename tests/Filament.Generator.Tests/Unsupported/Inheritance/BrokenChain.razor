@@ -1,0 +1,9 @@
+@inherits BrokenMid
+
+@* A BROKEN LINK deeper in the chain (decision 173, register A4). BrokenMid resolves (it is a sibling
+   .razor), but BrokenMid itself `@inherits BrokenGrand`, and BrokenGrand.razor does NOT exist. Before
+   decision 173 the merge tested BaseType once, on this file, never followed BrokenMid's own @inherits,
+   and dropped the broken link in SILENCE. Now the merge walks the chain, so the missing-sibling refusal
+   fires at EVERY link -- here, located at BrokenMid.razor's own @inherits line, not misdirected here. *@
+
+<div id="wrap"><span id="out">@count</span></div>

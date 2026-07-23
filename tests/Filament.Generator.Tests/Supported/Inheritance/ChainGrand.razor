@@ -1,0 +1,7 @@
+@* THE GRANDPARENT, three levels up from ChainApp. It holds the field and the method the whole chain
+   shares. It has no @inherits of its own, so BaseType is ComponentBase and the merge stops here. *@
+
+@code {
+    protected int count = 0;
+    protected void Inc() { count++; }
+}

@@ -1,0 +1,7 @@
+@* THE GRANDPARENT, three levels up from App. It holds the field the whole chain shares and the method
+   that writes it. No @inherits of its own, so the chain stops here at ComponentBase. *@
+
+@code {
+    protected int count = 0;
+    protected void Inc() { count++; }
+}

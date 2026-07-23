@@ -22,4 +22,13 @@
     <None Update="Snapshots/**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- A code-behind partial half under Unsupported/ is DATA for the generator's File.Exists probe
+         (register A3 / decision 173), not code to compile here: it is a `partial class` whose other
+         half is a .razor this project never compiles as a component. Excluded so the SDK's default
+         **/*.cs glob does not try to build it. -->
+    <Compile Remove="Unsupported/**/*.cs" />
+    <Compile Remove="Supported/**/*.cs" />
+  </ItemGroup>
+
 </Project>

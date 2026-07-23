@@ -6366,3 +6366,100 @@ Suite : **630 tests** (546 générateur / 60 subset / 24 analyzer) + 214 runtime
 hissé). Aucun témoin ne bascule refusé→supporté : le cas COMPILAIT déjà, il était silencieusement
 faux. Chaque fixture est du Blazor VALIDE — l'oracle compile `App.razor` par le SDK Razor, ce qui EST
 la garde RZ9979.
+
+## 173. `@inherits` dit ce qu'il a fait : la base est une CHAÎNE, gardée à CHAQUE maillon
+
+**2026-07-23.** Trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 — travail d'HONNÊTETÉ,
+pas de surface. La décision 136 a fermé `@inherits` au CENTRE : une base sœur `.razor` voit ses
+membres fusionnés dans la compilation du dérivé avant le hissage, exactement ce que Blazor rend. Le
+sondage a rouvert le fichier au BORD et y a trouvé DEUX divergences silencieuses de classe A (registre
+**A3**, **A4**) — la §10 interdit précisément le silence — plus trois défauts de qualité de refus qui
+vivent dans le MÊME morceau de code (registre **C4**, **C6**, et **C3** laissé ouvert).
+
+**A3 — une base à code-behind ne contribue RIEN, à exit 0.** `CounterBase.razor` (`@code { protected
+int count = 0; }`) PLUS `CounterBase.razor.cs` (`partial class … { override OnInitialized() => count =
+7; }`). La sœur `.razor` existe, donc `File.Exists(basePath)` est satisfait — mais ce compilateur ne
+lit QUE la moitié `.razor`, et la moitié `.cs` (un override de cycle de vie, des méthodes, des champs)
+disparaissait sans un mot. Mesuré par le registre : `#out` rend `0` là où Blazor rend `7`, exit 0,
+zéro diagnostic. Une classe `partial` est justement du C# réparti sur deux fichiers, et n'en lire
+qu'un c'est hériter d'une DEMI-base.
+
+**A4 — une chaîne à deux niveaux perd le grand-parent.** `App : BBase : CBase`. La fusion testait
+`BaseType` UNE fois, sur le dérivé, et ne suivait jamais le `@inherits` de la base. Un grand-parent qui
+ne contribuait qu'un hook s'évaporait à exit 0 (registre A4) ; un nom qui vivait un cran plus haut
+devenait un `[unresolved-name]` MAL DIRIGÉ accusant le dérivé d'un membre que la fusion n'avait jamais
+lu (registre C6). Le contrôle un maillon plus près refusait BRUYAMMENT — le niveau supplémentaire
+transformait un refus localisé en silence.
+
+**LE REMÈDE : la fusion est une BOUCLE, base d'abord, jusqu'à `ComponentBase`, et chaque garde de la
+décision 136 garde MAINTENANT chaque maillon.** `MergeBaseChain` marche la chaîne lien par lien :
+
+1. **A4.** Un maillon dont la sœur `.razor` n'existe pas est REFUSÉ, localisé au `@inherits` qui l'a
+   nommé (le refus D2 de la décision 136, désormais à CHAQUE maillon, pas seulement au premier). Un
+   maillon résoluble voit son `@code` fusionné et la boucle continue vers SON `@inherits`. Un
+   grand-parent en `@code` pur COMPILE ; un grand-parent qui appelle l'interop tombe sur la garde
+   `[unsupported-call]` déjà en place — un refus localisé, jamais un silence. Correction du registre :
+   ici aucun `File.Exists` ne peut échouer (les deux sœurs existent), donc ce que la récursion fait
+   VRAIMENT c'est porter le `@code` du grand-parent dans la compilation, où le cas pur compile et le
+   cas interop trébuche sur la garde existante.
+2. **A3.** Une base à code-behind — une sœur `.razor` FLANQUÉE d'un `.razor.cs` ou d'un `.cs` — est
+   REFUSÉE, localisée, en NOMMANT le fichier `.cs` qu'elle n'a pas pu lire. C'est le plancher honnête :
+   ne pas parser-et-épissurer le `.cs` (résolution de noms cross-fichier que ce compilateur ne fait
+   pas), mais REFUSER plutôt qu'hériter d'une demi-base en silence.
+3. **C4.** `@inherits ComponentBase` écrit à la main — le nom NON qualifié — est le DÉFAUT du
+   framework, un no-op : la version pleinement qualifiée y échappait déjà (elle n'entre jamais dans la
+   boucle), et le nom nu l'est aussi désormais. Correction du registre : le repli est un SECOURS APRÈS
+   la vérification d'existence de la sœur, JAMAIS un remplacement du test — une sœur `ComponentBase.razor`
+   ombrage LÉGALEMENT la base du framework en vrai Blazor, et ce couple compile en fusionnant la sœur.
+   Le repli ne se déclenche que quand `File.Exists` a échoué. Témoin `Supported/InheritShadow` (une
+   sœur `ComponentBase.razor` qui DOIT être fusionnée) vs `Supported/Inheritance/ExplicitComponentBase`
+   (aucune sœur → défaut), byte-identique à `PlainCounter` sans `@inherits`.
+4. **C6.** Sur un code-behind refusé, la fusion continue tout de même à porter la moitié `.razor` : le
+   refus localisé au-dessus EST toute la réponse (rien n'est émis dès qu'un diagnostic existe), et
+   poursuivre garde un membre que l'auteur A ÉCRIT là (le `count` du registre) de se transformer en un
+   SECOND `[unresolved-name]` mal dirigé. Un refus localisé nomme la vraie cause une fois ; la fusion
+   garde le template honnête sur le reste. Un cycle (`A : B : A`) est refusé, nommé, plutôt que suivi
+   sans fond.
+
+**CE QUE LE CORRECTIF NE FRANCHIT PAS (C3, laissé OUVERT et divulgué).** Le `@inject`/`@using` PROPRE
+d'une base n'est toujours pas porté dans la compilation fusionnée : le `@code` d'une base qui utilise
+`JS` ou `JsonSerializer` est donc encore refusé `[unsupported-call]` pour une directive que la fusion
+laisse tomber (registre C3). Ce n'est PAS une régression — c'est le statu quo de la décision 136,
+inchangé — et ce n'est pas une divergence silencieuse : c'est un refus localisé à la base. Le porter
+demande de restructurer la récolte des `@inject` et la portée des `@using` (aujourd'hui bornée au
+fichier courant par `IsFromThisFile`), ce qui déborde la tranche ; laissé à une tranche C3 dédiée.
+
+**MESURÉ (BENCH n°79)** contre du vrai Blazor, par un oracle NEUF, `tools/inherit-chain-oracle`. La
+chaîne à trois niveaux est une différence de RENDU et de COMPORTEMENT — un champ+méthode hérités TROIS
+niveaux plus haut doivent avancer à l'identique — donc elle se mesure. Pourquoi un oracle et pas
+Playwright : la harnais n'est pas installable ici et `wasm-tools` est absent (réserve de la BENCH
+n°69/n°70, décision 164). Pourquoi bUnit, exactement comme la décision 172 : qu'un champ+méthode
+hérités traversent une chaîne `App : Mid : Grand` et avancent au clic est décidé par l'héritage de
+membres C# plus `HandleEventAsync` → `StateHasChanged`, le MÊME code qu'une app WASM exécute ; bUnit
+héberge le vrai `ComponentBase` + `Renderer`. Côté Filament, le module émis du MÊME `App.razor` (la
+chaîne parcourue) monté dans happy-dom, cliqué deux fois. Les deux blobs JSON sont **identiques à
+l'octet** :
+
+```
+BLAZOR  : {"initial":"0","afterFirst":"1","afterSecond":"2"}
+FILAMENT: {"initial":"0","afterFirst":"1","afterSecond":"2"}
+```
+
+Les refus (A3, chaîne cassée, cycle) sont RIEN-À-OBSERVER : un refus n'émet aucun fichier, sa preuve
+EST le diagnostic localisé plus la byte-identité des témoins de contrôle. PAS de course de navigateur
+inventée ; PAS de bump HARNESS — ce n'est pas un contrat `bench.mjs`, l'empreinte du DOM-contract
+oracle n'a pas bougé, comme aux décisions 164, 171 et 172.
+
+**GÉNÉRATEUR SEUL.** `git diff -- src/filament-runtime` VIDE, runtime gelé à 1 943 B, ZÉRO primitive :
+la chaîne fusionne du TEXTE, elle n'a besoin d'aucune primitive de runtime. Le témoin `@inherits` livré
+(`baseline/Inherits.Blazor`, un seul niveau) reste **inchangé à l'octet** — une chaîne à un maillon
+fusionne exactement ce que la décision 136 fusionnait, une chaîne plus profonde est le même pas répété.
+Suite : **636 tests** (552 générateur / 60 subset / 24 analyzer) + 214 runtime, dont SIX neufs dans
+`InheritsTests` : la chaîne à trois niveaux (`ChainThreeLevelsDeep_LiftsTheGrandparentsMembers` + son
+snapshot), le refus code-behind localisé nommant le `.cs` (A3), le maillon cassé localisé au maillon
+(A4), l'`@inherits ComponentBase` explicite byte-identique au sans-directive (C4), et l'ombrage par une
+sœur `ComponentBase.razor` fusionnée (C4). Deux témoins basculent refusé→supporté et sont RANGÉS du
+bon côté (`Supported/Inheritance`, `Supported/InheritShadow`) ; deux restent refusés
+(`Unsupported/Inheritance`). Chaque fixture qui doit COMPILER est du Blazor VALIDE — construite par le
+SDK Razor (`Build succeeded. 0 Warning(s) 0 Error(s)`), ce qui EST la garde RZ9979 ; le maillon cassé
+est invalide des deux côtés, à dessein. §8 inchangé.

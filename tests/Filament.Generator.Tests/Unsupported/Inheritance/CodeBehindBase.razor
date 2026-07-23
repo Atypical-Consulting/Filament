@@ -1,0 +1,7 @@
+@* The .razor HALF of the code-behind partial base. The field lives here; the OnInitialized that sets
+   it to 7 lives in CodeBehindBase.razor.cs, which this compiler never opens. Reading only this half is
+   inheriting HALF a base -- which is why decision 173 refuses the whole thing. *@
+
+@code {
+    protected int count = 0;
+}

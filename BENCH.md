@@ -6681,3 +6681,99 @@ ce qui EST la garde RZ9979. §8 inchangé.
 ---
 
 *Fin de l'entrée n°78. Ne pas modifier — ajouter une entrée n°79 pour toute rectification.*
+
+---
+
+## Entrée n°79 — 2026-07-23 — Phase 4 : `@inherits` est une CHAÎNE, et il dit ce qu'il a fait — un champ+méthode hérités TROIS niveaux plus haut avancent à l'identique
+
+**Ce qui est mesuré.** Une différence de RENDU et de COMPORTEMENT, sur une page, après deux clics.
+Défaut de registre **A4**, classe A, trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 —
+travail d'HONNÊTETÉ, pas de surface. Une chaîne `@inherits` à deux niveaux (`App : Mid : Grand`) dont
+l'état et la méthode vivent TROIS niveaux plus haut, dans `Grand` : le générateur d'avant testait
+`BaseType` une seule fois, sur le dérivé, ne suivait jamais le `@inherits` de `Mid`, et laissait tomber
+`Grand` en SILENCE — un grand-parent qui ne contribuait qu'un hook s'évaporait à exit 0. Décision 173.
+
+**La tranche ferme aussi trois défauts de qualité dans le MÊME morceau de code, RIEN-À-OBSERVER (des
+refus, pas des rendus) :** A3 (une base à code-behind `Base.razor` + `Base.razor.cs` contribuait RIEN à
+exit 0 — maintenant REFUSÉE localisée, en nommant le `.cs`), C4 (`@inherits ComponentBase` non qualifié
+était refusé alors qu'il est le DÉFAUT — maintenant un no-op, byte-identique au sans-directive, avec
+l'ombrage par une sœur `ComponentBase.razor` toujours fusionné), C6 (un `[unresolved-name]` mal dirigé
+ne s'échappe plus : le refus est localisé au bon maillon). C3 (porter le `@inject`/`@using` propre de
+la base) est laissé OUVERT et divulgué — un refus localisé, pas un silence, statu quo de la décision 136.
+
+**Pourquoi la mesure passe par un ORACLE, et pourquoi bUnit.** La harnais Playwright n'est TOUJOURS pas
+installable ici et cet environnement n'a pas le workload `wasm-tools`, donc une coquille Blazor WASM ne
+peut PAS être publiée (réserve de la BENCH n°69/n°70, décision 164). Qu'un champ+méthode hérités
+traversent une chaîne `App : Mid : Grand` et avancent au clic est décidé par l'héritage de membres C#
+plus `ComponentBase.HandleEventAsync` → `StateHasChanged`, du .NET ordinaire dans
+`Microsoft.AspNetCore.App`, le MÊME chemin qu'une app WASM exécute. **bUnit** l'héberge exactement : le
+vrai `Renderer` + `ComponentBase`, avec les clics et la re-lecture, l'analogue INTERACTIF de la façon
+dont `method-read-oracle` (décision 172) et `text-format-oracle` (décision 171) hébergent le vrai
+moteur Blazor. **Aucun run de navigateur inventé.**
+
+**Pourquoi il n'y a NI label de bench NI bump HARNESS.** La tranche est **générateur-seul** (`git diff
+-- src/filament-runtime` **VIDE**) et la chaîne fusionne du TEXTE, sans aucune primitive de runtime. Et
+ce n'est pas un contrat `bench.mjs` : la version-empreinte du DOM-contract oracle n'a pas changé, donc
+la bumper mentirait. Exactement le choix des décisions 164, 171 et 172 (l'oracle, pas un label).
+
+### L'oracle : les deux côtés rendent le MÊME `App.razor` (chaîne à trois niveaux)
+
+```
+# Blazor, l'autorité : le vrai ComponentBase + Renderer sous bUnit, App:Mid:Grand rendu -> #inc x2
+dotnet run --project tools/inherit-chain-oracle
+# Filament : le module émis du MÊME App.razor (la chaîne parcourue), empaqueté contre le vrai runtime,
+# monté dans happy-dom, cliqué deux fois, et COMPARÉ
+bash tools/inherit-chain-oracle/run.sh
+```
+
+`App.razor` (`@inherits Mid`) ne porte QUE le markup ; `Mid.razor` (`@inherits Grand`) est un pur
+relais ; `Grand.razor` déclare `count` et `Inc()`. `#out` rend le champ du grand-parent, `#inc` appelle
+la méthode du grand-parent.
+
+### Résultat
+
+| Label | `#out` initial | après `#inc` | après `#inc` |
+|---|---|---|---|
+| **blazor (bUnit)** (autorité) | `0` | `1` | `2` |
+| **filament (happy-dom)** (générateur) | `0` | `1` | `2` |
+
+**Les trois champs coïncident, à l'octet.** JSON identique des deux côtés :
+
+```
+BLAZOR  : {"initial":"0","afterFirst":"1","afterSecond":"2"}
+FILAMENT: {"initial":"0","afterFirst":"1","afterSecond":"2"}
+```
+
+Le champ et la méthode déclarés TROIS niveaux plus haut sont hissés et inlinés comme s'ils avaient été
+écrits dans le dérivé : le module émis est byte-identique au module d'une chaîne à UN niveau (snapshot
+`InheritsChain.approved.js` — `const count = signal(0)`, `effect(() => setText(_tx0, count.value))`,
+`count.value++`), rien de l'héritage ne survit. L'héritage est une question de COMPILATION.
+
+### Les refus (rien à observer, la preuve EST le diagnostic localisé)
+
+Les trois refus n'émettent aucun fichier, donc rien à lire dans un navigateur :
+
+```
+# A3 — code-behind : localisé, nomme le .cs, un SEUL diagnostic (pas de [unresolved-name] secondaire)
+CodeBehind.razor(1,1): FIL0003: [unsupported-directive] @inherits CodeBehindBase resolves to
+CodeBehindBase.razor, but a code-behind partial CodeBehindBase.razor.cs sits beside it. … Refusing to emit.
+
+# A4 — maillon cassé profond : localisé au MAILLON (BrokenMid), pas mal dirigé sur le dérivé
+BrokenMid.razor(1,1): FIL0003: [unsupported-directive] @inherits BrokenGrand resolves to a
+same-directory component BrokenGrand.razor, which does not exist. … Refusing to emit.
+```
+
+### Invariants
+
+`git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive, runtime gelé à 1 943 B. Le
+témoin `@inherits` livré (`baseline/Inherits.Blazor`, un seul niveau) reste **inchangé à l'octet**
+(snapshot et contrat `inherits` intacts). Suite : **636 tests** (552 générateur / 60 subset / 24
+analyzer) + 214 runtime, dont SIX neufs dans `InheritsTests`, avec deux témoins basculés
+refusé→supporté et RANGÉS du bon côté (`Supported/Inheritance`, `Supported/InheritShadow`) et deux qui
+restent refusés (`Unsupported/Inheritance`). Chaque fixture qui doit COMPILER est du Blazor VALIDE —
+construite par le SDK Razor (`Build succeeded. 0 Warning(s) 0 Error(s)`), ce qui EST la garde RZ9979 ;
+le maillon cassé est invalide des deux côtés, à dessein. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°79. Ne pas modifier — ajouter une entrée n°80 pour toute rectification.*
