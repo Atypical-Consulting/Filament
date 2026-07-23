@@ -1074,6 +1074,14 @@ public sealed class CSharpFrontEnd
                 bf.AssignedOutsideConstruction = true;
             }
         MarkConditionReads(classes[1], regionMethods);
+        // A field a METHOD THE TEMPLATE CALLS reads is a field the template reads, BY TRANSITIVITY
+        // through the call graph (register A14 / the S10 slice) -- exactly the rule decision 160
+        // applies to a computed's body, one level further out. `<span>@Format()</span>` where
+        // `Format()` reads `count` must promote `count` to a signal as surely as `<span>@count</span>`
+        // would; otherwise the write in the click handler lands on a plain `let` and the display,
+        // inserted once, never moves. The reachable-method set is closed over invocations HERE rather
+        // than read off phase 3's `Callees` (built below), because promotion must be settled before it.
+        MarkTemplateCalledReads(slots, classes[1], regionMethods);
 
         // 3. the call graph: who calls whom, for the inlining arbitrage AND for the emission
         //    order (callees before callers -- see MethodsInDependencyOrder).
@@ -2442,6 +2450,97 @@ public sealed class CSharpFrontEnd
         }
     }
 
+    /// <summary>
+    /// Register A14 / the S10 slice. Every place the template names an @expression, an @if condition
+    /// or a @foreach source is ALSO a place it may CALL a @code method, and a field that method reads
+    /// is a field the template reads -- one call-graph hop further than <see cref="MarkConditionReads"/>
+    /// and the computed transitivity decision 160 already do. This closes the reachable-method set over
+    /// invocations (a method the template calls, and everything IT calls) and marks every field/prop
+    /// each reachable method reads as read-by-template, so decision 67's conjunction can promote it.
+    /// Additive: it only ever SETS ReadByTemplate, so a directly-read field is untouched and no
+    /// existing witness moves a byte.
+    /// </summary>
+    void MarkTemplateCalledReads(
+        IReadOnlyList<IntermediateNode> slots, ClassDeclarationSyntax regionClass, IReadOnlyList<string> regionMethods)
+    {
+        var reached = new HashSet<string>(StringComparer.Ordinal);
+        var work = new Queue<MethodInfo>();
+
+        void Seed(SyntaxNode from)
+        {
+            foreach (var inv in from.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+                if (TemplateMethod(inv) is { } m && reached.Add(m.Name)) work.Enqueue(m);
+        }
+
+        foreach (var node in slots) Seed(SlotSyntax(node));
+        foreach (var method in regionMethods)
+        {
+            var body = FindMethod(regionClass, method);
+            foreach (var ifs in body.DescendantNodes().OfType<IfStatementSyntax>()) Seed(ifs.Condition);
+            foreach (var fe in body.DescendantNodes().OfType<ForEachStatementSyntax>()) Seed(fe.Expression);
+        }
+
+        while (work.Count > 0)
+        {
+            var m = work.Dequeue();
+            // the fields/props THIS method reads become template reads
+            foreach (var n in m.Syntax.DescendantNodesAndSelf())
+            {
+                if (n is not (IdentifierNameSyntax or MemberAccessExpressionSyntax)) continue;
+                switch (_model.GetSymbolInfo(n).Symbol)
+                {
+                    case IFieldSymbol fs when Field(fs) is { } f: f.ReadByTemplate = true; break;
+                    case IPropertySymbol ps when PropAnywhere(ps) is { } pr: pr.ReadByTemplate = true; break;
+                }
+            }
+            // and the methods IT calls are reachable too
+            foreach (var inv in m.Syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
+                if (TemplateMethod(inv) is { } callee && reached.Add(callee.Name)) work.Enqueue(callee);
+        }
+    }
+
+    /// <summary>The @code method this invocation binds to, or null if it is not one this component
+    /// declares (a BCL call, a lambda, a local function). The ContainingType check is what keeps
+    /// `count.ToString()` or `xs.Where(...)` from being mistaken for a component method.</summary>
+    MethodInfo? TemplateMethod(InvocationExpressionSyntax inv) =>
+        _model.GetSymbolInfo(inv).Symbol is IMethodSymbol s &&
+        SymbolEqualityComparer.Default.Equals(s.ContainingType, _component) &&
+        _methodsByName.TryGetValue(s.Name, out var m)
+            ? m
+            : null;
+
+    /// <summary>Does this expression READ a signal through a @code method it calls? A bare
+    /// `@Format()` reads no field syntactically, but if `Format` (transitively) reads a promoted
+    /// signal then the slot must be an effect, not a one-shot insert -- the reactive half of A14.
+    /// Asked at translation time, when IsSignal is settled.</summary>
+    bool InvokesReactiveMethod(ExpressionSyntax e)
+    {
+        foreach (var inv in e.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+            if (TemplateMethod(inv) is { } m && MethodReadsSignal(m, [])) return true;
+        return false;
+    }
+
+    /// <summary>Does this method, or anything it calls, read a signal (a promoted field, a computed,
+    /// a reactively-bound [Parameter])? The visited set guards the recursion against a call cycle.</summary>
+    bool MethodReadsSignal(MethodInfo m, HashSet<string> visited)
+    {
+        if (!visited.Add(m.Name)) return false;
+        foreach (var n in m.Syntax.DescendantNodesAndSelf())
+        {
+            if (n is not (IdentifierNameSyntax or MemberAccessExpressionSyntax)) continue;
+            switch (_model.GetSymbolInfo(n).Symbol)
+            {
+                case IFieldSymbol fs when Field(fs) is { IsSignal: true }: return true;
+                case IPropertySymbol ps when PropAnywhere(ps) is { IsSignal: true }: return true;
+                case IPropertySymbol ps when _computedsByName.ContainsKey(ps.Name): return true;
+                case IPropertySymbol ps when _paramReactive.Contains(ps.Name): return true;
+            }
+        }
+        foreach (var inv in m.Syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            if (TemplateMethod(inv) is { } callee && MethodReadsSignal(callee, visited)) return true;
+        return false;
+    }
+
     FieldInfo? Field(IFieldSymbol s) =>
         _fieldsByName.TryGetValue(s.Name, out var f) && SymbolEqualityComparer.Default.Equals(f.Symbol, s) ? f : null;
 
@@ -2543,6 +2642,10 @@ public sealed class CSharpFrontEnd
     /// </summary>
     bool IsReactive(ExpressionSyntax e)
     {
+        // A14 (S10): `@Format()` reads no field by name, yet if the method it calls reads a promoted
+        // signal the slot is a live effect. Checked first, so a method call that reads a signal is
+        // reactive even when nothing reactive appears syntactically in the slot.
+        if (InvokesReactiveMethod(e)) return true;
         foreach (var n in e.DescendantNodesAndSelf())
         {
             // kvp.Value in a @foreach over a Dictionary compiles to `d.value.get(kvp[0])` (decision 125), a read of

@@ -6280,3 +6280,89 @@ générateur / 60 subset / 24 analyzer) + 214 runtime, dont CINQ neufs (`__bool`
 frontière chacun avec son snapshot, le refus `bool` statique). Deux témoins du bon côté
 (`Supported/Code/BoolInText.razor`, `Supported/Composition/GenericFloat.razor` + `TypedLeaf.razor`),
 un du côté refusé (`Unsupported/Gate/StaticBoolParam.razor` + `BoolLeaf.razor`).
+
+## 172. Un champ que le template lit À TRAVERS UNE MÉTHODE reste de l'état : la lecture se propage par le GRAPHE D'APPELS
+
+**2026-07-23.** Trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 — travail d'HONNÊTETÉ,
+pas de surface. Défaut de registre **A14**, classe A, et c'est le CŒUR de la réactivité, pas un bord :
+un champ écrit seulement à travers une méthode que le template appelle n'était jamais hissé en signal,
+donc sa mise à jour ne re-rendait rien. Aucun plantage, aucun refus — un module à exit 0 qui affiche
+un texte GELÉ pendant que le handler avance le champ. La faute exacte que la §10 interdit.
+
+**LE REGISTRE AVOUAIT UN BORD DE PREUVE, et c'était le premier travail.** A14 disait explicitement que
+la paire mesurée était « Blazor-avec-`StateHasChanged` contre Filament-l'effaçant » — l'A/B strict
+MÊME-SOURCE n'avait PAS été joué. Il l'est maintenant. Un seul `App.razor`, deux compteurs, un clic :
+`#n` lit `count` UNIQUEMENT par `@Format()` (une méthode), `#d` lit `direct` DIRECTEMENT ; le même
+handler `#inc` incrémente les deux. Générateur d'AVANT, côté Filament dans happy-dom, après le clic :
+
+```
+{"n_before":"n=0","d_before":"d=0","n_after":"n=0","d_after":"d=1"}   // #n GELÉ, #d avance
+```
+
+`#n` reste à `n=0` là où Blazor — qui re-rend après CHAQUE handler — rend `n=1`, et là où `#d`
+(témoin de lecture directe) avance des DEUX côtés. Divergence réelle, reproduite MÊME-SOURCE. Le module
+d'avant le disait déjà : `let count = 0` (un `let` nu, pas `signal()`) et
+`insert(_el1, document.createTextNode(format()))` (un one-shot, aucun `effect()`).
+
+**LA CAUSE.** Le hissage en signal exige une lecture par le TEMPLATE (conjonction de la décision 67 :
+lu ET écrit). Mais cette lecture n'était comptée que lorsque le champ était NOMMÉ dans un slot, une
+condition `@if` ou une source `@foreach` — jamais lorsque le template APPELAIT une méthode qui le lit.
+`@Format()` lit `count`, mais `Format` est une méthode : la marque de lecture ne franchissait pas le
+saut d'appel. Le graphe d'appels (phase 3) est bâti APRÈS le hissage (phase 2) et ne lui revenait
+jamais.
+
+**LE REMÈDE : propager la lecture-template par le GRAPHE D'APPELS dans le hissage — exactement la
+transitivité que la décision 160 applique déjà aux dépendances d'un `computed()`, un cran plus loin.**
+Générateur seul ; zéro primitive, car `signal`/`effect`/`setText` sont déjà émis et propager une
+lecture est une décision de COMPILATION. Deux moitiés mécaniques :
+
+1. **HISSAGE.** `MarkTemplateCalledReads` clôt l'ensemble des méthodes ATTEIGNABLES par le template
+   (celles qu'il appelle dans un slot, une condition `@if` ou une source `@foreach`, plus tout ce
+   qu'elles appellent à leur tour) et marque `ReadByTemplate` sur chaque champ/prop que chacune lit.
+   L'ensemble est clos ICI, sur les invocations, et NON lu des `Callees` de la phase 3 — parce que le
+   hissage doit être réglé AVANT eux, ce qui EST la cause A14. La passe est ADDITIVE : elle ne fait
+   que POSER `ReadByTemplate`, donc un champ lu directement n'est jamais touché.
+2. **RÉACTIVITÉ.** `IsReactive` gagne un premier test, `InvokesReactiveMethod` : `@Format()` ne lit
+   syntaxiquement aucun champ, mais si la méthode qu'il appelle lit (transitivement) un signal hissé,
+   le slot est un `effect()` vivant, pas un `insert` one-shot. Sans cette moitié, `count` serait bien
+   un signal mais l'affichage resterait gelé.
+
+Après : `const count = signal(0)`, `format()` lit `count.value`, `effect(() => setText(_tx0, format()))`,
+et `count.value++` dans le handler fait re-courir l'effet. Le TWIN ASYNC (registre `E_asyncmethodread`)
+suit la même règle : le hissage se décide sur lu+écrit, pas sur l'ENDROIT de l'écriture, donc une
+écriture dans une continuation `await` hisse à l'identique.
+
+**LA LIGNE QUE LE CORRECTIF NE FRANCHIT PAS.** Un champ qu'une méthode atteignable lit mais que RIEN
+n'écrit hors de son initialiseur reste une liaison NUE : la conjonction 67 est lu ET écrit, donc
+propager la seule lecture ne doit PAS hisser. Témoin `Supported/Code/MethodReadNoWrite.razor` —
+`caption` lu par `@Label()`, jamais écrit → `const caption = 'hello'` et un `insert` one-shot, exactement
+comme le `fail` non-écrit de `baseline/ErrorBoundary.Blazor`. La tranche hisse l'ATTEIGNABILITÉ, pas
+tout champ qu'une méthode atteignable effleure. Corollaire mesuré : `ErrorBoundary` et TOUS les témoins
+à lecture directe restent **inchangés à l'octet** (la passe ne fait qu'ajouter des marques).
+
+**MESURÉ (BENCH n°78)** contre du vrai Blazor, par un oracle NEUF, `tools/method-read-oracle`. Pourquoi
+un oracle et pas Playwright : la harnais n'est pas installable ici et `wasm-tools` est absent (la
+réserve de la BENCH n°69/n°70, décision 164). Pourquoi bUnit et pas le `HtmlRenderer` de la décision
+171 : le défaut est une réactivité APRÈS CLIC, et `HtmlRenderer` ne rend que le PREMIER paint. bUnit
+héberge le vrai `ComponentBase` + `Renderer` et distribue le clic — le MÊME code de réactivité
+(`HandleEventAsync` → `StateHasChanged`) qu'une app WASM exécute, l'analogue INTERACTIF de l'oracle
+`HtmlRenderer`-pour-le-texte. Côté Filament, le module émis du MÊME `App.razor` monté dans happy-dom,
+cliqué. Les deux blobs JSON sont **identiques à l'octet** :
+
+```
+BLAZOR  : {"n_before":"n=0","d_before":"d=0","n_after":"n=1","d_after":"d=1"}
+FILAMENT: {"n_before":"n=0","d_before":"d=0","n_after":"n=1","d_after":"d=1"}
+```
+
+`#n` (lecture par méthode) et `#d` (témoin de lecture directe) avancent des DEUX côtés à l'identique :
+le champ lu par méthode se comporte désormais EXACTEMENT comme un champ lu directement. PAS de course
+de navigateur inventée ; PAS de bump HARNESS — ce n'est pas un contrat `bench.mjs`, l'empreinte du
+DOM-contract oracle n'a pas bougé, comme aux décisions 164 et 171.
+
+**GÉNÉRATEUR SEUL.** `git diff -- src/filament-runtime` VIDE, runtime gelé à 1 943 B, ZÉRO primitive.
+Suite : **630 tests** (546 générateur / 60 subset / 24 analyzer) + 214 runtime, dont SIX neufs :
+`MethodRead` et `AsyncMethodRead` (le correctif et son twin async, chacun avec son snapshot),
+`AsyncNoWrite` (le témoin de lecture directe qui doit rester correct), `MethodReadNoWrite` (le bord non
+hissé). Aucun témoin ne bascule refusé→supporté : le cas COMPILAIT déjà, il était silencieusement
+faux. Chaque fixture est du Blazor VALIDE — l'oracle compile `App.razor` par le SDK Razor, ce qui EST
+la garde RZ9979.

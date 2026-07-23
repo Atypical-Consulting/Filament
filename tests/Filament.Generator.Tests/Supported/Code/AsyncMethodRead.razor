@@ -1,0 +1,22 @@
+@* The ASYNC twin of MethodRead (register A14, E_asyncmethodread): the write to `count` happens in an
+   `await` continuation. The promotion is decided the same way -- `count` is read by the template-called
+   `Format()` and written by `Bump`, so it lifts to a signal regardless of WHERE the write sits. The
+   handler is `async () => { await __delay(1); count.value++; }` (decision 119); when the continuation
+   runs, the signal write fires the `@Format()` effect and #n advances. *@
+<p><span id="n">@Format()</span></p>
+<button id="inc" @onclick="Bump">inc</button>
+
+@code {
+    private int count = 0;
+
+    private string Format()
+    {
+        return $"n={count}";
+    }
+
+    async Task Bump()
+    {
+        await Task.Delay(1);
+        count++;
+    }
+}

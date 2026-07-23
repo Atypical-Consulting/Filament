@@ -6582,3 +6582,102 @@ RZ9979. §8 inchangé.
 ---
 
 *Fin de l'entrée n°77. Ne pas modifier — ajouter une entrée n°78 pour toute rectification.*
+
+---
+
+## Entrée n°78 — 2026-07-23 — Phase 4 : un champ que le template lit à travers une MÉTHODE reste de l'état — la lecture se propage par le graphe d'appels
+
+**Ce qui est mesuré.** Une différence de RÉACTIVITÉ, sur une page, après UN clic — parce qu'une
+différence de rendu n'est une affirmation qu'une fois lue, et celle-ci ne se lit qu'APRÈS l'événement.
+Défaut de registre **A14**, classe A, trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 —
+travail d'HONNÊTETÉ, pas de surface. Un champ écrit seulement à travers une méthode que le template
+appelle (`@Format()` lit `count`, le handler fait `count++`) n'était jamais hissé en signal : le
+générateur d'avant émettait `let count = 0` (un `let` nu) et `insert(_el1, document.createTextNode(format()))`
+(un one-shot, aucun `effect()`), donc le clic n'avançait RIEN à l'écran. Décision 172.
+
+**Le bord de preuve que le registre AVOUAIT, et qui était le premier travail.** A14 disait
+explicitement que l'A/B strict MÊME-SOURCE — le même fichier des deux côtés — n'avait PAS été joué.
+Il l'est ici : un seul `App.razor`, deux compteurs, `#n` lu UNIQUEMENT par la méthode `@Format()`, `#d`
+lu DIRECTEMENT, un handler `#inc` qui incrémente les deux.
+
+**Pourquoi la mesure passe par un ORACLE, et pourquoi bUnit et pas `HtmlRenderer`.** La harnais
+Playwright n'est TOUJOURS pas installable ici et cet environnement n'a pas le workload `wasm-tools`,
+donc une coquille Blazor WASM ne peut PAS être publiée (réserve de la BENCH n°69/n°70, décision 164).
+Mais l'oracle `HtmlRenderer` de la décision 171 ne suffit pas non plus : il ne rend que le PREMIER
+paint, et ce défaut-ci est une réactivité APRÈS CLIC. Le vrai code interrogé — « Blazor re-rend-il
+après un handler ? » — est `ComponentBase.HandleEventAsync` → `StateHasChanged`, du .NET ordinaire dans
+`Microsoft.AspNetCore.App`, le MÊME chemin qu'une app WASM exécute. **bUnit** l'héberge exactement :
+le vrai `Renderer` + `ComponentBase`, avec le clic et la re-lecture. C'est l'analogue INTERACTIF de la
+façon dont `text-format-oracle` héberge le vrai `HtmlRenderer` pour le formatage texte. **Aucun run de
+navigateur inventé.**
+
+**Pourquoi il n'y a NI label de bench NI bump HARNESS.** La tranche est **générateur-seul** (`git diff
+-- src/filament-runtime` **VIDE**) et n'ajoute d'octets qu'à une app qui affiche effectivement un
+compteur — il n'y a ni C1 ni C4 à re-mesurer. Et ce n'est pas un contrat `bench.mjs` : la
+version-empreinte du DOM-contract oracle n'a pas changé, donc la bumper mentirait. Exactement le choix
+des décisions 164 et 171 (l'oracle, pas un label).
+
+### L'oracle : les deux côtés rendent le MÊME `App.razor`
+
+```
+# Blazor, l'autorité : le vrai ComponentBase + Renderer sous bUnit, rendu -> clic #inc -> re-lecture
+dotnet run --project tools/method-read-oracle
+# Filament : le module émis du MÊME App.razor, empaqueté contre le vrai runtime, monté dans happy-dom
+bash tools/method-read-oracle/run.sh          # génère, empaquette (esbuild), monte, CLIQUE, et COMPARE
+```
+
+`App.razor` porte deux compteurs : `#n` affiché par `@Format()` (qui lit `count` — la lecture PAR
+MÉTHODE, le défaut) et `#d` affiché par `d=@direct` (lecture DIRECTE — le témoin). Le même `#inc`
+incrémente les deux.
+
+### Résultat
+
+| Label | `#n` avant | `#d` avant | `#n` après `#inc` | `#d` après `#inc` |
+|---|---|---|---|---|
+| **blazor (bUnit)** (autorité) | `n=0` | `d=0` | `n=1` | `d=1` |
+| **filament (happy-dom)** (générateur) | `n=0` | `d=0` | `n=1` | `d=1` |
+
+**Les quatre champs coïncident, à l'octet.** JSON identique des deux côtés :
+
+```
+BLAZOR  : {"n_before":"n=0","d_before":"d=0","n_after":"n=1","d_after":"d=1"}
+FILAMENT: {"n_before":"n=0","d_before":"d=0","n_after":"n=1","d_after":"d=1"}
+```
+
+`#n` (lecture par méthode) et `#d` (lecture directe) avancent des DEUX côtés à l'identique : après le
+correctif, le champ lu par méthode se comporte EXACTEMENT comme un champ lu directement.
+
+### L'AVANT, sur le même `App.razor` (l'A/B strict que le registre n'avait pas joué)
+
+Le module émis par le générateur de HEAD, monté dans happy-dom et cliqué :
+
+```
+FILAMENT (avant) : {"n_before":"n=0","d_before":"d=0","n_after":"n=0","d_after":"d=1"}
+```
+
+`#n` GELÉ à `n=0` là où Blazor rend `n=1` ; `#d` avance des deux côtés. Le code d'avant le disait :
+`let count = 0` + `insert(_el1, document.createTextNode(format()))` — un `let` nu et un one-shot.
+L'APRÈS hisse `count` en `signal(0)`, `format()` lit `count.value`, et le slot devient
+`effect(() => setText(_tx0, format()))`.
+
+### La ligne que le correctif ne franchit pas
+
+Un champ qu'une méthode atteignable lit mais que RIEN n'écrit hors de son initialiseur reste une
+liaison NUE — la conjonction 67 est lu ET écrit. Témoin `Supported/Code/MethodReadNoWrite.razor` :
+`caption`, lu par `@Label()`, jamais écrit → `const caption = 'hello'` et un `insert` one-shot, comme
+le `fail` non-écrit d'`ErrorBoundary`. La tranche hisse l'ATTEIGNABILITÉ, pas tout champ effleuré.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive : la
+promotion et la réactivité passent par du code DÉJÀ émis (`signal`/`effect`/`setText`), propager une
+lecture par le graphe d'appels est une décision de COMPILATION. Runtime gelé à 1 943 B. `ErrorBoundary`
+et tous les témoins à lecture directe **inchangés à l'octet** (la passe ne fait qu'AJOUTER des marques
+`ReadByTemplate`). Suite : **630 tests** (546 générateur / 60 subset / 24 analyzer) + 214 runtime, dont
+SIX neufs : deux snapshots (`MethodRead.approved.js`, `AsyncMethodRead.approved.js`), le témoin de
+lecture directe `AsyncNoWrite`, le bord non hissé `MethodReadNoWrite`. Aucun témoin ne bascule
+refusé→supporté : le cas COMPILAIT déjà, il était silencieusement faux. Chaque fixture est du Blazor
+VALIDE : l'oracle compile `App.razor` par le SDK Razor (`Build succeeded. 0 Warning(s) 0 Error(s)`),
+ce qui EST la garde RZ9979. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°78. Ne pas modifier — ajouter une entrée n°79 pour toute rectification.*
