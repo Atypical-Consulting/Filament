@@ -1,3 +1,5 @@
+![Filament banner](.github/banner.png)
+
 <div align="center">
 
 # ⚡ Filament
