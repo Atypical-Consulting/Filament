@@ -1890,10 +1890,38 @@ public sealed class TemplateCompiler
         }
 
         if (parent is null)
-            throw new GeneratorException(
-                "FIL-WIRING: a RenderFragment reached the emitter with no container to insert into. " +
-                "A fragment slot is always a child of the element the composed child declared it in. " +
-                "This is the TOOL being broken, not the input.");
+        {
+            // A fragment slot placed BARE inside a region -- `@if (Title == "t") { @ChildContent }` in
+            // the child (register defect B3). The region's body is compiled into its own local function
+            // and mounted through list(), which owns ONE node per key and splices it at a comment
+            // anchor; a RenderFragment is N top-level nodes and the region RE-RUNS, so there is no
+            // stable container the fragment's nodes can be inserted into. This is VALID Blazor, so it
+            // is a LOCATED refusal, not the crash it used to be -- and not a silent wrong render: the
+            // verifier hand-ran the obvious mapping and read the wrong DOM (nodes reversed at frame
+            // zero, orphans on toggle, duplicates on re-entry). The faithful capability is templated-
+            // fragment work blocked on the runtime freeze (spec S16 / defect D6), not this slice.
+            //
+            // `_region` is set ONLY by the two region emitters (EmitBranchFn -> "an @if branch",
+            // EmitList -> "a @foreach row"), and a fragment slot cannot reach here any other way: a
+            // child whose ROOT is a bare @ChildContent is refused earlier for having zero root elements
+            // (the static-leaf single-root gate). So a null region here is genuinely the tool broken.
+            if (_region is null)
+                throw new GeneratorException(
+                    "FIL-WIRING: a RenderFragment reached the emitter with no container and no region. " +
+                    "A fragment slot is always a child of the element the composed child declared it in, " +
+                    "or the body of a region. This is the TOOL being broken, not the input.");
+
+            Diag("fragment-under-region",
+                $"@{name} is placed BARE inside {_region}. A fragment slot must be a DIRECT child of an " +
+                "element the child declares, because a RenderFragment is N top-level nodes and a region " +
+                "re-runs: its list() rows own ONE node each and splice at a comment anchor, so there is " +
+                "no stable container for the fragment's nodes to be inserted into. The obvious mapping " +
+                "was MEASURED to render the wrong DOM (nodes reversed at frame zero, orphans on toggle, " +
+                $"duplicates on re-entry). Wrap the hole in one element the child owns (`@if (…) {{ <div>@{name}" +
+                $"</div> }}`), or lift the @{name} OUT of the @if/@foreach. Refusing to emit.",
+                slot.Source);
+            return;
+        }
 
         var savedFile = _file;
         var savedCode = _code;

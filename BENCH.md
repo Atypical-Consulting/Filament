@@ -6777,3 +6777,103 @@ le maillon cassé est invalide des deux côtés, à dessein. §8 inchangé.
 ---
 
 *Fin de l'entrée n°79. Ne pas modifier — ajouter une entrée n°80 pour toute rectification.*
+
+---
+
+## Entrée n°80 — 2026-07-23 — le trou de fragment sous une région : un REFUS localisé là où il y avait un FIL-WIRING
+
+**Ce qui est mesuré, et ce qui ne l'est pas.** La décision 174 ferme le défaut de registre **B3**,
+classe B — le DERNIER crash `FIL-WIRING` du registre (la décision 162 avait déjà fermé B1 et B2).
+Avant, le générateur **crashait** sur une source Blazor valide, exit 1, SANS lieu ; après, il REFUSE
+en nommant la position et la raison. **Rien de neuf ne se rend : il n'y a pas de contrat neuf, HARNESS
+reste à 1.63.0, et aucun run de navigateur n'est inventé.** La preuve est le diagnostic LOCALISÉ qui
+remplace le crash, plus l'identité à l'octet du témoin de contrôle enveloppé. Trouvé en SONDANT les
+onze non-buts §3 fermés par l'ADR 0003 — travail d'honnêteté, pas de surface.
+
+### Le défaut, rejoué de première main
+
+`Card.razor` = `@if (Title == "t") { @ChildContent }` — le trou est le corps DIRECT de l'`@if`, pas
+enveloppé dans un élément que le fils déclare. Le témoin livré (`Unsupported/Gate/RegionHole.razor` +
+son fils `RegionHoleCard.razor`), passé par le générateur d'AVANT :
+
+```
+error FIL-WIRING: a RenderFragment reached the emitter with no container to insert into. A fragment
+slot is always a child of the element the composed child declared it in. This is the TOOL being
+broken, not the input.
+                                                          [EXIT=1, aucun file(line,col), aucun out.js]
+```
+
+Aucun diagnostic localisé, aucun fichier, aucune ligne, aucun nom de fichier.
+
+### La source est du Blazor valide, et le trou ENVELOPPÉ compile déjà
+
+```
+$ dotnet build   (RegionHoleCard.razor déposé dans une copie de baseline/Fragment.Blazor)
+Build succeeded.
+    0 Error(s)
+```
+
+Le trou NU (`@if (Title == "t") { @ChildContent }`) ET le trou ENVELOPPÉ
+(`@if (Title == "t") { <div id="hole">@ChildContent</div> }`) sont tous deux du Blazor valide
+(`Build succeeded. 0 Error(s)`). Seul le premier crashait.
+
+### La capacité fidèle est bloquée sur le GEL — donc NON tentée
+
+Un `RenderFragment<T>` templé (registre **D6**) doit être ré-invoqué par rendu et par élément, et les
+DEUX mappages évidents ont été MESURÉS par le vérificateur du registre en rendant du mauvais DOM : la
+lecture 1 lève un `HierarchyRequestError` au montage (un `Comment` est `CharacterData`, jamais un
+parent) ; la lecture 2 échoue en SILENCE — ordre inversé à l'image zéro, orphelin quand `Show=false`,
+doublons à la ré-entrée. Un mappage fidèle exige des lignes de `list()` qui possèdent **N** nœuds — un
+changement au runtime GELÉ — ou un élément d'enveloppe que Blazor ne rend pas. C'est la seule tranche
+que la spec (S16) autorisait à mettre le gel en question, et elle ne démarre pas sans décision
+explicite du propriétaire. Cette tranche ne fait donc QUE le plancher : le crash devient un refus.
+
+### Le refus, AVANT et APRÈS, verbatim
+
+```
+AVANT   FIL-WIRING: a RenderFragment reached the emitter with no container … / EXIT=1 / aucun lieu /
+        aucun out.js
+
+APRÈS   RegionHole.razor: refusing to emit (1 diagnostic(s)):
+          error RegionHoleCard.razor(9,38): FIL0003: [fragment-under-region] @ChildContent is placed
+          BARE inside an @if branch. A fragment slot must be a DIRECT child of an element the child
+          declares, because a RenderFragment is N top-level nodes and a region re-runs: its list()
+          rows own ONE node each and splice at a comment anchor, so there is no stable container for
+          the fragment's nodes to be inserted into. The obvious mapping was MEASURED to render the
+          wrong DOM (nodes reversed at frame zero, orphans on toggle, duplicates on re-entry). Wrap
+          the hole in one element the child owns (`@if (…) { <div>@ChildContent</div> }`), or lift
+          the @ChildContent OUT of the @if/@foreach. Refusing to emit.
+                                                          [exit 1, aucun fichier écrit]
+```
+
+Le caret est sur le `@ChildContent` DANS LE FILS — l'arête à couper — et le message nomme la région
+(« an @if branch »), le mécanisme (N nœuds, la région re-joue, les lignes de `list()` qui possèdent un
+nœud) et les DEUX contournements (envelopper, ou sortir de la région).
+
+### Le contrôle enveloppé, à un élément de là, du côté supporté — inchangé
+
+| Contrôle | avant le correctif | après le correctif |
+|---|---|---|
+| `Supported/Composition/RegionHoleWrapped.razor` (`@if (…) { <div id="hole">@ChildContent</div> }`) | 1 720 o, exit 0 | **1 720 o, exit 0, snapshot épinglé** |
+
+Le module émis rend `list(_el1, () => ('t' === 't') ? [0] : [], () => 0, ifBody, _if0)`, avec `#body`
+À L'INTÉRIEUR de `#hole` et le `effect(() => setText(_tx0, count.value))` du PARENT toujours vivant.
+Le correctif ne touche que la branche `parent is null` que ce cas n'atteint jamais, donc il ne bouge
+pas d'un octet (`CompositionRegionHoleWrapped.approved.js`). Les baselines livrées `Fragment.Blazor`
+et `ContentRegion.Blazor` restent **inchangées à l'octet** (snapshots verts). Seul le trou NU est
+refusé : la ligne est tracée entre le trou qui a un conteneur et celui qui n'en a pas.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive ; runtime
+gelé à 1 943 B (cette tranche NE touche PAS le runtime, malgré le marqueur S16). Suite : **641 tests**
+(557 générateur / 60 subset / 24 analyzer) + 214 runtime, dont CINQ neufs dans `FragmentRegionTests` —
+le refus localisé sur le trou nu (B3), son message nommant mécanisme et deux contournements, le
+contrôle enveloppé qui compile, son import inchangé, et son snapshot. Le témoin qui plantait est RANGÉ
+du bon côté (`Unsupported/Gate/RegionHole` + `RegionHoleCard`) ; le contrôle est du côté supporté
+(`Supported/Composition/RegionHoleWrapped` + `RegionHoleWrappedCard`). Les deux témoins ont été bâtis
+comme composants d'un projet Blazor WebAssembly réel — `Build succeeded. 0 Error(s)` — parce qu'une
+fixture qui n'est pas du Blazor valide n'est pas un témoin (RZ9979). HARNESS **inchangé, 1.63.0** :
+aucun contrat n'a été ajouté ni étendu. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°80. Ne pas modifier — ajouter une entrée n°81 pour toute rectification.*

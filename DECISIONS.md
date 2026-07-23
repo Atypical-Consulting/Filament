@@ -6463,3 +6463,84 @@ bon côté (`Supported/Inheritance`, `Supported/InheritShadow`) ; deux restent r
 (`Unsupported/Inheritance`). Chaque fixture qui doit COMPILER est du Blazor VALIDE — construite par le
 SDK Razor (`Build succeeded. 0 Warning(s) 0 Error(s)`), ce qui EST la garde RZ9979 ; le maillon cassé
 est invalide des deux côtés, à dessein. §8 inchangé.
+
+## 174. Un trou de fragment sous une région est un REFUS LOCALISÉ, pas un crash — le dernier `FIL-WIRING`
+
+**2026-07-23.** Trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 — travail d'HONNÊTETÉ,
+pas de surface. Le DERNIER crash du registre (**B3**), rejoué de bout en bout avant d'être corrigé.
+La décision 162 avait déjà transformé DEUX des trois `FIL-WIRING` en compilations — une région comme
+enfant direct d'un contenu de composant (B1), une région à la racine d'un fragment (B2). Le troisième
+survivait : un `@ChildContent` posé NU dans une région du fils.
+
+**LE DÉFAUT : UN CRASH SANS LIEU, SUR UNE SOURCE QUE BLAZOR COMPILE.** `Card.razor` =
+`@if (Title == "t") { @ChildContent }` — le trou est le corps DIRECT de l'`@if`, pas enveloppé dans
+un élément que le fils déclare. À la composition, le markup du parent est inliné à cette position
+(décision 131) et arrivait à l'émetteur sans conteneur où l'insérer. Rejoué verbatim sur le générateur
+d'avant :
+
+```
+error FIL-WIRING: a RenderFragment reached the emitter with no container to insert into. A fragment
+slot is always a child of the element the composed child declared it in. This is the TOOL being
+broken, not the input.
+```
+
+exit 1, AUCUN `file(line,col)`, aucun `.js` — sur une source valide (`Build succeeded. 0 Error(s)`
+dans un vrai projet WebAssembly). Un crash est un outil cassé ; un refus localisé est honnête. La §10
+n'interdit pas seulement le rendu silencieusement faux : elle demande un refus LOCALISÉ nommant la
+raison et le contournement, et un `FIL-WIRING` sans lieu n'en est pas un.
+
+**LA CAPACITÉ EST BLOQUÉE SUR LE GEL, ET N'EST PAS TENTÉE ICI.** Un `RenderFragment<T>` templé
+(registre **D6**) doit être RÉ-INVOQUÉ par rendu et par élément, et les DEUX mappages évidents ont été
+MESURÉS par le vérificateur du registre en rendant du mauvais DOM : la lecture 1 lève un
+`HierarchyRequestError` au montage (un `Comment` est `CharacterData`, jamais un parent), la lecture 2
+échoue en SILENCE — ordre inversé à l'image zéro, orphelin quand `Show=false`, doublons qui
+s'accumulent à la ré-entrée. Un mappage fidèle exige des lignes de `list()` qui possèdent **N** nœuds
+— un changement au runtime GELÉ — ou un élément d'enveloppe que Blazor ne rend pas. C'est la seule
+tranche du programme que la spec (S16) autorisait à METTRE LE GEL EN QUESTION, et elle ne peut pas
+démarrer sans une décision explicite du propriétaire sur ce gel. Cette tranche ne fait donc que le
+PLANCHER honnête : le crash devient un refus localisé, et le runtime n'est PAS touché.
+
+**LE REMÈDE : LÀ OÙ LE THROW ÉTAIT, UN `Diag` LOCALISÉ — ET LA MÊME QUESTION QUE LA DÉCISION 168.**
+Le corps d'une région est compilé en une fonction locale et monté par `list()`, qui possède UN nœud
+par clef et l'épissure sur une ancre de commentaire ; un `RenderFragment` est N nœuds de tête et la
+région RE-JOUE, donc il n'y a aucun conteneur stable. Le `parent is null` d'`EmitFragment` — jusqu'ici
+un `throw` — pose désormais la question que la décision 168 a rendue posable : `_region` est-il non
+nul ? Si oui, `Diag` sort un **FIL0003 `[fragment-under-region]`** sur `slot.Source`, soit
+`RegionHoleCard.razor(9,38)` sur le `@ChildContent` DANS LE FILS — le bord que l'auteur peut couper.
+Le message nomme la région (« an @if branch »), le mécanisme (« N top-level nodes », « region re-runs »,
+les lignes de `list()` qui possèdent un nœud) et les DEUX contournements : envelopper le trou dans un
+élément que le fils possède, ou sortir le `@ChildContent` de l'`@if`/`@foreach`.
+
+**LE `FIL-WIRING` RESTE, POUR LA BRANCHE VRAIMENT IMPOSSIBLE.** `_region` n'est posé que par les deux
+émetteurs de région (`EmitBranchFn` → « an @if branch », `EmitList` → « a @foreach row »), et un trou
+de fragment ne peut pas arriver ici autrement : un fils dont la RACINE est un `@ChildContent` nu est
+refusé PLUS TÔT pour avoir zéro élément racine (la porte à un seul élément racine de la composition
+statique — mesuré : `must have exactly ONE root element … it has 0`). Un `_region` nul ici est donc
+authentiquement l'outil cassé, et garde son `FIL-WIRING` — un refus localisé pour le cas atteignable,
+une garde d'intégrité pour l'impossible.
+
+**LE TÉMOIN DE CONTRÔLE, À UN ÉLÉMENT DE LÀ, DU CÔTÉ SUPPORTÉ.** Envelopper le trou dans un élément que
+le FILS déclare — `@if (Title == "t") { <div id="hole">@ChildContent</div> }` — donne au corps de la
+région un conteneur, et il COMPILE : `list(_el1, () => ('t' === 't') ? [0] : [], () => 0, ifBody,
+_if0)`, avec `#body` À L'INTÉRIEUR de `#hole` et le `effect(() => setText(_tx0, count.value))` du
+PARENT toujours vivant. Le correctif ne touche que la branche `parent is null` que ce cas n'atteint
+jamais, donc il ne bouge pas d'un octet (snapshot `CompositionRegionHoleWrapped.approved.js` épinglé).
+Seul le trou NU est refusé. Les baselines livrées `Fragment.Blazor` et `ContentRegion.Blazor` restent
+**inchangées à l'octet** (leurs snapshots verts). Les deux témoins ont d'abord été bâtis comme
+composants d'un vrai projet Blazor WebAssembly — `Build succeeded. 0 Error(s)` — parce qu'une fixture
+qui n'est pas du Blazor valide n'est pas un témoin (RZ9979).
+
+**REFUS SEUL : RIEN DE NEUF NE SE REND, donc rien à observer dans un navigateur** — un refus n'émet
+aucun fichier, sa preuve EST le diagnostic localisé qui remplace le crash plus la byte-identité du
+contrôle enveloppé. PAS de course de navigateur inventée ; PAS de bump HARNESS — ce n'est pas un
+contrat `bench.mjs`, l'empreinte du DOM-contract oracle n'a pas bougé (HARNESS reste **1.63.0**), comme
+aux décisions 164, 168, 171, 172 et 173.
+
+**GÉNÉRATEUR SEUL.** `git diff -- src/filament-runtime` VIDE, runtime gelé à 1 943 B, ZÉRO primitive :
+une porte de refus n'émet rien, et le contrôle enveloppé réutilise la région de la décision 162 plus
+`list()`, qui livrent déjà. Suite : **641 tests** (557 générateur / 60 subset / 24 analyzer) + 214
+runtime, dont CINQ neufs dans `FragmentRegionTests` : le refus localisé sur le trou nu (B3), son
+message nommant mécanisme et deux contournements, le contrôle enveloppé qui compile, son import
+inchangé, et son snapshot. Le témoin qui plantait est RANGÉ du bon côté (`Unsupported/Gate/RegionHole`
++ son fils `RegionHoleCard`) ; le contrôle est du côté supporté (`Supported/Composition/RegionHoleWrapped`
++ `RegionHoleWrappedCard`). §8 inchangé.

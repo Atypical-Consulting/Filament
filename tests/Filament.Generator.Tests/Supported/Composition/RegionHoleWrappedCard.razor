@@ -1,0 +1,11 @@
+@* THE CONTROL for register defect B3, on the SUPPORTED side of the line. The @ChildContent hole
+   sits inside an element the CHILD declares (`<div id="hole">`), so the region's body is that div and
+   the fragment is inserted into it -- a stable container. Only the BARE hole
+   (RegionHoleCard.razor, `@if (Title == "t") { @ChildContent }`) has no container and is refused.
+   This one compiles, and its emission must not move when the bare hole becomes a located refusal. *@
+<div id="card">@if (Title == "t") { <div id="hole">@ChildContent</div> }</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}
