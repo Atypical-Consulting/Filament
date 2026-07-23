@@ -9,7 +9,12 @@
     "emitDeclarationOnly": false,
     "declaration": false,
     "noUnusedLocals": false,
-    "types": ["vitest/globals"]
+    // "node" is listed because the tests import node:fs, node:path and node:perf_hooks and read
+    // __dirname and process. Under Vitest 3 those resolved without being named here: its globals
+    // entry referenced @types/node, so naming vitest/globals dragged Node's declarations in too.
+    // Vitest 4 dropped that reference, and six errors appeared in files nobody had touched.
+    // @types/node itself is still on disk either way, via happy-dom.
+    "types": ["vitest/globals", "node"]
   },
   "include": ["src/**/*.ts", "test/**/*.ts", "scripts/**/*.mjs"]
 }
