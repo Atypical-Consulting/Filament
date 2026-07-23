@@ -6493,4 +6493,92 @@ n'est pas un témoin (RZ9979). §8 inchangé.
 
 ---
 
-*Fin de l'entrée n°76. Ne pas modifier — ajouter une entrée n°75 pour toute rectification.*
+*Fin de l'entrée n°76. Ne pas modifier — ajouter une entrée n°77 pour toute rectification.*
+
+---
+
+## Entrée n°77 — 2026-07-23 — Phase 4 : la position texte est type-dirigée partout — un `bool` s'écrit `True`, un `float` garde son format à travers un `@typeparam`
+
+**Ce qui est mesuré.** Deux différences de RENDU, sur une page, parce qu'une différence de rendu n'est
+une affirmation qu'une fois lue. Défauts de registre **A13** et **A15**, de classe A, trouvés en
+SONDANT les onze non-buts §3 fermés par l'ADR 0003 — travail d'HONNÊTETÉ, pas de surface. (1) Un
+`bool` en position texte : C# rend `True`/`False` (Boolean.ToString, capitalisé, invariant), le
+générateur d'avant rendait `true`/`false` (`String(true)`). (2) Un `float` traversant un `@typeparam` :
+C# rend `0.1` (float.ToString, plus courte décimale qui fait l'aller-retour en float32), le générateur
+d'avant rendait `0.10000000149011612` (le double brut), car le `__f32` de la décision 113 était
+court-circuité à la frontière. Décision 171.
+
+**Pourquoi la mesure passe par un ORACLE et pas par Playwright.** La harnais Playwright n'est TOUJOURS
+pas installable ici (réserve de BENCH n°69/n°70, toujours ouverte) — et cet environnement n'a même pas
+le workload `wasm-tools`, donc une coquille Blazor WASM ne peut PAS être publiée. Elle n'a pas à
+l'être : ce que C# rend un `bool` ou un `float` en TEXTE est décidé par le `ToString` de la BCL,
+parcouru par le vrai Renderer — le MÊME code qu'une app WASM exécute. On mesure donc par le chemin sans
+navigateur que ce dépôt s'autorise déjà (c'est la raison d'être de `tools/error-boundary-oracle`,
+décision 164) : `HtmlRenderer` côté Blazor, happy-dom côté Filament. **Aucun run de navigateur inventé.**
+
+**Pourquoi il n'y a NI label de bench NI bump HARNESS.** La tranche est **générateur-seul** (`git diff
+-- src/filament-runtime` **VIDE**) et n'ajoute d'octets qu'à une app qui affiche effectivement un
+scalaire — il n'y a ni C1 ni C4 à re-mesurer. Et ce n'est pas un contrat `bench.mjs` : la
+version-empreinte du DOM-contract oracle n'a pas changé, donc la bumper mentirait sur ce qui a bougé.
+Exactement le choix de la décision 164 (l'oracle, pas un label).
+
+### L'oracle : les deux côtés rendent le MÊME `App.razor`
+
+```
+# Blazor, l'autorité : le vrai HtmlRenderer sous InvariantGlobalization
+dotnet run --project tools/text-format-oracle
+# Filament : le module émis du MÊME App.razor, empaqueté contre le vrai runtime, monté dans happy-dom
+bash tools/text-format-oracle/run.sh          # génère, empaquette (esbuild), monte, et COMPARE
+```
+
+`App.razor` affiche quatre positions texte type-dirigées : `@flagTrue` et `@flagFalse` (bool, direct),
+et `<TypedLeaf Value="@ratio" />` / `<TypedLeaf Value="@ratio2" />` où `TypedLeaf` déclare `@typeparam T`
+et rend `@Value` (float, à travers la frontière). `ratio`/`ratio2` sont des signaux, donc les
+paramètres liés sont vivants (décision 90).
+
+### Résultat
+
+| Label | `#flag_t` | `#flag_f` | `#gen_a` (float via `@typeparam`) | `#gen_b` (float via `@typeparam`) |
+|---|---|---|---|---|
+| **blazor (HtmlRenderer)** (autorité) | `True` | `False` | `0.1` | `0.2` |
+| **filament (happy-dom)** (générateur) | `True` | `False` | `0.1` | `0.2` |
+
+**Les quatre champs coïncident, à l'octet.** JSON identique des deux côtés :
+
+```
+BLAZOR  : {"flag_t":"True","flag_f":"False","gen_a":"0.1","gen_b":"0.2"}
+FILAMENT: {"flag_t":"True","flag_f":"False","gen_a":"0.1","gen_b":"0.2"}
+```
+
+### L'AVANT, sur le même `App.razor`
+
+Le module émis par le générateur de HEAD pour ces mêmes bindings :
+
+```
+effect(() => setText(_tx0, flag.value));      // A13 : String(true) = "true" (Blazor : "True")
+effect(() => setText(_tx0, ratio.value));     // A15 : String(Math.fround(0.1)) = "0.10000000149011612" (Blazor : "0.1")
+```
+
+L'APRÈS passe chacun par la dispatch de type qui entourait déjà float/decimal/DateTime :
+`setText(_tx0, __bool(flag.value))` et `setText(_tx0, __f32(ratio.value))`.
+
+### La ligne que le correctif ne franchit pas
+
+Un pli de paramètre `bool` STATIQUE reste REFUSÉ (`<BoolLeaf On="true" />`) : un attribut statique
+épisse une chaîne, donc un `bool` plierait `"true"` là où un booléen est attendu — le bras `bool` de
+D5, ajourné. Témoin `Unsupported/Gate/StaticBoolParam.razor`, `FIL0003 [composition-out-of-subset]`
+localisé (`parameter 'On' of <BoolLeaf> is not a string`). Seul un paramètre lié RÉACTIVEMENT traverse,
+car sa valeur est l'expression type-correcte du parent.
+
+**Invariants.** `git diff -- src/filament-runtime` VIDE — générateur seul, ZÉRO primitive : `__bool` et
+`__f32` sont du code ÉMIS, transporter un format est une décision de COMPILATION. Runtime gelé à
+1 943 B. `Generic.approved.js` **inchangé à l'octet** (le générique existant passe un `int`, qu'aucun
+format ne touche). Suite : **624 tests** (540 générateur / 60 subset / 24 analyzer) + 214 runtime, dont
+CINQ neufs (deux snapshots — `BoolInText.approved.js`, `GenericFloat.approved.js` —, l'assertion
+`__f32`-à-travers-frontière, et le refus `bool` statique). Chaque fixture est du Blazor VALIDE :
+l'oracle les compile par le SDK Razor (`Build succeeded. 0 Warning(s) 0 Error(s)`), ce qui EST la garde
+RZ9979. §8 inchangé.
+
+---
+
+*Fin de l'entrée n°77. Ne pas modifier — ajouter une entrée n°78 pour toute rectification.*

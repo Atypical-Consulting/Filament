@@ -1,0 +1,11 @@
+@* A GENERIC leaf display (decision 135). Its parameter's type is the type parameter T, not a
+   concrete type -- Blazor infers T at the call site from Value="@expr". The value it renders was
+   TYPED by the parent; the child sees only T, which erases. This is the exact shape register A15
+   is about: a float/decimal/DateTime crossing @typeparam must keep its type-directed formatter. *@
+@typeparam T
+
+<span>@Value</span>
+
+@code {
+    [Parameter] public T? Value { get; set; }
+}

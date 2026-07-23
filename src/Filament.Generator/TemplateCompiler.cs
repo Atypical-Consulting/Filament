@@ -219,6 +219,7 @@ public sealed class TemplateCompiler
     readonly List<Diagnostic> _diagnostics = [];
     bool _needsFloatFormat;   // some @expr is float-typed -> Render emits the __f32 helper (decision 113)
     bool _needsDateTimeFormat;   // some @expr is DateTime-typed -> Render emits the __dtStr helper (decision 115)
+    bool _needsBoolFormat;   // some @expr is bool-typed -> Render emits the __bool helper (decision 107/S9)
 
     /// <summary>The author's `@using` namespaces for the component being prepared (decision 147): a
     /// NAME-RESOLUTION directive, harvested into the wrapped source's usings after resolving against the
@@ -2394,6 +2395,7 @@ public sealed class TemplateCompiler
         var bindings = new Dictionary<string, string>(StringComparer.Ordinal);
         var reactive = new HashSet<string>(StringComparer.Ordinal);
         var handlers = new Dictionary<string, string>(StringComparer.Ordinal);
+        var formats = new Dictionary<string, ScalarFormat>(StringComparer.Ordinal);
         foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
         {
             var bound = attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>().FirstOrDefault();
@@ -2433,6 +2435,12 @@ public sealed class TemplateCompiler
                 }
                 bindings[attr.AttributeName] = _code.SlotJs(bound);
                 reactive.Add(attr.AttributeName);
+                // Carry the type-directed display format across the boundary (the S9 slice, register A15):
+                // a float/decimal/DateTime/bool the parent supplies keeps its formatter at the child's
+                // `@Name` even when the child's declared type is an erased @typeparam. A format-less scalar
+                // (int, string) carries nothing, so the common case adds no entry and changes no bytes.
+                var fmt = _code.SlotFormat(bound);
+                if (fmt != ScalarFormat.None) formats[attr.AttributeName] = fmt;
                 continue;
             }
             // Prefix-aware for the same reason as the static path (decision 151): a multi-token
@@ -2445,7 +2453,7 @@ public sealed class TemplateCompiler
 
         var childParse = RazorFrontEnd.Parse(childPath);
         var childCode = new CSharpFrontEnd();
-        childCode.BindParameters(bindings, reactive, handlers);
+        childCode.BindParameters(bindings, reactive, handlers, formats);
         childCode.BindCascades(_cascades);
 
         // THE MARKUP THE PARENT PASSED IN (decision 131). Everything that is not an attribute is the
@@ -3244,6 +3252,16 @@ public sealed class TemplateCompiler
             js = $"__dtStr({js})";
         }
 
+        // A BOOL in text position renders C#'s CAPITALISED "True"/"False" (Boolean.ToString), not JS's
+        // lower-case String(true) = "true" -- the latent divergence decision 107 named, closed here (the
+        // S9 slice, register A13). Same type-directed dispatch as the scalars above, so a bool that crosses
+        // a composition boundary (SlotFormat carried it) is formatted at the child's render site too.
+        if (_code.SlotIsBool(expr))
+        {
+            _needsBoolFormat = true;
+            js = $"__bool({js})";
+        }
+
         // NOT REACTIVE -> no signal, no effect, no .value: one write, at create time. The
         // source can never change, so an effect around it would be a subscription to nothing --
         // machinery serving machinery, which is the thing this POC refuses. rows.js's @row.Id
@@ -3320,6 +3338,15 @@ public sealed class TemplateCompiler
             sb.Append("  }\n");
             sb.Append("  return String(x);\n");
             sb.Append("}\n\n");
+        }
+
+        if (_needsBoolFormat)
+        {
+            // C#'s Boolean.ToString() is CAPITALISED and invariant ("True"/"False"); JS's String(true) is
+            // "true". A bool in text position formats through this, so `@flag` renders what Blazor renders.
+            // Emitted (not a runtime export) so a bool display stays generator-only. Decision 107/S9.
+            sb.Append("// -- bool display: C#'s Boolean.ToString() is capitalised (\"True\"/\"False\") --\n");
+            sb.Append("function __bool(b) { return b ? 'True' : 'False'; }\n\n");
         }
 
         if (_code.DecimalHelpers.Count > 0)

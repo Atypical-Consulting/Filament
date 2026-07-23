@@ -1,0 +1,10 @@
+@* A bool in TEXT position (the S9 slice; register A13). C# renders Boolean.ToString() = "True"/"False"
+   (capitalised, invariant); JS's String(true) = "true". The generator formats it through the emitted
+   __bool helper -- the latent divergence decision 107 named, closed here. `flag` is a signal (read AND
+   written), so the display is a live effect. *@
+<p><span id="flag">@flag</span></p>
+
+@code {
+    private bool flag = true;
+    void Toggle() { flag = !flag; }
+}

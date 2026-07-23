@@ -6189,3 +6189,94 @@ côté et les trois témoins de refus délibéré en `Build succeeded. 0 Warning
 autres en `RZ9996`/`RZ9997` verbatim, qui est précisément leur raison d'être. Suite : **585 tests**
 (501 générateur / 60 subset / 24 analyzer) + 214 runtime, dont VINGT ET UN neufs. HARNESS
 **1.62.0 → 1.63.0**, divulgué.
+
+## 171. La position texte est TYPE-DIRIGÉE partout : un `bool` s'écrit `True`, un `float` garde son format à travers un `@typeparam`
+
+**2026-07-23.** Trouvé en SONDANT les onze non-buts §3 fermés par l'ADR 0003 — travail d'HONNÊTETÉ,
+pas de surface. Défauts de registre **A13** et **A15**, tous deux de classe A : une valeur atteint un
+nœud TEXTE et perd le formatage que C# lui donne. Aucun des deux ne plante ni ne refuse ; les deux
+émettent un module à exit 0 qui rend un texte FAUX — la faute exacte que la §10 interdit. Le
+générateur émet déjà un formateur par type scalaire (`__f32` décision 113, `__decStr` 114, `__dtStr`
+115) ; le bug est que deux POSITIONS ne les choisissaient pas.
+
+**A13 — UN `bool` EN POSITION TEXTE S'ÉCRIVAIT `true`.** `Boolean.ToString()` de C# est CAPITALISÉ et
+invariant (`True`/`False`) ; `String(true)` de JS ne l'est pas. C'est la divergence latente que la
+décision 107 avait DÉJÀ NOMMÉE (« false vs False »), jamais fermée. Rejoué de première main sur
+`<span id="flag">@flag</span>`, générateur d'avant :
+
+```
+effect(() => setText(_tx0, flag.value));     // setText fait node.data = v -> String(true) = "true"
+```
+
+`baseline/RouteParams.Blazor/Pages/Flag.razor` en portait déjà l'aveu écrit : son commentaire évite
+`@On` en texte « car C# rend un bool "True"/"False" et JS "true"/"false" ». Le contournement était
+documenté ; le formateur, non.
+
+**A15 — UNE VALEUR TRAVERSANT UN `@typeparam` PERDAIT SON FORMATEUR.** `<Box Value="@ratio" />` où
+`ratio` est un `float` et `Box.razor` déclare `@typeparam T` puis rend `@Value` (T inféré = `float`).
+L'enfant rendait le DOUBLE brut, parce que son type DÉCLARÉ est le paramètre de type, qui n'a pas de
+`SpecialType`. Rejoué, générateur d'avant :
+
+```
+const ratio = signal(Math.fround(0.1));
+effect(() => setText(_tx0, ratio.value));    // String(Math.fround(0.1)) = "0.10000000149011612"
+```
+
+C# `float.ToString()` rend `"0.1"` — la plus courte décimale qui fait l'aller-retour en float32. Le
+`__f32` de la décision 113 était court-circuité dès que la valeur passait la frontière.
+
+**LE REMÈDE, UN SEUL, POUR LES DEUX : LE FORMATEUR SE CHOISIT SUR LE TYPE STATIQUE, ET CE TYPE
+VOYAGE.** Générateur seul — chaque formateur EST déjà du code émis, il n'y a rien à ajouter au
+runtime. Trois conséquences mécaniques :
+
+1. `EmitBinding` gagne un bras `bool`, à côté des bras float/decimal/DateTime qui l'entouraient déjà :
+   `SlotIsBool(expr)` → `__bool(js)`, et `__bool` est émis (`b ? 'True' : 'False'`) comme `__f32`
+   l'est. La position texte est le SEUL appelant, donc l'attribut `disabled`/le `@bind` d'une case
+   restent sur leur propre chemin, intacts.
+2. La frontière de composition TRANSPORTE le format. Le type de l'enfant est effacé (c'est un
+   `@typeparam`), mais le PARENT connaît le type de l'expression qu'il fournit — son expression EST
+   la bonne (exemption de la décision 90). `BindParameters` reçoit donc, à côté des liaisons, une
+   carte `nom → ScalarFormat` mesurée sur le slot parent ; `TranslateSlots` la consulte pour une
+   LECTURE NUE d'un `[Parameter]` lié dont la résolution de type propre n'a rien donné, et rétablit
+   `IsFloat`/`IsBool`/… Un enfant à type CONCRET résout son format tout seul : rien ne change pour
+   lui, `Generic.approved.js` reste **inchangé à l'octet** (le générique existant passe un `int`, que
+   `String` rend fidèlement, donc aucun format n'est transporté).
+3. Le même transport vaut pour `decimal` (`__decStr`) et `DateTime` (`__dtStr`) — c'est UNE table,
+   pas quatre rustines. Seul le `float` est mesuré ici (le cas que le registre nomme) ; les autres
+   suivent la même dispatch sans branche neuve.
+
+**LA LIGNE QUE LE CORRECTIF NE FRANCHIT PAS.** Un pli de paramètre `bool` STATIQUE reste REFUSÉ : un
+attribut statique épisse un littéral STRING, donc un paramètre `bool` plierait `"true"` (une chaîne)
+là où un booléen est attendu — le bras `bool` de D5 que le registre ajourne. Seul un paramètre lié
+RÉACTIVEMENT traverse, car sa valeur est l'expression type-correcte du parent. Témoin
+`Unsupported/Gate/StaticBoolParam.razor`, refusé avec un `FIL0003 [composition-out-of-subset]` localisé
+(`parameter 'On' of <BoolLeaf> is not a string`).
+
+**MESURÉ (BENCH n°77)** contre du vrai Blazor. La harnais Playwright n'est PAS installable dans cet
+environnement — la réserve que la BENCH n°69 / décision 164 a divulguée, et la raison d'être de
+`tools/error-boundary-oracle` ; le `wasm-tools` workload absent interdit de publier une coquille
+Blazor WASM. On mesure donc par le chemin SANS NAVIGATEUR que ce dépôt s'autorise déjà : ce que C#
+rend un `bool`/`float` en texte est décidé par le `ToString` de la BCL parcouru par le vrai Renderer,
+le MÊME code qu'une app WASM exécute. `tools/text-format-oracle` rend `App.razor` par le
+`HtmlRenderer` réel sous `InvariantGlobalization` ; le côté Filament rend le module émis du MÊME
+`App.razor` dans happy-dom (`observe-filament.mjs`). Les deux blobs JSON sont **identiques à
+l'octet** :
+
+```
+BLAZOR  : {"flag_t":"True","flag_f":"False","gen_a":"0.1","gen_b":"0.2"}
+FILAMENT: {"flag_t":"True","flag_f":"False","gen_a":"0.1","gen_b":"0.2"}
+```
+
+Deux affirmations `bool` (`True` ET `False`) et deux affirmations `float` traversant `@typeparam`
+(`0.1` ET `0.2`). PAS de course de navigateur inventée : la mesure est réelle, par l'oracle
+`HtmlRenderer` + happy-dom, exactement comme la décision 164. PAS de bump HARNESS non plus — ce n'est
+pas un contrat `bench.mjs`, la version-empreinte du DOM-contract oracle n'a pas bougé.
+
+**GÉNÉRATEUR SEUL.** `git diff -- src/filament-runtime` VIDE, runtime gelé à 1 943 B, ZÉRO primitive :
+`__bool` et `__f32` sont du code ÉMIS, et transporter un format est une décision de COMPILATION. Les
+fixtures sont bâties comme du Blazor VALIDE — l'oracle les compile par le SDK Razor
+(`Build succeeded. 0 Warning(s) 0 Error(s)`), ce qui EST la garde RZ9979. Suite : **624 tests** (540
+générateur / 60 subset / 24 analyzer) + 214 runtime, dont CINQ neufs (`__bool` et `__f32`-à-travers-
+frontière chacun avec son snapshot, le refus `bool` statique). Deux témoins du bon côté
+(`Supported/Code/BoolInText.razor`, `Supported/Composition/GenericFloat.razor` + `TypedLeaf.razor`),
+un du côté refusé (`Unsupported/Gate/StaticBoolParam.razor` + `BoolLeaf.razor`).
