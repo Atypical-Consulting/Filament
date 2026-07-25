@@ -73,6 +73,11 @@ const subset = [
       "@page routing, @inject, @inherits, RenderFragment / ChildContent, EventCallback, @ref, CascadingParameter, generics, JS interop, EditForm: all eleven closed and measured",
   },
   {
+    title: "Error boundaries",
+    items:
+      "<ErrorBoundary> catches what the parent throws while evaluating its content, latches the first error the way Blazor does, and adds zero runtime bytes",
+  },
+  {
     title: "Real-world I/O",
     items:
       "HttpClient → fetch, JSON under a shape gate, the wall clock, seeded Random proven against the BCL, OnInitialized(Async), computed properties",
@@ -82,15 +87,21 @@ const subset = [
 // THE HONEST LIST, and it is the current one. Nine framework features used to sit here; ADR 0003
 // closed and measured all eleven, and this page went on claiming they were missing. What belongs
 // here is what is refused TODAY -- including the two the post-ADR-0003 probe re-opened as real gaps.
+//
+// A shipped slice NARROWS an entry, it does not delete it. Decision 164 shipped <ErrorBoundary>, so
+// the blanket "Error boundaries" refusal is gone -- but the five variants it explicitly refuses are
+// now named, because that is what is still true. Same rule already applied to route parameters:
+// decision 163 shipped the matcher, and the entry was narrowed to :guid and catch-all, which stay
+// refused. RenderFragment<T> is untouched: TypeSubset.cs still refuses it (decision 131).
 const nonGoals = [
   "SSR / prerendering",
   "CSS isolation (.razor.css)",
-  "Error boundaries",
   "Form validation (refused, not ignored)",
   "A general DI container",
   "OnAfterRender / OnParametersSet / IDisposable",
   "Templated components (RenderFragment<T>)",
   'Route parameters (:guid, catch-all {*Rest}, and optional {id?})',
+  "Error boundaries: nested, at a template root, a second one in the same component, content that reads a computed, MaximumErrorCount",
 ];
 ---
 
@@ -376,7 +387,7 @@ const nonGoals = [
           A wide C# subset, and a compiler that refuses the rest, loudly.
         </h2>
         <p class="mt-5 max-w-2xl text-lg leading-relaxed text-mist-300">
-          Across 161 recorded decisions and 67 measured entries, the compilable surface has grown to
+          Across 164 recorded decisions and 70 measured entries, the compilable surface has grown to
           cover most of everyday C# and, since ADR 0003, the framework layer too. Anything outside
           it raises a located diagnostic and writes no file.
         </p>
@@ -398,7 +409,7 @@ const nonGoals = [
         </div>
 
         <p class="mt-8 text-sm text-mist-500">
-          Backed by <span class="font-mono text-mist-300">528</span> .NET tests and
+          Backed by <span class="font-mono text-mist-300">571</span> .NET tests and
           <span class="font-mono text-mist-300">214</span> runtime tests, every slice verified
           byte-for-byte against a Blazor-faithful answer key, then measured live in a real browser.
         </p>
@@ -462,6 +473,17 @@ const nonGoals = [
                   ><span class="font-semibold text-spark-300">Banked.</span> The comment-anchor node
                   debt was re-measured inside a conditional app: Filament renders 4 nodes to Blazor's
                   5. It never flips sign; it stays an advantage.</span
+                >
+              </li>
+              <li class="flex gap-3">
+                <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-spark-400"></span>
+                <span
+                  ><span class="font-semibold text-spark-300">Measured before it was mapped.</span> A
+                  boundary catches what its <em>descendants</em> throw. A
+                  <code class="text-mist-300">@onclick</code> you write inside the boundary belongs to
+                  the parent that wrote the fragment, so it is not caught here. That is not a shortcut:
+                  it was measured against the real Blazor renderer first, and Blazor does not catch it
+                  either.</span
                 >
               </li>
               <li class="flex gap-3">
