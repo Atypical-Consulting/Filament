@@ -1,0 +1,10 @@
+@inherits CodeBehindBase
+
+@* A CODE-BEHIND PARTIAL BASE (decision 173, register A3). CodeBehindBase's C# is split across
+   CodeBehindBase.razor (the @code half, which this compiler reads) and CodeBehindBase.razor.cs (a
+   `partial class` half, which it does NOT). The .razor.cs holds an OnInitialized override that sets
+   count = 7. Before decision 173 the sibling .razor satisfied File.Exists and the .cs half was dropped
+   in SILENCE: exit 0, `const count = 0`, #out rendering 0 where Blazor renders 7. Now a code-behind
+   partial beside a resolved base is REFUSED with a located diagnostic naming the .cs file. *@
+
+<div id="wrap"><span id="out">@count</span></div>

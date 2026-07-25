@@ -1,0 +1,11 @@
+@* A container that nests ITSELF inside its own markup. Unlike Supported/Composition/NestedSame.razor
+   -- where the nesting is the PARENT's content and terminates -- this one is a genuine cycle: every
+   level renders another level, and Blazor does not terminate on it either.
+
+   The pair exists so the fragment-scoped chain (Fragment.Composing) can be shown to distinguish the
+   two cases rather than to weaken the guard. *@
+<div class="card"><CycleCard><b>x</b></CycleCard></div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

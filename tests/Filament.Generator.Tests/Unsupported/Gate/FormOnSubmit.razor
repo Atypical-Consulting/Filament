@@ -1,0 +1,19 @@
+@* DECISION 165's BOUNDARY. Now that a callback-less <EditForm> registers its submit, the obvious next
+   question is why OnSubmit is not simply the callback for it. Because it is not the same callback:
+   Blazor's OnSubmit means "handle every submit MYSELF, validation included", so an author who writes
+   it is asking for the validation subsystem -- EditContext, field state, message stores -- which
+   decision 138 refuses as a whole rather than pretending to have.
+
+   The refusal is located and names the supported parameter. Suppressing the navigation was never the
+   thing OnSubmit was for, and now that suppression happens with no callback at all, admitting OnSubmit
+   as an alias for OnValidSubmit would be silently answering a different question than the one asked. *@
+
+<EditForm Model="@model" OnSubmit="Save"><button id="s" type="submit">s</button></EditForm>
+
+@code {
+    private Person model = new Person();
+
+    void Save() { }
+
+    public record Person { public string Name { get; set; } = ""; }
+}

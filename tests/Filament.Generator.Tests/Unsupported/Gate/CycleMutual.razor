@@ -1,0 +1,14 @@
+@* MUTUAL RECURSION -- the same process abort as CycleSelf.razor, reached without any file naming
+   itself (register defect B4, decision 169). Before the guard: EXIT=134, "Stack overflow.", no
+   out.js, no diagnostic.
+
+   The diagnostic must NAME THE WHOLE CYCLE, because "CycleAlpha is recursive" would be false: the
+   edge to cut is a choice between two, and only the path shows both.
+
+     error CycleBeta.razor(4,50): FIL0003: [composition-cycle] <CycleAlpha> re-enters a component
+     that is already being inlined: CycleAlpha.razor -> CycleBeta.razor -> CycleAlpha.razor. ...
+
+   VALID BLAZOR: dotnet build succeeds (0 Warning(s) 0 Error(s)) and HtmlRenderer renders
+   <span class="alpha">x<em class="beta">b</em></span> -- finite, because each level is a real
+   instance whose guard is evaluated at run time. *@
+<div id="wrap"><CycleAlpha Label="x" /></div>

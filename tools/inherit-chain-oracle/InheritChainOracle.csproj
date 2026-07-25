@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <!-- THE BLAZOR ORACLE FOR A THREE-LEVEL @inherits CHAIN (register A4; the S8 slice). NO BROWSER.
+
+       Every weight/timing slice measures Blazor through Playwright. This one cannot: the harness is
+       not installable here (the reserve BENCH n°69 / decision 164 disclosed; wasm-tools is absent, so
+       no Blazor WASM shell can be published). It does not have to be. WHETHER an inherited field is a
+       real signal and an inherited method really writes it, ACROSS a chain App : Mid : Grand, is
+       decided by C# member inheritance plus ComponentBase.HandleEventAsync -> StateHasChanged, ordinary
+       .NET in Microsoft.AspNetCore.App, the SAME code a WASM app runs. bUnit hosts exactly that real
+       Renderer and ComponentBase and lets us click and re-read, the interactive analogue of the way
+       text-format-oracle hosts the real HtmlRenderer for text and method-read-oracle (decision 172)
+       hosts it for reactivity.
+
+       This is an ORACLE: it says what BLAZOR renders, before and after two #inc clicks, for a field and
+       method declared THREE levels up. The Filament side renders the SAME App.razor (its emitted module
+       in happy-dom, observe-filament.mjs) and the two JSON blobs must be byte-identical. -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>InheritChainOracle</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="bunit" Version="2.7.2" />
+  </ItemGroup>
+
+</Project>

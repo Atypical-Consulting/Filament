@@ -1,0 +1,6 @@
+@* A child with a NAMED hole whose name collides with the sibling file Slot.razor. *@
+<div id="card"><h3 id="title">t</h3>@Slot</div>
+
+@code {
+    [Parameter] public RenderFragment? Slot { get; set; }
+}

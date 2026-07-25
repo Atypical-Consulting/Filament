@@ -1,0 +1,16 @@
+@* THE CONTROL (register A14, D_asyncnowrite): the template reads `msg` DIRECTLY (`@msg`), and an async
+   method writes it. This already lifted to `signal('idle')` + a live effect before the S10 slice, and
+   it must STAY that way -- the slice's promotion is ADDITIVE (it only ever marks MORE fields read), so
+   a directly-read field is untouched. Included to prove the direct-read path does not regress. *@
+<p><span id="msg">@msg</span></p>
+<button id="go" @onclick="Load">go</button>
+
+@code {
+    private string msg = "idle";
+
+    async Task Load()
+    {
+        await Task.Delay(1);
+        msg = "done";
+    }
+}

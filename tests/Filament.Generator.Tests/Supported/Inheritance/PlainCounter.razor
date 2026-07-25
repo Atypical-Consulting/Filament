@@ -1,0 +1,10 @@
+@* THE CONTROL for register C4: the SAME component as ExplicitComponentBase, with NO @inherits line at
+   all. Its emitted module must be BYTE-IDENTICAL to ExplicitComponentBase's -- which is the proof that
+   `@inherits ComponentBase` is a no-op, exactly as Razor's own codegen treats it. *@
+
+<div id="wrap"><span id="out">@currentCount</span><button id="inc" @onclick="Increment">inc</button></div>
+
+@code {
+    int currentCount = 5;
+    void Increment() { currentCount++; }
+}

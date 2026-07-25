@@ -1,0 +1,13 @@
+@* THE COMPONENT THAT RENDERS ITSELF. Guarded, so Blazor's own renderer TERMINATES on it:
+   HtmlRenderer produces <span class="node">x<span class="node">done</span></span>, two levels and
+   stop. The guard is a RUNTIME question there -- Blazor instantiates the child, hands it Label,
+   and only then evaluates `Label == "x"`.
+
+   Composition here is COMPILE-TIME INLINING (decision 88). The child has no instance, and an @if
+   becomes a runtime list() whose body is walked whatever the condition says (decision 81), so the
+   walk descends forever. See CycleSelf.razor for what that used to do to the process. *@
+<span class="node">@Label@if (Label == "x") { <CycleNode Label="done" /> }</span>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+}

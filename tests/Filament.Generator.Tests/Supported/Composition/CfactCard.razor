@@ -1,0 +1,8 @@
+@* THE COUNTERFACTUAL's child: identical to SlotCard.razor except that its hole is called
+   ChildContent. `Slot` is therefore NOT a parameter name here, so <Slot> is the sibling COMPONENT --
+   which is what Blazor instantiates for that source. *@
+<div id="card"><h3 id="title">t</h3>@ChildContent</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

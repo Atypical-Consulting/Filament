@@ -1,0 +1,12 @@
+@inherits ChainMid
+
+@* THE TWO-LEVEL @inherits CHAIN (decision 173, register A4). App : ChainMid : ChainGrand : ComponentBase.
+   The state and behaviour live THREE levels up, in ChainGrand; ChainMid is a pure passthrough; this
+   component supplies only the markup. Blazor merges the WHOLE chain, so `count` and `Inc()` -- declared
+   in the grandparent -- are in scope here. Before decision 173 the base merge tested BaseType once, on
+   the derived, so ChainGrand vanished: a grandparent hook dropped at exit 0, or a name that lived a
+   level up became a MISDIRECTED [unresolved-name]. Now the merge walks the chain base-first, so the
+   grandparent's members are lifted exactly as if written here. #out renders the grandparent's field;
+   #inc calls the grandparent's method: 0 -> 1 -> 2 (measured, inherit-chain-oracle). *@
+
+<div id="wrap"><span id="out">@count</span><button id="inc" @onclick="Inc">inc</button></div>

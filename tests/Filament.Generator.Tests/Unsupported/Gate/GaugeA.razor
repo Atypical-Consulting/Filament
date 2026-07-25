@@ -1,0 +1,10 @@
+@* The STATIC consumer of CascadeIsFixed.razor's cascade: its own [Parameter] Tag never changes, so
+   under a FIXED cascade Blazor never re-parameterises it and it stays at 1 forever. Compiles
+   perfectly well on its own -- it is the PARENT that is refused, which is the point (same shape as
+   Gate/Plain.razor). *@
+<span id="a">@Level</span>
+
+@code {
+    [Parameter] public string Tag { get; set; } = "";
+    [CascadingParameter] public int Level { get; set; }
+}

@@ -63,6 +63,60 @@ public class CascadeTests
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }
 
+    /// <summary>
+    /// IsFixed IS REFUSED, AND IT USED TO BE IGNORED (decision 167, register defect A12 — found by
+    /// PROBING the eleven spec 3 non-goals ADR 0003 declared closed).
+    ///
+    /// `<CascadingValue Value="@level" IsFixed="true">` compiled at exit 0 with no diagnostic and emitted
+    /// the exact bytes the same source WITHOUT IsFixed emits. Measured against Blazor on this shape:
+    /// Blazor renders a=1,1,1 (a consumer never re-parameterised never sees a new value) and b=1,2,3 (a
+    /// consumer re-parameterised for another reason IS re-supplied the live one); Filament rendered
+    /// 2,3 for a as well. The obvious fix — fold the value once at mount — was measured too and renders
+    /// 1,1,1 for BOTH, right for a and wrong for b. So this compiler refuses rather than approximates.
+    ///
+    /// The assertion is on the LOCATION as much as the code: the span must land on the IsFixed value,
+    /// not on the whole element, and the message must carry the workaround.
+    /// </summary>
+    [Fact]
+    public void CascadingValueWithIsFixed_IsRefused_NotSilentlyIgnored()
+    {
+        var outPath = Path.Combine(RepoPaths.Root, "samples", "Cascade", $".casc-{Guid.NewGuid():N}.js");
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(
+                Path.Combine(RepoPaths.Unsupported, "Gate/CascadeIsFixed.razor"), outPath);
+
+            Assert.True(exit != 0, "<CascadingValue IsFixed> was COMPILED, not refused");
+            Assert.False(File.Exists(outPath), "the generator refused AND wrote the module anyway");
+            // (26,56) is the `true` itself — column 56 of the markup line, four characters long.
+            Assert.Contains("CascadeIsFixed.razor(26,56): FIL0003: [unsupported-cascade]", stderr);
+            Assert.Contains("IsFixed", stderr);
+            Assert.Contains("Drop IsFixed", stderr);              // the remedy, in the message
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// THE CONTROL THAT ISOLATES THE REFUSAL. Supported/Gate/CascadeTwoConsumers.razor is the refused
+    /// fixture character for character minus ` IsFixed="true"`, and it compiles: two consumers under one
+    /// cascade, GaugeB's bound Tag and this markup are all in subset, so CascadeIsFixed.razor refuses for
+    /// IsFixed and for NOTHING else. It is also the workaround the diagnostic names — a live cascade,
+    /// which is what BENCH n°53 measured against Blazor.
+    /// </summary>
+    [Fact]
+    public void TheSameCascadeWithoutIsFixed_CompilesClean_AndBothConsumersAreLive()
+    {
+        var js = File.ReadAllText(Generate.ToTempFixture("Gate/CascadeTwoConsumers.razor"));
+
+        Assert.Contains("'a'", js);
+        Assert.Contains("'b'", js);
+        // Both consumers resolve to the ANCESTOR's own signal, and both are LIVE effects.
+        Assert.Equal(2, js.Split("effect(() => setText(").Length - 1);
+        Assert.Contains("level.value", js);
+        Assert.DoesNotContain("CascadingValue", js);
+        Assert.DoesNotContain("IsFixed", js);
+    }
+
     /// <summary>GENERATOR-ONLY, ZERO HELPER: lexical scope needs no runtime primitive.</summary>
     [Fact]
     public void EmittedCascade_AddsNoRuntimePrimitive()

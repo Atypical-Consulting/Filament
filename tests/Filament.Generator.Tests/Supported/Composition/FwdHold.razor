@@ -1,0 +1,7 @@
+@* Forwarding with a wrapper the MIDDLE level owns: the grandparent's markup must end up inside
+   #hold, which is inside #inner. *@
+<FwdInner><div id="hold">@ChildContent</div></FwdInner>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,15 @@
+@* THE BOUNDARY the fix does NOT cross (register A14). A method the template calls reads `caption`, but
+   `caption` is NEVER written outside its initialiser. Decision 67's conjunction is read AND write, so
+   propagating the read alone must NOT promote it: `caption` stays a plain, non-signal binding and the
+   `@Label()` slot stays a ONE-SHOT insert, exactly as ErrorBoundary's un-written `fail` does. This
+   proves the slice promotes reachability, not every field a reachable method touches. *@
+<p><span id="c">@Label()</span></p>
+
+@code {
+    private string caption = "hello";
+
+    private string Label()
+    {
+        return caption + "!";
+    }
+}

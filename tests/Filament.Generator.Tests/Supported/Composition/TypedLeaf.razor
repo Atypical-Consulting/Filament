@@ -1,0 +1,10 @@
+@* A GENERIC leaf display (decision 135): its parameter's type is the type parameter T, which ERASES.
+   The value it renders was TYPED by the parent, so the type-directed formatter has to follow the value
+   across the boundary (the S9 slice; register A15). *@
+@typeparam T
+
+<span id="out">@Value</span>
+
+@code {
+    [Parameter] public T? Value { get; set; }
+}

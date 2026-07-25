@@ -350,6 +350,8 @@ public static class Generate
 
     public static string FragmentToTemp() => ToTemp(RepoPaths.FragmentRazor, "Fragment");
 
+    public static string FragmentSlotsToTemp() => ToTemp(RepoPaths.FragmentSlotsRazor, "FragmentSlots");
+
     public static string ElemRefToTemp() => ToTemp(RepoPaths.ElemRefRazor, "ElemRef");
 
     public static string JsInteropToTemp() => ToTemp(RepoPaths.JsInteropRazor, "JsInterop");
@@ -371,6 +373,8 @@ public static class Generate
     public static string FormsToTemp() => ToTemp(RepoPaths.FormsRazor, "Forms");
 
     public static string ContentRegionToTemp() => ToTemp(RepoPaths.ContentRegionRazor, "ContentRegion");
+
+    public static string SubmitToTemp() => ToTemp(RepoPaths.SubmitRazor, "Submit");
 
     /// <summary>
     /// Emit a fixture from the Supported dir (fixtures that now COMPILE -- e.g. root control

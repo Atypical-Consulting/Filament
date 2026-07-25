@@ -1,0 +1,11 @@
+@* A float crossing a @typeparam boundary (the S9 slice; register A15). Box<float>'s @Value used to
+   render the raw JS double ("0.10000000149011612"); the parent measured the value as float, so its
+   __f32 formatter (decision 113) is carried across and the child renders "0.1". `ratio` is a signal,
+   so the bound parameter is a live effect (decision 90). *@
+@using Microsoft.AspNetCore.Components.Web
+<div id="wrap"><TypedLeaf Value="@ratio" /><button id="bump" @onclick="Bump">bump</button></div>
+
+@code {
+    private float ratio = 0.1f;
+    void Bump() { ratio += 0.1f; }
+}

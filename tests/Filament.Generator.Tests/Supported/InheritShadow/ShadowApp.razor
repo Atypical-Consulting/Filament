@@ -1,0 +1,11 @@
+@inherits ComponentBase
+
+@* THE SHADOWING PAIR (decision 173, register C4). A sibling ComponentBase.razor sits beside this file.
+   In real Blazor that sibling legally SHADOWS the framework base -- `@inherits ComponentBase` then
+   resolves to the sibling component, not Microsoft.AspNetCore.Components.ComponentBase. Filament must
+   MERGE the sibling here, not treat the name as the default: the default fallback fires only AFTER the
+   sibling-existence check fails, and here it succeeds. #out renders `currentCount`, declared in the
+   sibling. If the C4 fallback wrongly fired, `currentCount` would be unresolved and this would refuse;
+   it compiles, which is the proof the shadow is merged. *@
+
+<div id="wrap"><span id="out">@currentCount</span></div>

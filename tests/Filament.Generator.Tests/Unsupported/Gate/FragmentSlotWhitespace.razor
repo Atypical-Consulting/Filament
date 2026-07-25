@@ -1,0 +1,15 @@
+@* D9 STAYS REFUSED, and this is the shape that keeps it refused: the standard MULTI-LINE authoring
+   style. Razor DISCARDS the whitespace between child content elements (its codegen for this source
+   emits no AddContent for the newlines at all); this compiler MATERIALISES whitespace between
+   siblings as a real text node, which is its documented policy and the one every other slice is
+   measured under. The two disagree, so emitting would build a DOM Blazor does not.
+
+   Valid Blazor -- `dotnet build` says Build succeeded, 0 Warning(s), 0 Error(s). It is refused
+   because a faithful mapping needs the whitespace-discard rule reproduced and MEASURED, which is a
+   follow-on slice, not this one. *@
+<div id="wrap">
+    <SlottedCard>
+        <Head><span id="h">head</span></Head>
+        <Foot><span id="f">foot</span></Foot>
+    </SlottedCard>
+</div>

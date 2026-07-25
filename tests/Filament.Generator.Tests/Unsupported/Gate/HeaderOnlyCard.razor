@@ -1,0 +1,9 @@
+@* A child whose ONLY fragment hole is called Header. Bare content has nowhere to go here: Razor
+   still lowers it to AddAttribute("ChildContent", …) for a property that does not exist, so the
+   Blazor project BUILDS and fails when the component is rendered. Filament refuses at compile
+   time instead -- FragmentBareNoChildContent.razor is the witness. *@
+<div id="card"><div id="head">@Header</div></div>
+
+@code {
+    [Parameter] public RenderFragment? Header { get; set; }
+}

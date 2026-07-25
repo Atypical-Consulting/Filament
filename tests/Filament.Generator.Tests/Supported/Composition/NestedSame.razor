@@ -1,0 +1,21 @@
+@* THE COUNTERFACTUAL THAT MADE Fragment.Composing NECESSARY (decision 169).
+
+   A card inside a card's CONTENT terminates: the inner card's content is a <b>, and there it stops.
+   But a fragment is compiled with the PARENT's context restored (decision 131) -- parent file,
+   parent front end, parent regions -- and the first cut of the cycle guard forgot to restore the
+   parent's CHAIN with them. The inner <NestedCard> was then read as re-entering the outer one and
+   this file was REFUSED:
+
+     error NestedSame.razor(1,22): FIL0003: [composition-cycle] <NestedCard> re-enters a component
+     that is already being inlined: NestedCard.razor -> NestedCard.razor. ...
+
+   That was measured by running exactly this file with the restore commented out, which is why the
+   chain is carried on the Fragment record: content sits ABOVE the child that places it, not inside
+   it. NestedCard.razor rendering <NestedCard> ITSELF is the genuine cycle, and it is still refused.
+
+   Byte-identity measured the same way as Diamond.razor: 985 bytes from the HEAD generator and from
+   the guarded one, diffed.
+
+   VALID BLAZOR: dotnet build succeeds and HtmlRenderer renders
+   <div class="card"><div class="card"><b>x</b></div></div>. *@
+<div id="wrap"><NestedCard><NestedCard><b>x</b></NestedCard></NestedCard></div>

@@ -59,6 +59,79 @@ public class ElemRefTests
         finally { if (File.Exists(outPath)) File.Delete(outPath); }
     }
 
+    /// <summary>
+    /// AN @ref UNDER A @foreach ROW IS REFUSED (decision 168, register defect A8). Found by PROBING the
+    /// eleven spec 3 non-goals ADR 0003 declared closed: this shape used to compile at exit 0 and emit
+    /// `const row` inside the row's local function while a mount-level handler read a FREE VARIABLE —
+    /// measured `ReferenceError: row is not defined`. The refusal is located ON THE CAPTURED NAME.
+    /// </summary>
+    [Fact]
+    public void RefInsideAForeachRow_IsRefused()
+    {
+        var outPath = Path.Combine(RepoPaths.Unsupported, $".ref-{Guid.NewGuid():N}.js");
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(
+                Path.Combine(RepoPaths.Unsupported, "Gate/RefInRow.razor"), outPath);
+
+            Assert.True(exit != 0, "@ref inside a @foreach row was COMPILED, not refused");
+            Assert.False(File.Exists(outPath), "the generator refused AND wrote the module anyway");
+            // (31,27) is `row` inside @ref="row" on the row's <li> — the captured NAME, as for Ref.razor.
+            Assert.Contains("RefInRow.razor(31,27): FIL0003: [ref-under-region]", stderr);
+            Assert.Contains("a @foreach row", stderr);                 // WHICH region, by name
+            Assert.Contains("free variable", stderr);                  // WHY, in one phrase
+            Assert.Contains("OUTSIDE the @foreach/@if", stderr);       // the remedy, in the message
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// A REGION IS NOT ONLY A @foreach: the same refusal covers an @if body, whose branch function is
+    /// built by the same save/restore idiom (EmitBranchFn). The witness deliberately does NOT name the
+    /// element after the field — an `id="box"` element would let the free variable resolve through HTML
+    /// named window access and make a broken mapping look like a working one.
+    /// </summary>
+    [Fact]
+    public void RefInsideAnIfBranch_IsRefused()
+    {
+        var outPath = Path.Combine(RepoPaths.Unsupported, $".ref-{Guid.NewGuid():N}.js");
+        try
+        {
+            var (exit, _, stderr) = Run.Generator(
+                Path.Combine(RepoPaths.Unsupported, "Gate/RefInBranch.razor"), outPath);
+
+            Assert.True(exit != 0, "@ref inside an @if branch was COMPILED, not refused");
+            Assert.False(File.Exists(outPath), "the generator refused AND wrote the module anyway");
+            // (26,29) is `box` inside @ref="box" on the branch's <input>.
+            Assert.Contains("RefInBranch.razor(26,29): FIL0003: [ref-under-region]", stderr);
+            Assert.Contains("an @if branch", stderr);
+        }
+        finally { if (File.Exists(outPath)) File.Delete(outPath); }
+    }
+
+    /// <summary>
+    /// THE CONTROL THAT ISOLATES THE REFUSAL, and the workaround the diagnostic names.
+    /// Supported/Gate/RefOutsideRow.razor is the refused row fixture with the @ref moved onto an &lt;li&gt;
+    /// OUTSIDE the @foreach: same field, same list, same @key, same async handler. It compiles, and the
+    /// name lands at MOUNT scope — textually before the row function — which is exactly the property the
+    /// refused shape does not have. So the refusal is about the region and about nothing else.
+    /// </summary>
+    [Fact]
+    public void TheSameRefOutsideTheRow_CompilesClean_AndNamesTheElementAtMountScope()
+    {
+        var js = File.ReadAllText(Generate.ToTempFixture("Gate/RefOutsideRow.razor"));
+
+        var decl = js.IndexOf("const row = document.createElement('li');", StringComparison.Ordinal);
+        var rowFn = js.IndexOf("function createR(", StringComparison.Ordinal);
+        Assert.True(decl >= 0, "the captured element was not emitted into `const row`");
+        Assert.True(rowFn >= 0, "the @foreach did not compile to a row function");
+        Assert.True(decl < rowFn, "`const row` was emitted INSIDE the row function, not at mount scope");
+
+        Assert.Contains("await row.focus();", js);
+        Assert.DoesNotContain("ref-under-region", js);
+        Assert.DoesNotContain("ElementReference", js);
+    }
+
     /// <summary>GENERATOR-ONLY, ZERO HELPER: naming a const needs no runtime primitive. Note this module
     /// imports FEWER primitives than most — it has no signal and no effect at all.</summary>
     [Fact]

@@ -1,0 +1,10 @@
+@* THE PARENT for register defect B3: it hands RegionHoleCard a fragment of its own markup, and the
+   child places that fragment BARE inside an @if. Valid Blazor (`Build succeeded`), and it USED TO
+   CRASH the tool -- "error FIL-WIRING: a RenderFragment reached the emitter with no container to
+   insert into", exit 1, NO location. Now it is a located FIL0003. *@
+<div id="wrap"><RegionHoleCard Title="t"><span id="body">@count</span></RegionHoleCard><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

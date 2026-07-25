@@ -1,0 +1,7 @@
+@* Two named holes, for the three named-slot shapes that stay REFUSED (register defect D9). *@
+<div id="card">@Head@Foot</div>
+
+@code {
+    [Parameter] public RenderFragment? Head { get; set; }
+    [Parameter] public RenderFragment? Foot { get; set; }
+}

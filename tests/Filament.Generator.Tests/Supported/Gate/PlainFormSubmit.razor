@@ -1,0 +1,22 @@
+@* REGISTER DEFECT A1 (decision 165). A plain <form @onsubmit="Save"> -- no <EditForm>, no framework
+   component, just an element and a @code method. It compiled at exit 0 and emitted a BARE listener:
+
+       listen(_el0, 'submit', () => {
+         saved.value = name.value;
+       });
+
+   Nothing suppressed the browser's default, so clicking #save NAVIGATED. The document reloaded, the
+   module was re-mounted from scratch, and everything the author had typed came back empty -- with no
+   diagnostic, on a source Blazor compiles and runs without moving. Blazor's shipped dispatcher carries
+   `_={submit:!0}` and preventDefaults ANY submit with a registered handler; Filament read that table
+   for <EditForm OnValidSubmit> only. Now it reads it for the event. *@
+
+<form @onsubmit="Save"><input id="name" @bind="name" /><button id="save" type="submit">save</button></form>
+<p id="out">@saved</p>
+
+@code {
+    private string name = "";
+    private string saved = "";
+
+    void Save() { saved = name; }
+}

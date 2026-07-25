@@ -1,0 +1,10 @@
+@* THE DEPTH BOUNDARY, and it is Blazor's rule too: a fragment [Parameter] name matches only for the
+   component's IMMEDIATE children. The OUTER <Slot> is SlotCard's hole; the INNER one is one level
+   down, inside content, where <Slot> is the sibling COMPONENT again -- so exactly ONE #decoy renders.
+   Before #168 the mis-compile scaled: both were the component, and TWO decoys were emitted. *@
+<div id="wrap"><SlotCard><Slot><Slot><span id="body">@count</span></Slot></Slot></SlotCard><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}
