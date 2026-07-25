@@ -13,7 +13,10 @@ export default defineConfig({
     include: ['test/**/*.test.ts'],
     // --expose-gc backs the heap-growth assertion in c3-counter.test.ts, which is
     // the one piece of C3 evidence that does not come from our own counters.
+    // Vitest 4 removed test.poolOptions and lifted its contents to the top level;
+    // left nested it is ignored with a deprecation notice, not an error, so the flag
+    // vanishes and only the two GC witnesses notice. They are the check on this line.
     pool: 'forks',
-    poolOptions: { forks: { execArgv: ['--expose-gc'] } },
+    execArgv: ['--expose-gc'],
   },
 });
