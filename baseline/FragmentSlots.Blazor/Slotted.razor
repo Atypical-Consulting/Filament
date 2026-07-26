@@ -1,0 +1,8 @@
+@* A NAMED hole whose name is also a sibling file (Body.razor). The parameter wins in Blazor;
+   the sibling used to win here. *@
+<div id="card2"><h3 id="title2">@Title</h3>@Body</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? Body { get; set; }
+}

@@ -1,0 +1,8 @@
+@* A container: it renders whatever content the parent nested inside it (decision 131). It does NOT
+   name itself anywhere -- the nesting in NestedSame.razor is the PARENT's markup, which is the whole
+   distinction the cycle guard has to get right. *@
+<div class="card">@ChildContent</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

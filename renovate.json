@@ -1,8 +1,9 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", "helpers:pinGitHubActionDigests"],
-  "description": "baseBranchPatterns overrides the org-level default of [\"dev\"] — this repo's default branch is main, and without this override Renovate would target a branch that does not exist here.",
-  "baseBranchPatterns": ["main"],
+  "extends": [
+    "local>Atypical-Consulting/.github:renovate-ci",
+    "helpers:pinGitHubActionDigests"
+  ],
   "packageRules": [
     {
       "description": "Microsoft.AspNetCore.Razor.Language and Microsoft.CodeAnalysis.Razor are deliberately frozen at 6.0.36. The generator reads Razor's internal syntax tree through a narrow seam; a version bump is a migration, not a dependency update. ADR 0001 pins the pair together (both are listed in its opening snippet), so both are matched here. See docs/adr/0001-eol-razor-mitigation.md.",

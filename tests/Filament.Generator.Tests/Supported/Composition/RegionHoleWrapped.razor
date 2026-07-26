@@ -1,0 +1,10 @@
+@* THE CONTROL parent for register defect B3: it passes a live binding into RegionHoleWrappedCard,
+   whose @if wraps the hole in a <div id="hole">. Compiles today and must keep compiling
+   byte-identical after the bare-hole crash becomes a located refusal (the fix touches only the
+   parent-is-null arm, which this case never reaches). #body advances on #inc. *@
+<div id="wrap"><RegionHoleWrappedCard Title="t"><span id="body">@count</span></RegionHoleWrappedCard><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

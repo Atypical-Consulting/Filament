@@ -1,0 +1,10 @@
+@* The RE-PARAMETERISED consumer of CascadeIsFixed.razor's cascade: its own [Parameter] Tag changes
+   on every click, so Blazor re-parameterises it and re-supplies the supplier's LIVE value -- it
+   advances 1 -> 2 -> 3 under a FIXED cascade. It is this consumer that refutes the obvious
+   "freeze the value at mount" implementation. Compiles perfectly well on its own. *@
+<span id="b">@Level</span>
+
+@code {
+    [Parameter] public string Tag { get; set; } = "";
+    [CascadingParameter] public int Level { get; set; }
+}

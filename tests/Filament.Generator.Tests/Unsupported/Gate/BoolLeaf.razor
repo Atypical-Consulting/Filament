@@ -1,0 +1,7 @@
+@* The child of StaticBoolParam.razor: a leaf with a bool [Parameter]. Only ever resolved as a sibling
+   of that parent; on its own it declares no state, so it is a leaf display. *@
+<span id="leaf">@On</span>
+
+@code {
+    [Parameter] public bool On { get; set; }
+}

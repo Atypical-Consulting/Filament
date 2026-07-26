@@ -421,19 +421,28 @@ public class NegativeControls
     }
 
     /// <summary>
-    /// &lt;EditForm&gt; COMPILES NOW (decision 138), to a plain &lt;form&gt;. This fixture has no OnValidSubmit,
-    /// so there is no submit listener to emit -- which is the useful thing to pin: the form ELEMENT and
-    /// its children are the structural mapping, independent of whether anything handles submission.
+    /// &lt;EditForm&gt; COMPILES NOW (decision 138), to a plain &lt;form&gt; -- AND IT REGISTERS ITS SUBMIT EVEN
+    /// WITH NO OnValidSubmit (decision 165, register defect A2).
+    ///
+    /// THIS ASSERTION USED TO SAY THE OPPOSITE. It read `Assert.DoesNotContain("listen(", js)` with the
+    /// comment "no OnValidSubmit in this fixture", and it PINNED A SILENT DIVERGENCE: with no listener
+    /// nothing suppresses the browser's default, so clicking the fixture's own `type="submit"` button
+    /// navigated the document and reloaded the app. Blazor's EditForm wires `onsubmit` unconditionally
+    /// in its own render tree -- the callback only decides what runs after the default is killed -- and
+    /// the browser oracle read `defaultPrevented: true` on the callback-less form. A test asserting
+    /// today's behaviour is not evidence that today's behaviour is right; this one was checked against
+    /// Blazor and flipped.
     /// </summary>
     [Fact]
-    public void Forms_NowCompiles_ToAFormElement()
+    public void Forms_NowCompiles_ToAFormElement_ThatSuppressesItsSubmit()
     {
         var js = File.ReadAllText(Generate.ToTempFixture("Gate/Forms.razor"));
 
         Assert.Contains("document.createElement('form')", js);
         Assert.Contains("document.createElement('button')", js);
         Assert.DoesNotContain("EditForm", js);
-        Assert.DoesNotContain("listen(", js);      // no OnValidSubmit in this fixture
+        // The listener's whole body IS the suppression: there is no callback to run after it.
+        Assert.Contains("listen(_el0, 'submit', (e) => { e.preventDefault(); });", js);
     }
 
     /// <summary>

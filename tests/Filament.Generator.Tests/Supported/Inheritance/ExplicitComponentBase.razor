@@ -1,0 +1,18 @@
+@inherits ComponentBase
+
+@* THE EXPLICIT DEFAULT BASE (decision 173, register C4). Writing `@inherits ComponentBase` -- the
+   framework base every component already has -- changes nothing: Razor's own codegen emits the same
+   `: ComponentBase` it emits with no directive at all. So there is nothing to merge and nothing to
+   refuse. Before decision 173 the unqualified spelling fell into sibling resolution and was refused
+   ([unsupported-directive] "resolves to ComponentBase.razor, which does not exist") while the fully-
+   qualified spelling was already admitted. Now the bare name is the default too -- a no-op, byte-
+   identical to PlainCounter which writes no @inherits. (A sibling ComponentBase.razor legally shadows
+   the framework base; that case lives in Supported/InheritShadow and still MERGES, because the default
+   fallback fires only after the sibling check fails.) *@
+
+<div id="wrap"><span id="out">@currentCount</span><button id="inc" @onclick="Increment">inc</button></div>
+
+@code {
+    int currentCount = 5;
+    void Increment() { currentCount++; }
+}

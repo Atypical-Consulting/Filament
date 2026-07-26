@@ -1,0 +1,14 @@
+@* THE SAME SLOT NAMED TWICE, and this one is NOT a Razor error -- that was MEASURED, not assumed.
+   `dotnet build` says Build succeeded, 0 Warning(s), 0 Error(s); Razor emits the parameter assignment
+   TWICE (AddAttribute(3, "Head", …) then AddAttribute(5, "Head", …)); and a real Blazor WebAssembly
+   app, read in Chrome, renders
+
+       <div id="card"><span id="h2">b</span></div>
+
+   -- the LAST one, with the earlier content silently gone.
+
+   Reproducing that here is one line (the slot map is keyed, so the later entry wins by itself), but a
+   rule whose entire content is "half of what you wrote is ignored" is not shipped without driving it
+   through the DOM-contract oracle on both shells. Refused instead, with what Blazor does named in the
+   message -- decision 168. *@
+<div id="wrap"><SlottedCard><Head><span id="h">a</span></Head><Head><span id="h2">b</span></Head></SlottedCard></div>

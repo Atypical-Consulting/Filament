@@ -1,0 +1,19 @@
+@* REGISTER DEFECT A2 (decision 165). An <EditForm Model> with NO OnValidSubmit. It compiled at exit 0
+   and emitted NO submit listener at all -- the only listener in the module was the input's change --
+   so the form's own type="submit" button navigated the document and threw the app away.
+
+   Blazor does not work that way: EditForm wires `onsubmit` -> HandleSubmitAsync in its own render tree
+   unconditionally, and the callback only decides what runs AFTER the default has been killed. The
+   browser oracle read `defaultPrevented: true` on this exact shape.
+
+   Distinct from Supported/Gate/Forms.razor, which is the same claim with no bound input: this one
+   keeps a live @bind-Value across the submit, which is what a reload would silently destroy. *@
+
+<EditForm Model="@model"><InputText id="name" @bind-Value="model.Name" /><button id="save" type="submit">save</button></EditForm>
+<p id="live">@model.Name</p>
+
+@code {
+    private Person model = new Person();
+
+    public record Person { public string Name { get; set; } = ""; }
+}

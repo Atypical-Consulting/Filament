@@ -1,0 +1,7 @@
+@* FORWARDING. This child does not place its content, it hands it to another child: its own
+   @ChildContent is written in THIS file's scope but resolves to what the grandparent passed. *@
+<FwdInner>@ChildContent</FwdInner>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

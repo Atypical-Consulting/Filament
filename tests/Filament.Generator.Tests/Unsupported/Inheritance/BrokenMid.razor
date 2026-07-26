@@ -1,0 +1,9 @@
+@inherits BrokenGrand
+
+@* The middle link whose OWN base cannot be resolved: BrokenGrand.razor does not exist. This file
+   itself is a perfectly good sibling .razor; the break is one level further up, and the chain walk is
+   what makes the refusal fire HERE (located at this @inherits) instead of vanishing. *@
+
+@code {
+    protected int count = 0;
+}

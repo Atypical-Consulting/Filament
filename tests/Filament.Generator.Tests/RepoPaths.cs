@@ -336,6 +336,11 @@ public static class RepoPaths
     /// <summary>The Fragment SPEC (decisions 51/131). Never edited to make a gate pass.</summary>
     public static string FragmentAnswerKey => Path.Combine(Root, "samples", "Fragment", "fragment.js");
 
+    public static string FragmentSlotsRazor => Path.Combine(Root, "baseline", "FragmentSlots.Blazor", "App.razor");
+
+    /// <summary>The named-and-nested-fragment SPEC (decisions 51/168). Never edited to make a gate pass.</summary>
+    public static string FragmentSlotsAnswerKey => Path.Combine(Root, "samples", "FragmentSlots", "fragmentslots.js");
+
     public static string EventCbRazor => Path.Combine(Root, "baseline", "EventCb.Blazor", "App.razor");
 
     /// <summary>The EventCb SPEC (decisions 51/130). Never edited to make a gate pass.</summary>
@@ -360,6 +365,11 @@ public static class RepoPaths
 
     /// <summary>The content-region SPEC (decisions 51/162). Never edited to make a gate pass.</summary>
     public static string ContentRegionAnswerKey => Path.Combine(Root, "samples", "ContentRegion", "contentregion.js");
+
+    public static string SubmitRazor => Path.Combine(Root, "baseline", "Submit.Blazor", "App.razor");
+
+    /// <summary>The submit-contract SPEC (decisions 51/165). Never edited to make a gate pass.</summary>
+    public static string SubmitAnswerKey => Path.Combine(Root, "samples", "Submit", "submit.js");
 
     public static string TodoRazor => Path.Combine(Root, "baseline", "Todo.Blazor", "App.razor");
 

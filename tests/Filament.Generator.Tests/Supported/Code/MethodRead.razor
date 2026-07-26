@@ -1,0 +1,23 @@
+@* A field the template reads ONLY through a METHOD it calls (register A14; the S10 slice). `count` is
+   named nowhere in the template -- it is read by `Format()`, which the `@Format()` slot calls, and it
+   is written by the `@onclick` handler. Decision 67's conjunction (read AND written) must still lift
+   it, so the read is propagated through the call graph: a field a template-called method reads is a
+   field the template reads, one hop further than decision 160's computed transitivity. `count` becomes
+   `signal(0)`, `Format()` reads `count.value`, and `@Format()` is a live effect that moves on #inc.
+   Before the fix `count` stayed a plain `let` and the display, inserted once, froze at "n=0". *@
+<p><span id="n">@Format()</span></p>
+<button id="inc" @onclick="Bump">inc</button>
+
+@code {
+    private int count = 0;
+
+    private string Format()
+    {
+        return $"n={count}";
+    }
+
+    void Bump()
+    {
+        count++;
+    }
+}

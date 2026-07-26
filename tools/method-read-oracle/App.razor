@@ -1,0 +1,34 @@
+@* THE METHOD-READ ORACLE (register A14; the S10 slice). One app, one click, two counters, no browser.
+
+   #n reads `count` ONLY through a METHOD the template calls (@Format()); #d reads `direct` DIRECTLY.
+   Both are bumped by the same #inc handler. Blazor's ComponentBase re-renders after the handler, so
+   BOTH advance -- the direct read and the method read alike. Filament must match: after the S10 fix a
+   field a template-called method reads is promoted to a signal exactly as a directly-read field is, so
+   the @Format() slot becomes a live effect and #n moves in lockstep with the #d control.
+
+   Before the fix, `count` stayed a plain `let`, @Format() was a one-shot insert, and #n froze at
+   "n=0" while #d advanced -- the silent divergence A14 named. #d is the control that must stay correct.
+
+   Measured browser-free: the Blazor side is the real ComponentBase + Renderer driven by bUnit (the
+   SAME reactivity code a WASM app runs, exactly as text-format-oracle uses the real HtmlRenderer for
+   text); the Filament side is the emitted module in happy-dom. The two JSON blobs must be identical. *@
+
+<p><span id="n">@Format()</span></p>
+<p><span id="d">d=@direct</span></p>
+<button id="inc" @onclick="Bump">inc</button>
+
+@code {
+    private int count = 0;
+    private int direct = 0;
+
+    private string Format()
+    {
+        return $"n={count}";
+    }
+
+    void Bump()
+    {
+        count++;
+        direct++;
+    }
+}

@@ -1,0 +1,11 @@
+@* THE SHARPEST EVIDENCE, kept as a fixture because it is what makes A6 a DEFECT rather than a gap.
+   The only difference from SlotClash.razor is which parameter the child declares, and that flips the
+   meaning completely in Blazor: here `Slot` is not a hole, so <Slot> IS the sibling component and
+   Razor emits OpenComponent<…Slot>. The two modules must therefore DIFFER; before #168 they were
+   byte-identical -- accidentally right in one case, silently wrong in the other. *@
+<div id="wrap"><CfactCard><Slot><span id="body">@count</span></Slot></CfactCard><button id="inc" @onclick="Inc">inc</button></div>
+
+@code {
+    private int count = 0;
+    void Inc() { count++; }
+}

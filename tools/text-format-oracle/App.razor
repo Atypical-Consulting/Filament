@@ -1,0 +1,27 @@
+@* TEXT POSITION IS TYPE-DIRECTED EVERYWHERE (the S9 slice; register defects A13, A15).
+
+   A13 -- a bool in text position: C# renders Boolean.ToString() = "True"/"False" (capitalised,
+   invariant), JS's String(true) = "true". Rendered DIRECTLY here, the case that exists today.
+
+   A15 -- a float crossing a @typeparam: C# float.ToString() prints the shortest decimal that
+   round-trips through float32 ("0.1"), the raw JS number prints the double ("0.10000000149011612").
+   The formatter (__f32, decision 113) must follow the value across the composition boundary.
+
+   Both sides -- real Blazor (via HtmlRenderer) and Filament (the emitted module in happy-dom) --
+   render THIS file and must produce byte-identical text. *@
+@using Microsoft.AspNetCore.Components.Web
+<div id="app">
+  <span id="flag_t">@flagTrue</span>
+  <span id="flag_f">@flagFalse</span>
+  <span id="gen_a"><Box Value="@ratio" /></span>
+  <span id="gen_b"><Box Value="@ratio2" /></span>
+  <button id="bump" @onclick="Bump">bump</button>
+</div>
+
+@code {
+    private bool flagTrue = true;
+    private bool flagFalse = false;
+    private float ratio = 0.1f;
+    private float ratio2 = 0.2f;
+    void Bump() { ratio += 0.1f; ratio2 += 0.1f; }
+}

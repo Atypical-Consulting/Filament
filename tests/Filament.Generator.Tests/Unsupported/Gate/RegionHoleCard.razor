@@ -1,0 +1,14 @@
+@* THE CHILD whose @ChildContent sits BARE inside a region (register defect B3). The hole is the
+   DIRECT body of the @if -- not wrapped in an element the child owns -- so when the parent's markup
+   is inlined there it has no container to be inserted into. `Title` folds to the static string the
+   parent supplied (decision 131's leaf-display path), so the @if is a real region.
+
+   The SUPPORTED sibling is one element away: wrap the hole in an element the child declares
+   (`@if (Title == "t") { <div id="hole">@ChildContent</div> }`, RegionHoleWrappedCard.razor), and
+   the hole becomes a child of that element -- a stable container -- and it compiles. *@
+<div id="card">@if (Title == "t") { @ChildContent }</div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

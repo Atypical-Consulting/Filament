@@ -45,6 +45,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "error-boundary-oracle", "er
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ErrorBoundaryOracle", "tools\error-boundary-oracle\ErrorBoundaryOracle.csproj", "{5E1720F6-0F38-4686-9B2F-F349E9176661}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TextFormatOracle", "tools\text-format-oracle\TextFormatOracle.csproj", "{3EBF0B40-0025-499F-827D-EDC301DD8A8D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -175,6 +177,18 @@ Global
 		{5E1720F6-0F38-4686-9B2F-F349E9176661}.Release|x64.Build.0 = Release|Any CPU
 		{5E1720F6-0F38-4686-9B2F-F349E9176661}.Release|x86.ActiveCfg = Release|Any CPU
 		{5E1720F6-0F38-4686-9B2F-F349E9176661}.Release|x86.Build.0 = Release|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Debug|x64.Build.0 = Debug|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Debug|x86.Build.0 = Debug|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Release|x64.ActiveCfg = Release|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Release|x64.Build.0 = Release|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Release|x86.ActiveCfg = Release|Any CPU
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -191,5 +205,6 @@ Global
 		{84CDE8D2-705C-4EA5-ADDE-60B50AD96AD5} = {B36A84DF-456D-A817-6EDD-3EC3E7F6E11F}
 		{3622C91E-A3AC-A4EA-5374-E27BFC58620C} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 		{5E1720F6-0F38-4686-9B2F-F349E9176661} = {3622C91E-A3AC-A4EA-5374-E27BFC58620C}
+		{3EBF0B40-0025-499F-827D-EDC301DD8A8D} = {07C2787E-EAC7-C090-1BA3-A61EC2A24D84}
 	EndGlobalSection
 EndGlobal

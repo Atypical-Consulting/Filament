@@ -43,7 +43,7 @@ jobs:
         with:
           # Astro 5 requires Node >=18.20.8 / >=20.3 / >=22. Nothing in the repo pins a
           # version (no .nvmrc, no engines field), so this workflow is the pin.
-          node-version: '22'
+          node-version: '24'
           cache: npm
           cache-dependency-path: website/package-lock.json
 

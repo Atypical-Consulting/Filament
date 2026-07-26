@@ -1,0 +1,10 @@
+@* THE BOUNDARY OF THE KEYED SLOT MAP (decision 168). HeaderOnlyCard declares exactly ONE fragment
+   hole, `Header`, and this parent passes BARE content -- which Blazor binds to `ChildContent` and to
+   nothing else. There is no such parameter, so nothing in the child can place this span.
+
+   A NAIVE DICTIONARY WOULD HAVE DROPPED IT SILENTLY: the pre-existing gate only fires when the
+   child declares NO fragment parameter at all, and this child declares one. `dotnet build` on the
+   Blazor side reports Build succeeded -- Razor emits the AddAttribute for a property that does not
+   exist -- so the source is valid and the divergence would be at run time, in silence. Refused
+   here, with the two spellings that fix it named in the message. *@
+<div id="wrap"><HeaderOnlyCard><span id="dropped">I AM CONTENT</span></HeaderOnlyCard></div>

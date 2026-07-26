@@ -1,0 +1,55 @@
+@* THE SILENT DIVERGENCE decision 168 CLOSED, found by PROBING the eleven spec 3 non-goals ADR 0003
+   declared closed (register defect A8).
+
+   @ref on an element INSIDE a @foreach row used to compile at exit 0 with NO diagnostic. Decision
+   132's mapping is "the reference IS the element's name", and under a region that name is declared
+   in the row's OWN local function:
+
+     function createR(r) { const row = document.createElement('li'); … return row; }
+     …
+     listen(_el3, 'click', async () => { await row.focus(); });     <-- FREE VARIABLE
+
+   Driven under happy-dom with listen() wrapped so the swallowed rejection is visible, this exact
+   source gave:
+
+     {"active":"","err":"ReferenceError: row is not defined"}
+
+   while the unmodified baseline/ElemRef.Blazor control through the same harness gave
+   {"active":"box","err":null}. The only difference is region scope.
+
+   NOT HOISTED, REFUSED. `let row;` at mount scope assigned inside createR is LAST-ASSIGNED-WINS, and
+   list() never re-runs create() for a persisting key, so after a reorder the name would point at a
+   different element than Blazor's capture does -- a subtler divergence than the one being fixed. It
+   needs a Blazor reorder oracle before it can ship (register S5).
+
+   Supported/Gate/RefOutsideRow.razor is THE SAME FILE with the @ref moved off the row: it compiles,
+   so this fixture refuses for the region and for nothing else.
+
+   VALID BLAZOR: dotnet build of this source in a real Blazor WebAssembly project succeeds. *@
+<ul id="list"><button id="add" @onclick="Add">add</button>@foreach (Row r in _rows)
+{
+    <li @key="r.Id" @ref="row"><span class="lbl">@r.Label</span></li>
+}</ul><button id="go" @onclick="Focus">go</button>
+
+@code {
+    record Row
+    {
+        public int Id { get; set; }
+        public string Label { get; set; } = "";
+    }
+
+    private List<Row> _rows = new List<Row>();
+    private int _next = 1;
+    private ElementReference row;
+
+    private void Add()
+    {
+        Row r = new Row();
+        r.Id = _next;
+        r.Label = "task " + _next;
+        _next = _next + 1;
+        _rows.Add(r);
+    }
+
+    async Task Focus() { await row.FocusAsync(); }
+}

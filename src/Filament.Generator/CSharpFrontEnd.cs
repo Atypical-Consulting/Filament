@@ -8,6 +8,15 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 namespace Filament.Generator;
 
 /// <summary>
+/// The type-directed TEXT display a value carries (the S9 slice). A scalar in text position is not
+/// rendered by JS coercion -- C#'s ToString differs (a float's shortest round-trip, a decimal's tracked
+/// scale, a DateTime's tick calendar, a bool's CAPITALISED "True"/"False"). Each is one emitted helper,
+/// and the SAME dispatch that picks it for a direct `@expr` must pick it when the value crosses a
+/// composition boundary (register A15), because a @typeparam erases the child's declared type.
+/// </summary>
+public enum ScalarFormat { None, Float, Decimal, DateTime, Bool }
+
+/// <summary>
 /// C# -> JS. Both the @code block AND the C# Razor left lying in the template (decision 54).
 ///
 /// ---------------------------------------------------------------------------------
@@ -96,6 +105,15 @@ public sealed class CSharpFrontEnd
     /// from the parent's SlotIsReactive; consulted by IsReactive when it meets a bound [Parameter].</summary>
     readonly HashSet<string> _paramReactive = new(StringComparer.Ordinal);
 
+    /// <summary>The TYPE-DIRECTED display format the parent measured for each bound [Parameter], keyed by
+    /// name (the S9 slice, register A15). A value crossing a composition boundary keeps its formatter --
+    /// `__f32` (decision 113), `__decStr` (114), `__dtStr` (115), `__bool` (107/S9) -- but the child's own
+    /// declared type may be a @typeparam that ERASES to nothing, so the child cannot re-derive it. The
+    /// PARENT can: its supplied expression is the type-correct one (decision 90's exemption), so the parent
+    /// hands the measured format across and the child's `@Name` renders it faithfully. Populated by
+    /// BindParameters; consulted by TranslateSlots for a bare read of a bound parameter.</summary>
+    readonly Dictionary<string, ScalarFormat> _paramFormat = new(StringComparer.Ordinal);
+
     /// <summary>
     /// The `context` an &lt;ErrorBoundary&gt;'s ErrorContent reads, or null (decision 164). Blazor's
     /// ErrorContent is a `RenderFragment&lt;Exception&gt;`, so its one context value is the caught
@@ -168,6 +186,23 @@ public sealed class CSharpFrontEnd
     }
 
     public void BindJsRuntime(string name) => _jsRuntime = name;
+
+    /// <summary>
+    /// Is this identifier the name an <c>@inject</c> bound, and if so WHICH service — so a bare read of it
+    /// is refused for the true reason instead of being reported as an undeclared name (decision 166).
+    ///
+    /// It answers with the three things the message needs: what the service IS, the calls that erase it,
+    /// and the decision that says why. Kept here, next to the two fields, because those fields are the
+    /// only record this compiler keeps of an <c>@inject</c> ever having happened.
+    /// </summary>
+    (string Type, string Calls, string Decision)? InjectedServiceName(string name) =>
+        _jsRuntime is { } js && string.Equals(js, name, StringComparison.Ordinal)
+            ? ("IJSRuntime", "InvokeVoidAsync(\"path\", …) and InvokeAsync<T>(\"path\", …), whose dotted " +
+               "path IS the emitted JS call", "decision 133: the service denotes the host global scope")
+        : _httpClient is { } http && string.Equals(http, name, StringComparison.Ordinal)
+            ? ("HttpClient", "GetFromJsonAsync<T>(url), GetStringAsync(url) and PostAsJsonAsync(url, value), " +
+               "which become the fetch itself", "decision 147: in a browser an HttpClient IS fetch")
+        : null;
 
     /// <summary>Every method body, TRANSLATED DURING Compile() and cached. See _sealed.</summary>
     readonly Dictionary<string, List<string>> _bodies = new(StringComparer.Ordinal);
@@ -250,11 +285,12 @@ public sealed class CSharpFrontEnd
     /// rather than a folded constant. The child inlines into the parent's scope, so the effect
     /// references the parent's signal directly. Static string folds pass an empty `reactive`.</summary>
     public void BindParameters(IReadOnlyDictionary<string, string> bindings, IReadOnlyCollection<string>? reactive = null,
-        IReadOnlyDictionary<string, string>? handlers = null)
+        IReadOnlyDictionary<string, string>? handlers = null, IReadOnlyDictionary<string, ScalarFormat>? formats = null)
     {
         foreach (var kv in bindings) _paramEnv[kv.Key] = kv.Value;
         if (reactive is not null) foreach (var n in reactive) _paramReactive.Add(n);
         if (handlers is not null) foreach (var kv in handlers) _paramHandlers[kv.Key] = kv.Value;
+        if (formats is not null) foreach (var kv in formats) _paramFormat[kv.Key] = kv.Value;
     }
 
     /// <summary>
@@ -485,6 +521,7 @@ public sealed class CSharpFrontEnd
         public bool IsFloat;     // the slot's expression is float-typed -> the template must format it (decision 113)
         public bool IsDecimal;   // the slot's expression is decimal-typed -> format it through __decStr (decision 114)
         public bool IsDateTime;  // the slot's expression is DateTime-typed -> format it through __dtStr (decision 115)
+        public bool IsBool;      // the slot's expression is bool-typed -> format it through __bool ("True"/"False", decision 107/S9)
 
         /// <summary>The slot names a METHOD GROUP (`OnBump="@Inc"`) rather than a value. At a component
         /// attribute that is an EventCallback binding: the parent handing the child one of its own
@@ -504,6 +541,10 @@ public sealed class CSharpFrontEnd
         /// a computed refreshes from inside flush()/checkDirty(), which is BEFORE the binding's own body
         /// runs, so a throw raised there passes no guard the boundary can place (decision 164).</summary>
         public bool ReadsComputed;
+
+        /// <summary>WHICH RenderFragment [Parameter] the slot names (decision 170) -- "ChildContent",
+        /// "Header", … A hole is filled by the content bound to ITS name and by nothing else.</summary>
+        public string? FragmentName;
     }
 
     /// <summary>The decimal helpers this module actually used (`decAdd`, `decStr`, …). A `decimal` value is a
@@ -611,6 +652,24 @@ public sealed class CSharpFrontEnd
     /// that as C#'s default DateTime string ("MM/dd/yyyy HH:mm:ss") through the emitted __dtStr helper (decision 115).</summary>
     public bool SlotIsDateTime(IntermediateNode node) => Get(node).IsDateTime;
 
+    /// <summary>The slot's expression is bool-typed. C#'s Boolean.ToString() is CAPITALISED ("True"/"False");
+    /// JS's `String(true)` is "true". So a bool in text position renders through the emitted __bool helper --
+    /// the latent divergence decision 107 named, closed by the S9 slice (register A13).</summary>
+    public bool SlotIsBool(IntermediateNode node) => Get(node).IsBool;
+
+    /// <summary>The type-directed display format the parent measured for this slot's expression -- what a bound
+    /// [Parameter] carries across a composition boundary so the child renders it faithfully even when its own
+    /// declared type is an erased @typeparam (register A15). None when JS coercion is already faithful (int, string).</summary>
+    public ScalarFormat SlotFormat(IntermediateNode node)
+    {
+        var s = Get(node);
+        return s.IsFloat ? ScalarFormat.Float
+            : s.IsDecimal ? ScalarFormat.Decimal
+            : s.IsDateTime ? ScalarFormat.DateTime
+            : s.IsBool ? ScalarFormat.Bool
+            : ScalarFormat.None;
+    }
+
     /// <summary>The slot NAMES A METHOD rather than computing a value — `OnBump="@Inc"` at a composition
     /// site, i.e. an EventCallback binding (decision 130). The parent is handing the child one of its own
     /// methods; there is no value to display and no signal to track, so the bound-parameter reactivity
@@ -620,6 +679,11 @@ public sealed class CSharpFrontEnd
     /// <summary>The slot is `@ChildContent` — the POSITION a composing parent's markup is inlined at,
     /// not a value to bind (decision 131).</summary>
     public bool SlotIsFragment(IntermediateNode node) => Get(node).IsFragment;
+
+    /// <summary>WHICH fragment [Parameter] the slot names (decision 168). Null when the slot is not a
+    /// fragment hole at all. A child declaring `Header` AND `ChildContent` has two holes, and only the
+    /// content bound to a hole's own name may be inlined there.</summary>
+    public string? SlotFragmentName(IntermediateNode node) => Get(node).FragmentName;
 
     /// <summary>The slot expression's C# type, as a display string — the key a cascade is matched on
     /// (decision 134). Asked of the semantic model, so `@level` cascades as `int`, not as "level".</summary>
@@ -1010,6 +1074,14 @@ public sealed class CSharpFrontEnd
                 bf.AssignedOutsideConstruction = true;
             }
         MarkConditionReads(classes[1], regionMethods);
+        // A field a METHOD THE TEMPLATE CALLS reads is a field the template reads, BY TRANSITIVITY
+        // through the call graph (register A14 / the S10 slice) -- exactly the rule decision 160
+        // applies to a computed's body, one level further out. `<span>@Format()</span>` where
+        // `Format()` reads `count` must promote `count` to a signal as surely as `<span>@count</span>`
+        // would; otherwise the write in the click handler lands on a plain `let` and the display,
+        // inserted once, never moves. The reachable-method set is closed over invocations HERE rather
+        // than read off phase 3's `Callees` (built below), because promotion must be settled before it.
+        MarkTemplateCalledReads(slots, classes[1], regionMethods);
 
         // 3. the call graph: who calls whom, for the inlining arbitrage AND for the emission
         //    order (callees before callers -- see MethodsInDependencyOrder).
@@ -2378,6 +2450,97 @@ public sealed class CSharpFrontEnd
         }
     }
 
+    /// <summary>
+    /// Register A14 / the S10 slice. Every place the template names an @expression, an @if condition
+    /// or a @foreach source is ALSO a place it may CALL a @code method, and a field that method reads
+    /// is a field the template reads -- one call-graph hop further than <see cref="MarkConditionReads"/>
+    /// and the computed transitivity decision 160 already do. This closes the reachable-method set over
+    /// invocations (a method the template calls, and everything IT calls) and marks every field/prop
+    /// each reachable method reads as read-by-template, so decision 67's conjunction can promote it.
+    /// Additive: it only ever SETS ReadByTemplate, so a directly-read field is untouched and no
+    /// existing witness moves a byte.
+    /// </summary>
+    void MarkTemplateCalledReads(
+        IReadOnlyList<IntermediateNode> slots, ClassDeclarationSyntax regionClass, IReadOnlyList<string> regionMethods)
+    {
+        var reached = new HashSet<string>(StringComparer.Ordinal);
+        var work = new Queue<MethodInfo>();
+
+        void Seed(SyntaxNode from)
+        {
+            foreach (var inv in from.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+                if (TemplateMethod(inv) is { } m && reached.Add(m.Name)) work.Enqueue(m);
+        }
+
+        foreach (var node in slots) Seed(SlotSyntax(node));
+        foreach (var method in regionMethods)
+        {
+            var body = FindMethod(regionClass, method);
+            foreach (var ifs in body.DescendantNodes().OfType<IfStatementSyntax>()) Seed(ifs.Condition);
+            foreach (var fe in body.DescendantNodes().OfType<ForEachStatementSyntax>()) Seed(fe.Expression);
+        }
+
+        while (work.Count > 0)
+        {
+            var m = work.Dequeue();
+            // the fields/props THIS method reads become template reads
+            foreach (var n in m.Syntax.DescendantNodesAndSelf())
+            {
+                if (n is not (IdentifierNameSyntax or MemberAccessExpressionSyntax)) continue;
+                switch (_model.GetSymbolInfo(n).Symbol)
+                {
+                    case IFieldSymbol fs when Field(fs) is { } f: f.ReadByTemplate = true; break;
+                    case IPropertySymbol ps when PropAnywhere(ps) is { } pr: pr.ReadByTemplate = true; break;
+                }
+            }
+            // and the methods IT calls are reachable too
+            foreach (var inv in m.Syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
+                if (TemplateMethod(inv) is { } callee && reached.Add(callee.Name)) work.Enqueue(callee);
+        }
+    }
+
+    /// <summary>The @code method this invocation binds to, or null if it is not one this component
+    /// declares (a BCL call, a lambda, a local function). The ContainingType check is what keeps
+    /// `count.ToString()` or `xs.Where(...)` from being mistaken for a component method.</summary>
+    MethodInfo? TemplateMethod(InvocationExpressionSyntax inv) =>
+        _model.GetSymbolInfo(inv).Symbol is IMethodSymbol s &&
+        SymbolEqualityComparer.Default.Equals(s.ContainingType, _component) &&
+        _methodsByName.TryGetValue(s.Name, out var m)
+            ? m
+            : null;
+
+    /// <summary>Does this expression READ a signal through a @code method it calls? A bare
+    /// `@Format()` reads no field syntactically, but if `Format` (transitively) reads a promoted
+    /// signal then the slot must be an effect, not a one-shot insert -- the reactive half of A14.
+    /// Asked at translation time, when IsSignal is settled.</summary>
+    bool InvokesReactiveMethod(ExpressionSyntax e)
+    {
+        foreach (var inv in e.DescendantNodesAndSelf().OfType<InvocationExpressionSyntax>())
+            if (TemplateMethod(inv) is { } m && MethodReadsSignal(m, [])) return true;
+        return false;
+    }
+
+    /// <summary>Does this method, or anything it calls, read a signal (a promoted field, a computed,
+    /// a reactively-bound [Parameter])? The visited set guards the recursion against a call cycle.</summary>
+    bool MethodReadsSignal(MethodInfo m, HashSet<string> visited)
+    {
+        if (!visited.Add(m.Name)) return false;
+        foreach (var n in m.Syntax.DescendantNodesAndSelf())
+        {
+            if (n is not (IdentifierNameSyntax or MemberAccessExpressionSyntax)) continue;
+            switch (_model.GetSymbolInfo(n).Symbol)
+            {
+                case IFieldSymbol fs when Field(fs) is { IsSignal: true }: return true;
+                case IPropertySymbol ps when PropAnywhere(ps) is { IsSignal: true }: return true;
+                case IPropertySymbol ps when _computedsByName.ContainsKey(ps.Name): return true;
+                case IPropertySymbol ps when _paramReactive.Contains(ps.Name): return true;
+            }
+        }
+        foreach (var inv in m.Syntax.DescendantNodes().OfType<InvocationExpressionSyntax>())
+            if (TemplateMethod(inv) is { } callee && MethodReadsSignal(callee, visited)) return true;
+        return false;
+    }
+
     FieldInfo? Field(IFieldSymbol s) =>
         _fieldsByName.TryGetValue(s.Name, out var f) && SymbolEqualityComparer.Default.Equals(f.Symbol, s) ? f : null;
 
@@ -2403,12 +2566,18 @@ public sealed class CSharpFrontEnd
             // composing parent's markup is inlined (decision 131). Recognised HERE, at the WHOLE-slot
             // level, so that a fragment used as part of a larger expression never reaches this branch and
             // is refused by Identifier() instead: there is no value to concatenate or compare.
-            var isFragment = e is IdentifierNameSyntax fid
+            var fragmentName = e is IdentifierNameSyntax fid
                 && _model.GetSymbolInfo(fid).Symbol is IPropertySymbol fp
-                && IsFragmentParameter(fp.Name);
-            if (isFragment)
+                && IsFragmentParameter(fp.Name)
+                    ? fp.Name
+                    : null;
+            if (fragmentName is not null)
             {
-                _slots[node] = new Slot { Js = "/*fragment*/", IsFragment = true };
+                // The NAME is kept, not just the fact (decision 168). A child may declare several
+                // fragment [Parameter]s -- `Header` and `ChildContent` -- and which markup belongs
+                // at THIS hole is decided by which parameter it names. Holding "a fragment" without
+                // its name is what made one parent fragment render at EVERY hole.
+                _slots[node] = new Slot { Js = "/*fragment*/", IsFragment = true, FragmentName = fragmentName };
                 continue;
             }
 
@@ -2424,15 +2593,38 @@ public sealed class CSharpFrontEnd
                 continue;
             }
 
+            var slotType = _model.GetTypeInfo(e).Type;
+            var isFloat = slotType?.SpecialType == SpecialType.System_Single;
+            var isDecimal = slotType?.SpecialType == SpecialType.System_Decimal;
+            var isDateTime = slotType?.SpecialType == SpecialType.System_DateTime;
+            var isBool = slotType?.SpecialType == SpecialType.System_Boolean;
+
+            // A value crossing a composition boundary keeps its type-directed formatter (the S9 slice,
+            // register A15). When `e` is a bare read of a bound [Parameter] whose declared type gave no
+            // scalar format of its own -- the generic case, where the type is a @typeparam that ERASES to
+            // nothing here -- fall back to the format the PARENT measured. The parent's supplied expression
+            // is the type-correct one (decision 90's exemption), so `@Value = 0.1f` renders "0.1", not the
+            // raw double. Concrete-typed children already resolve their own format, so nothing changes there.
+            if (!isFloat && !isDecimal && !isDateTime && !isBool
+                && _model.GetSymbolInfo(e).Symbol is IPropertySymbol boundParam
+                && _paramFormat.TryGetValue(boundParam.Name, out var carried))
+            {
+                isFloat = carried == ScalarFormat.Float;
+                isDecimal = carried == ScalarFormat.Decimal;
+                isDateTime = carried == ScalarFormat.DateTime;
+                isBool = carried == ScalarFormat.Bool;
+            }
+
             _slots[node] = new Slot
             {
                 Js = Expr(e),
                 Reactive = IsReactive(e),
                 ReadsComputed = ReadsAComputed(e),
-                IsFloat = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Single,
-                IsDecimal = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_Decimal,
-                IsDateTime = _model.GetTypeInfo(e).Type?.SpecialType == SpecialType.System_DateTime,
-                TypeDisplay = _model.GetTypeInfo(e).Type?.ToDisplayString(),
+                IsFloat = isFloat,
+                IsDecimal = isDecimal,
+                IsDateTime = isDateTime,
+                IsBool = isBool,
+                TypeDisplay = slotType?.ToDisplayString(),
                 // Asked of the SEMANTIC MODEL, not of the text: `Inc` is a method group iff Roslyn bound
                 // it to a method this component declares. The Action marker overload above is what lets
                 // it bind at all (decision 130).
@@ -2450,6 +2642,10 @@ public sealed class CSharpFrontEnd
     /// </summary>
     bool IsReactive(ExpressionSyntax e)
     {
+        // A14 (S10): `@Format()` reads no field by name, yet if the method it calls reads a promoted
+        // signal the slot is a live effect. Checked first, so a method call that reads a signal is
+        // reactive even when nothing reactive appears syntactically in the slot.
+        if (InvokesReactiveMethod(e)) return true;
         foreach (var n in e.DescendantNodesAndSelf())
         {
             // kvp.Value in a @foreach over a Dictionary compiles to `d.value.get(kvp[0])` (decision 125), a read of
@@ -3422,6 +3618,22 @@ public sealed class CSharpFrontEnd
                     "position its content is inlined at. There is no value here to combine with anything. " +
                     "Refusing to emit.",
                     id.SpanStart);
+
+            // AN INJECTED SERVICE READ AS A VALUE (decision 166). The name is NOT unresolved: the author
+            // wrote the @inject, this compiler admitted it, and the name binds. What it does not have is a
+            // VALUE. Both admitted services are compile-time ERASURES -- IJSRuntime denotes the host global
+            // scope (decision 133), HttpClient denotes fetch (decision 147) -- so the emitted module holds
+            // no binding for either, and `@JS` has nothing to print, concatenate or compare. They are
+            // admitted in ONE position, as the RECEIVER of the calls that erase, and the message says so
+            // instead of telling the author their program has no injected services in it.
+            case var _ when InjectedServiceName(id.Identifier.Text) is { } svc:
+                Refuse("unsupported-expression",
+                    $"'{id.Identifier.Text}' is an @inject'd {svc.Type} read as a VALUE. It is not a value " +
+                    "here: it names a service Filament ERASES at compile time, so the emitted module holds " +
+                    $"no binding for it at all. {svc.Type} is admitted in ONE position, as the receiver of " +
+                    $"the calls that erase -- {svc.Calls} ({svc.Decision}). Refusing to emit.",
+                    id.SpanStart);
+                return "/*refused*/";
 
             default:
                 Refuse("unresolved-name",

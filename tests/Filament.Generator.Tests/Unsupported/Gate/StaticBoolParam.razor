@@ -1,0 +1,5 @@
+@* STILL REFUSED (the S9 slice draws the line here): a STATIC bool parameter fold. A static attribute
+   splices a JS STRING literal into the child, so a bool param would fold "true" (a string) where a bool
+   is meant -- the D5 bool arm the register defers. A11 crosses only for a REACTIVELY bound param, whose
+   value is the parent's own type-correct expression (decision 90). Refused with a located diagnostic. *@
+<div id="wrap"><BoolLeaf On="true" /></div>

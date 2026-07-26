@@ -1,0 +1,10 @@
+@* TWO holes. Blazor binds bare content to ChildContent ALONE, so #head is empty whenever the
+   parent writes `<Card>…</Card>` without naming a slot. #head exists so the emptiness is
+   OBSERVABLE: a hole that was wrongly filled renders into it. *@
+<div id="card"><h3 id="title">@Title</h3><div id="head">@Header</div><div id="body">@ChildContent</div></div>
+
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? Header { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

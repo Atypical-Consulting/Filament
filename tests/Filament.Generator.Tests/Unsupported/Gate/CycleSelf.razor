@@ -1,0 +1,24 @@
+@* THE PROCESS ABORT decision 169 CLOSED, found by PROBING the eleven spec 3 non-goals ADR 0003
+   declared closed (register defect B4).
+
+   BEFORE: this source did not produce a diagnostic, or a file, or an error message. It produced
+
+     EXIT=134 (SIGABRT), 1 271 340 bytes of stderr beginning "Stack overflow.", no out.js
+
+   -- 1 218 EmitComposition frames and 2 436 EmitNode frames deep, because EmitComposition re-entered
+   RazorFrontEnd.Parse and PrepareComponent with no record of what was already open. A compiler that
+   dies on valid input tells the author nothing at all; that is the worst answer this project can give.
+
+   AFTER: a located FIL0003 that NAMES THE CYCLE (CycleNode.razor -> CycleNode.razor), pointing at the
+   recursive USE inside CycleNode.razor -- the edge to cut.
+
+   WHY A REFUSAL AND NOT AN UNROLLING. Blazor renders this in two levels because it creates a child
+   INSTANCE per level and evaluates `Label == "x"` at run time. Inlining has no instance and no run
+   time: the @if compiles to a list() and its body is walked either way, so the compiler cannot know
+   where the recursion stops. Unrolling would mean evaluating the guard at compile time, which is a
+   different compiler.
+
+   VALID BLAZOR: dotnet build of this source in a real Blazor WebAssembly project succeeds
+   (0 Warning(s) 0 Error(s)), and HtmlRenderer renders
+   <div id="wrap"><span class="node">x<span class="node">done</span></span></div>. *@
+<div id="wrap"><CycleNode Label="x" /></div>

@@ -1,0 +1,9 @@
+@* Half of the MUTUAL cycle (CycleMutual.razor). Alpha renders Beta, Beta renders Alpha: no single
+   file names itself, so nothing about the SOURCE looks recursive -- which is exactly why the guard
+   has to be a chain and not a self-check. Guarded, so Blazor terminates: <span class="alpha">x<em
+   class="beta">b</em></span>. *@
+<span class="alpha">@Label@if (Label == "x") { <CycleBeta Label="b" /> }</span>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+}

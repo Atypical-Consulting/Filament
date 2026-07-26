@@ -219,6 +219,7 @@ public sealed class TemplateCompiler
     readonly List<Diagnostic> _diagnostics = [];
     bool _needsFloatFormat;   // some @expr is float-typed -> Render emits the __f32 helper (decision 113)
     bool _needsDateTimeFormat;   // some @expr is DateTime-typed -> Render emits the __dtStr helper (decision 115)
+    bool _needsBoolFormat;   // some @expr is bool-typed -> Render emits the __bool helper (decision 107/S9)
 
     /// <summary>The author's `@using` namespaces for the component being prepared (decision 147): a
     /// NAME-RESOLUTION directive, harvested into the wrapped source's usings after resolving against the
@@ -236,10 +237,22 @@ public sealed class TemplateCompiler
     /// </summary>
     readonly List<(string El, string Event, string Handler)> _handlers = [];
 
-    /// <summary>Elements whose recorded handler must call preventDefault() first -- today only a
-    /// &lt;form&gt;'s submit (decision 138). Without it the browser navigates and the page reloads, which
-    /// is exactly what Blazor's EditForm suppresses; it is part of the mapping, not a nicety.</summary>
-    readonly HashSet<string> _preventDefault = [];
+    /// <summary>
+    /// THE EVENTS WHOSE BROWSER DEFAULT A REGISTERED HANDLER SUPPRESSES -- Blazor's own table, ported
+    /// entry for entry (decision 165). The shipped blazor.webassembly.js carries `_={submit:!0}` and
+    /// `Object.prototype.hasOwnProperty.call(_,t.type)&amp;&amp;t.preventDefault()` inside the delegated
+    /// dispatcher, reached whenever a handler is registered for the event. So preventDefault() is
+    /// unconditional for submit, needs no `:preventDefault` modifier, and does NOT depend on which
+    /// component owns the form or on whether a callback was supplied.
+    ///
+    /// KEYED ON THE EVENT, WHICH IS THE WHOLE POINT. This began as a set of ELEMENT names populated
+    /// only inside EmitEditForm, and both halves of that were wrong: a plain
+    /// &lt;form @onsubmit="Save"&gt; got a bare listener and NAVIGATED (register A1), while an element
+    /// carrying both @onsubmit and @onkeydown would -- under any element-keyed repair -- have had its
+    /// KEYDOWN suppressed and called with no event argument. Blazor's table has one entry and it names
+    /// an event type; copying it as an event type is what makes both cases fall out.
+    /// </summary>
+    static readonly HashSet<string> DefaultSuppressedEvents = new(StringComparer.Ordinal) { "submit" };
 
     /// <summary>
     /// The @key node the enclosing list() has already consumed. @key outside a list is still
@@ -284,7 +297,40 @@ public sealed class TemplateCompiler
     /// </summary>
     HashSet<IntermediateNode> _regions = [];
 
+    /// <summary>
+    /// THE REGION BEING EMITTED, named in English, or null at mount scope (decision 168).
+    ///
+    /// `_regions` above says which containers HAVE a region; this says whether the walk is INSIDE one
+    /// right now. The two are different questions and only the second one can answer "does the const I
+    /// am about to emit exist at mount scope?". A row body and an @if branch are each compiled into
+    /// their own local function (EmitList / EmitBranchFn), so every const they declare is scoped to that
+    /// function and dies with it; a mount-level handler naming one names a FREE VARIABLE. Set and
+    /// restored around the region body with the same save/restore idiom those two already use for
+    /// _create/_bindings, so it follows the DYNAMIC scope -- a composition inlined under a row, or a
+    /// fragment emitted into a branch, is still under a region and still sees it.
+    /// </summary>
+    string? _region;
+
     string _file = "";
+
+    /// <summary>
+    /// THE CHAIN OF COMPONENTS CURRENTLY BEING INLINED, root first — a PATH, not a visited set.
+    ///
+    /// Composition has no runtime instance: EmitComposition splices the child's markup into the
+    /// parent's mount() at compile time, and it walks the child's @if bodies whether or not the
+    /// condition can ever be true (the guard becomes a runtime list(), decision 81). So a component
+    /// that reaches itself has no finite expansion, and before this chain existed the walk simply
+    /// descended until the CLR aborted the process — `Stack overflow.`, SIGABRT, no output and no
+    /// diagnostic, which is the worst possible answer to a valid Blazor source.
+    ///
+    /// A PATH is the whole point. The same child used twice as a SIBLING, or reached twice through a
+    /// diamond (A→B, A→C, B→D, C→D), is not a cycle: each occurrence terminates. Only re-entering a
+    /// file that is still open ABOVE the current site does not. Push/pop follows the same save/restore
+    /// idiom _file/_code/_regions already use, so it tracks the dynamic walk — a composition inlined
+    /// under a row or inside a fragment is on the chain too.
+    /// </summary>
+    readonly List<string> _composing = [];
+
     int _el, _tx;
     int _if;
 
@@ -358,29 +404,15 @@ public sealed class TemplateCompiler
         // The base must be a SIBLING .razor, because that is the only C# this compiler ever reads: a base
         // in a .cs file is invisible to it, and silently inheriting nothing would produce a module missing
         // exactly the state the author put in the base.
-        if (!string.Equals(cls.BaseType, ComponentBaseType, StringComparison.Ordinal))
-        {
-            var baseName = cls.BaseType ?? "";
-            var basePath = Path.Combine(Path.GetDirectoryName(parse.FilePath)!, baseName + ".razor");
-            var span = parse.Directives.FirstOrDefault(d => d.Name == "inherits").Source;
-
-            if (!File.Exists(basePath))
-            {
-                Diag("unsupported-directive",
-                    $"@inherits {baseName} resolves to a same-directory component {baseName}.razor, which does " +
-                    "not exist. A base component must be a sibling .razor file: it is the only C# this " +
-                    "compiler reads, so a base declared in a .cs file would silently contribute nothing and " +
-                    "leave the module missing exactly the state the base holds. Refusing to emit.",
-                    span);
-            }
-            else
-            {
-                var baseParse = RazorFrontEnd.Parse(basePath);
-                var baseCls = AccountForDocument(baseParse);
-                codeNodes.InsertRange(0, baseCls.Children.OfType<CSharpCodeIntermediateNode>()
-                    .Where(n => !string.IsNullOrWhiteSpace(RawText(n))));
-            }
-        }
+        //
+        // THE CHAIN, base-first, up to ComponentBase (decision 173). `@inherits` composes: a base may
+        // itself `@inherits` a grandparent, and Blazor merges the WHOLE chain. Testing BaseType once, on
+        // the derived, dropped every link past the first -- a grandparent that contributed only a hook
+        // vanished at exit 0 (register A4), and a name that lived a level up became a MISDIRECTED
+        // [unresolved-name] blaming the derived for a member the merge never read (register C6). The loop
+        // walks link by link so the SAME gates -- the missing sibling, the code-behind partial, the cycle
+        // -- guard EVERY link, each refusal located at the `@inherits` that declared that link.
+        MergeBaseChain(parse, cls, codeNodes);
 
         // @typeparam (decision 135), carried into the compilation so `T` RESOLVES there. Without this the
         // author's own type parameter is reported as an unresolved type -- the compiler blaming the author
@@ -390,9 +422,9 @@ public sealed class TemplateCompiler
 
         // @inject (decision 133), harvested BEFORE the compilation so the injected name RESOLVES in it.
         // Razor drops the directive's span during lowering, so the location comes from DirectiveSpyPass.
-        foreach (var inject in RazorFrontEnd.Injects(cls))
+        var bound = new HashSet<InjectedService>();
+        foreach (var (inject, span) in InjectsInSourceOrder(parse, cls))
         {
-            var span = parse.Directives.FirstOrDefault(d => d.Name == "inject").Source;
             var typeName = inject.TypeName.Trim();
             var member = inject.MemberName.Trim();
 
@@ -404,12 +436,41 @@ public sealed class TemplateCompiler
             // implementations at RUNTIME, which a static module has no home for, and a user's own service
             // type lives in a .cs file this compiler never sees. Both are separate questions; neither is
             // quietly approximated here.
-            if (typeName.EndsWith("IJSRuntime", StringComparison.Ordinal) && member.Length > 0)
+            //
+            // The test is on the type NAME, EXACTLY as written, and decision 166 is why it is not a
+            // suffix. `EndsWith("HttpClient")` admitted `@inject WrapperHttpClient Api` -- a typed client
+            // registered with `AddHttpClient<WrapperHttpClient>(c => c.BaseAddress = new Uri(".../api/"))`,
+            // valid Blazor, measured on the wire as a request for `/api/weather` -- and erased its call to
+            // `fetch('weather')`, a DOCUMENT-relative URL. A different request, with no diagnostic. Two
+            // characters of a name are not a type.
+            var service = InjectableService(typeName);
+
+            // ONE NAME PER SERVICE, and the SECOND one is refused rather than dropped. Blazor happily
+            // takes two `@inject HttpClient` under two names: it holds two references to one object. This
+            // compiler holds a NAME, because the service is erased and the name is the only trace of it
+            // left -- so a second binding overwrites the first, and the overwritten name goes on LOOKING
+            // declared while resolving to nothing. Which of the two got dropped even depended on the walk
+            // order this same decision just corrected. A located refusal naming the workaround is the
+            // honest answer; binding both would mean carrying a set through every erasure site, which is a
+            // different question and is not quietly approximated here.
+            if (service != InjectedService.None && member.Length > 0 && !bound.Add(service))
+            {
+                Diag("unsupported-directive",
+                    $"@inject {typeName} {member} is a SECOND @inject of {typeName} in this component. " +
+                    "Filament binds one name per injectable service: the service itself is ERASED at " +
+                    "compile time (decisions 133/147), so the name is all that is left of it, and a second " +
+                    "name would silently resolve to nothing while still looking declared. Inject it once " +
+                    "and use that one name. Refusing to emit.",
+                    span);
+                continue;
+            }
+
+            if (service == InjectedService.JsRuntime && member.Length > 0)
             {
                 code.BindJsRuntime(member);
                 continue;
             }
-            if (typeName.EndsWith("HttpClient", StringComparison.Ordinal) && member.Length > 0)
+            if (service == InjectedService.HttpClient && member.Length > 0)
             {
                 code.BindHttpClient(member);
                 continue;
@@ -439,9 +500,185 @@ public sealed class TemplateCompiler
         return (method, plan.Regions.Select(r => r.Container).ToHashSet());
     }
 
+    /// <summary>
+    /// Walk the <c>@inherits</c> chain from <paramref name="cls"/> up to <c>ComponentBase</c>, merging each
+    /// base's <c>@code</c> into <paramref name="codeNodes"/> base-first, and gating every link (decision 173).
+    ///
+    /// ONE link or a HUNDRED, the mapping is unchanged: inheritance is a compile-time question about where a
+    /// member's text lives, so the whole chain's members are merged into ONE compilation and lifted as if
+    /// they had been written here. A single-level chain merges exactly what decision 136 always merged, so
+    /// the shipped Inherits witness stays byte-identical; a deeper chain is the same step, repeated.
+    ///
+    /// Each link is guarded EXACTLY as decision 136 guarded the first, and the guards are why a chain can be
+    /// trusted rather than followed blindly:
+    ///  - a base whose sibling <c>.razor</c> does not exist is REFUSED, located at the <c>@inherits</c> that
+    ///    named it (the register D2 refusal, now firing at every link, not only the first);
+    ///  - a base whose C# is split into a code-behind partial (<c>Base.razor.cs</c> / <c>Base.cs</c>) is
+    ///    REFUSED, because this compiler reads only the <c>.razor</c> half and the partial's members --
+    ///    lifecycle overrides, methods, fields the template never names -- would otherwise be SILENTLY
+    ///    absent (register A3: exit 0, the base's <c>OnInitialized</c> gone, 0 rendered where Blazor renders 7);
+    ///  - a cycle (A : B : A) is REFUSED rather than followed forever;
+    ///  - and the unqualified <c>ComponentBase</c>, with no sibling of that name, IS the framework default --
+    ///    a no-op, exactly as the fully-qualified spelling already was (register C4). A sibling
+    ///    <c>ComponentBase.razor</c> legally shadows it in Blazor, so this fallback fires only AFTER the
+    ///    sibling check fails, never in place of it.
+    /// </summary>
+    void MergeBaseChain(ParseResult parse, ClassDeclarationIntermediateNode cls, List<CSharpCodeIntermediateNode> codeNodes)
+    {
+        // Seed the cycle guard with the derived's own path so a base that points back at it is caught.
+        var visited = new HashSet<string>(StringComparer.Ordinal) { Path.GetFullPath(parse.FilePath) };
+
+        var currentParse = parse;
+        var currentCls = cls;
+
+        while (!string.Equals(currentCls.BaseType, ComponentBaseType, StringComparison.Ordinal))
+        {
+            var baseName = currentCls.BaseType ?? "";
+            var dir = Path.GetDirectoryName(currentParse.FilePath)!;
+            var basePath = Path.Combine(dir, baseName + ".razor");
+            // The @inherits that declared THIS link lives in THIS link's file, so a refusal points there.
+            var span = currentParse.Directives.FirstOrDefault(d => d.Name == "inherits").Source;
+
+            if (!File.Exists(basePath))
+            {
+                // C4: the bare `ComponentBase`, with no sibling of that name to shadow it, is Razor's own
+                // default base -- writing it explicitly changes nothing, so there is nothing to merge and
+                // nothing to refuse. The fully-qualified spelling was already the default (it never entered
+                // this loop); this makes the unqualified one the default too.
+                if (string.Equals(baseName, "ComponentBase", StringComparison.Ordinal)) break;
+
+                Diag("unsupported-directive",
+                    $"@inherits {baseName} resolves to a same-directory component {baseName}.razor, which does " +
+                    "not exist. A base component must be a sibling .razor file: it is the only C# this " +
+                    "compiler reads, so a base declared in a .cs file would silently contribute nothing and " +
+                    "leave the module missing exactly the state the base holds. Refusing to emit.",
+                    span);
+                break;
+            }
+
+            // A CODE-BEHIND PARTIAL is a base whose C# is split across `Base.razor` and `Base.razor.cs`
+            // (or `Base.cs`). The sibling .razor exists, so File.Exists is satisfied -- but this compiler
+            // reads only the .razor, and a `partial class` puts real members (an OnInitialized override, a
+            // method, a field) in the .cs half this compiler never opens. Merging just the .razor half is
+            // inheriting HALF a base: exit 0, no diagnostic, the .cs members silently gone. Refused, located,
+            // rather than emitted wrong (register A3).
+            var codeBehind = new[] { baseName + ".razor.cs", baseName + ".cs" }
+                .Select(f => Path.Combine(dir, f))
+                .FirstOrDefault(File.Exists);
+            if (codeBehind is not null)
+                // REFUSE, but do NOT stop merging the .razor half. The located refusal above is already the
+                // whole answer -- nothing is emitted once a diagnostic exists -- and carrying on to merge the
+                // .razor's own @code keeps a member the author DID write there (register A3's `count`) from
+                // turning into a SECOND, misdirected [unresolved-name] blaming this component for a name that
+                // is declared, just in a half the merge stopped at (register C6). The refusal names the real
+                // cause once; the merge keeps the template honest about the rest.
+                Diag("unsupported-directive",
+                    $"@inherits {baseName} resolves to {baseName}.razor, but a code-behind partial " +
+                    $"{Path.GetFileName(codeBehind)} sits beside it. A partial class splits the base's C# " +
+                    "across files, and this compiler reads only the .razor half -- so the members in " +
+                    $"{Path.GetFileName(codeBehind)} (a lifecycle override, methods, fields) would be " +
+                    "silently absent from the module, leaving it missing exactly the state the base holds. " +
+                    $"Move that C# into {baseName}.razor's @code block, or inline the base. Refusing to emit " +
+                    "rather than inherit half a base.",
+                    span);
+
+            var baseFull = Path.GetFullPath(basePath);
+            if (!visited.Add(baseFull))
+            {
+                Diag("unsupported-directive",
+                    $"@inherits {baseName} closes an inheritance CYCLE -- {baseName}.razor is already a base " +
+                    "of this component through the chain above it. A cycle has no bottom to merge from, so " +
+                    "there is nothing honest to emit. Break the cycle. Refusing to emit.",
+                    span);
+                break;
+            }
+
+            var baseParse = RazorFrontEnd.Parse(basePath);
+            var baseCls = AccountForDocument(baseParse);
+            codeNodes.InsertRange(0, baseCls.Children.OfType<CSharpCodeIntermediateNode>()
+                .Where(n => !string.IsNullOrWhiteSpace(RawText(n))));
+
+            currentParse = baseParse;
+            currentCls = baseCls;
+        }
+    }
+
+    /// <summary>The two services an <c>@inject</c> may name, or neither (decision 166).</summary>
+    enum InjectedService { None, JsRuntime, HttpClient }
+
+    /// <summary>
+    /// Which framework service an <c>@inject</c> names — read from the type EXACTLY as the author wrote
+    /// it, because that string is the only evidence there is.
+    ///
+    /// WHY A NAME AND NOT A SYMBOL. The gate runs BEFORE <c>code.Compile(…)</c> builds the semantic
+    /// model, and it has to: the injected member must be declared into the compiled source or the name
+    /// does not bind at all. So there is no symbol to ask. That is a real limit, and it is stated rather
+    /// than papered over: a user type genuinely SPELLED <c>IJSRuntime</c> or <c>HttpClient</c> in a
+    /// namespace this compiler never reads would still be taken for the framework's. What decision 166
+    /// closes is the far wider hole a SUFFIX left open — every name merely ENDING in one of the two.
+    ///
+    /// <c>global::</c> is stripped because the alias qualifier denotes the same type and nothing else;
+    /// any other spelling (an alias, a partially-qualified name, a nested type) is refused, with the
+    /// message naming the two that are admitted.
+    /// </summary>
+    static InjectedService InjectableService(string typeName)
+    {
+        const string alias = "global::";
+        var t = typeName.StartsWith(alias, StringComparison.Ordinal) ? typeName[alias.Length..] : typeName;
+        return t switch
+        {
+            "IJSRuntime" or "Microsoft.JSInterop.IJSRuntime" => InjectedService.JsRuntime,
+            "HttpClient" or "System.Net.Http.HttpClient" => InjectedService.HttpClient,
+            _ => InjectedService.None,
+        };
+    }
+
+    /// <summary>
+    /// Every <c>@inject</c> paired with the span the author wrote it at, IN SOURCE ORDER.
+    ///
+    /// THE TWO LISTS ARE ANTI-PARALLEL, measured (decision 166). <c>DirectiveSpyPass</c> records the
+    /// directives in document order; the lowered <c>ComponentInjectIntermediateNode</c> children arrive
+    /// in REVERSE document order, and both are spanless by the time the emitter walks them. Pairing them
+    /// by INDEX therefore looks right and is wrong in the one direction nobody checks — which is exactly
+    /// how the old <c>FirstOrDefault(d => d.Name == "inject")</c> came to point every refusal at the
+    /// FIRST inject in the file, an @inject that is often the admitted one.
+    ///
+    /// So they are paired by the directive's own TOKENS — the type and the member, as written, which is
+    /// the same text the lowered node carries. Each site is CLAIMED once, so two injects that differ only
+    /// in position still get distinct carets. A site that matches nothing yields a null span: a caret this
+    /// compiler cannot justify is not printed, and it is never guessed.
+    /// </summary>
+    static List<(RazorFrontEnd.InjectSite Site, SourceSpan? Span)> InjectsInSourceOrder(
+        ParseResult parse, IntermediateNode cls)
+    {
+        var sites = parse.Directives.Where(d => d.Name == "inject").ToList();
+        var claimed = new bool[sites.Count];
+        var paired = new List<(RazorFrontEnd.InjectSite Site, SourceSpan? Span, int Order)>();
+
+        foreach (var inject in RazorFrontEnd.Injects(cls))
+        {
+            var at = -1;
+            for (var i = 0; i < sites.Count && at < 0; i++)
+                if (!claimed[i] && sites[i].Tokens.Count >= 2 &&
+                    string.Equals(sites[i].Tokens[0].Trim(), inject.TypeName.Trim(), StringComparison.Ordinal) &&
+                    string.Equals(sites[i].Tokens[1].Trim(), inject.MemberName.Trim(), StringComparison.Ordinal))
+                    at = i;
+
+            if (at >= 0) claimed[at] = true;
+            paired.Add((inject, at >= 0 ? sites[at].Source : null, at >= 0 ? at : int.MaxValue));
+        }
+
+        // OrderBy is stable, so unmatched sites keep their relative order at the end rather than shuffling.
+        return paired.OrderBy(p => p.Order).Select(p => (p.Site, p.Span)).ToList();
+    }
+
     public string Compile(ParseResult parse, string runtimeSpecifier, string sourceName)
     {
         _file = parse.FilePath;
+        // The root is the first link of the composition chain, so `App.razor` containing <App /> is
+        // caught at its own site rather than one inlined copy later.
+        _composing.Clear();
+        _composing.Add(Path.GetFullPath(parse.FilePath));
 
         // THE PAGE COMPILES ITS OWN ROUTE PARAMETERS, FROM ITS OWN @page (decision 163) -- the router is
         // not consulted, and that is deliberate. A page module is byte-identical whether it is routed or
@@ -520,7 +757,7 @@ public sealed class TemplateCompiler
                 .ToHashSet(StringComparer.Ordinal);
 
             foreach (var h in _handlers)
-                _events.Add($"listen({h.El}, {JsString(h.Event)}, {HandlerArrow(h.Handler, inlined, _preventDefault.Contains(h.El))});");
+                _events.Add($"listen({h.El}, {JsString(h.Event)}, {HandlerArrow(h.Handler, inlined, DefaultSuppressedEvents.Contains(h.Event))});");
 
             prologue = _code.EmitPrologue(inlined);
             module = _code.EmitModule();
@@ -1061,22 +1298,16 @@ public sealed class TemplateCompiler
     {
         var batched = _code.MayWriteMoreThanOnce(handler);
 
-        // A FORM'S SUBMIT (decision 138). It is the one handler whose arrow takes the event, and it takes
+        // A SUBMIT (decisions 138/165). It is the one handler whose arrow takes the event, and it takes
         // one because the DOM requires it: without preventDefault() the browser navigates and the page
-        // reloads, which is exactly what Blazor's EditForm suppresses. Emitted as statements rather than
-        // by wrapping the no-arg shape below, so the result reads as what it is.
+        // reloads, which is exactly what Blazor's dispatcher suppresses. Emitted as statements rather
+        // than by wrapping the no-arg shape below, so the result reads as what it is.
         if (preventDefault)
-        {
-            var inner = inlined.Contains(handler)
-                ? string.Join("\n", _code.InlineBody(handler).Select(l => "  " + l))
-                : $"  {_code.MethodJs(handler)}();";
-            if (batched)
-            {
-                _used.Add("batch");
-                inner = "  batch(() => {\n" + string.Join("\n", inner.Split('\n').Select(l => "  " + l)) + "\n  });";
-            }
-            return "(e) => {\n  e.preventDefault();\n" + inner + "\n}";
-        }
+            return SuppressingArrow(
+                inlined.Contains(handler)
+                    ? string.Join("\n", _code.InlineBody(handler).Select(l => "  " + l))
+                    : $"  {_code.MethodJs(handler)}();",
+                batched);
 
         // A KEYBOARD handler (decision 159): the other arrow that takes the event -- the DOM
         // provides it, the method declared it. The arrow binds the METHOD's own parameter name so
@@ -1113,6 +1344,27 @@ public sealed class TemplateCompiler
 
         _used.Add("batch");
         return $"() => batch({body})";
+    }
+
+    /// <summary>
+    /// The listener for an event in <see cref="DefaultSuppressedEvents"/>: it takes the event, kills the
+    /// browser's default action FIRST, and only then runs the author's statements. ONE definition, because
+    /// there are TWO emission paths into it -- a @code method name is RECORDED and rendered after the walk
+    /// (HandlerArrow), an inline lambda is emitted during the walk (decision 105) -- and the whole content
+    /// of register defect A1 is that one path knew about preventDefault and the other did not. A rule that
+    /// lives in one place cannot be half-applied.
+    ///
+    /// batch() wraps INSIDE the arrow, never around it, so `e` stays in scope: the same reason decision
+    /// 159's keyboard arrow is built this way.
+    /// </summary>
+    string SuppressingArrow(string inner, bool batched)
+    {
+        if (batched)
+        {
+            _used.Add("batch");
+            inner = "  batch(() => {\n" + string.Join("\n", inner.Split('\n').Select(l => "  " + l)) + "\n  });";
+        }
+        return "(e) => {\n  e.preventDefault();\n" + inner + "\n}";
     }
 
     /// <summary>
@@ -1504,6 +1756,17 @@ public sealed class TemplateCompiler
     /// The JS const an @ref names, or null (refused). The target must be an ElementReference FIELD that
     /// @code declares: that is what makes `box` mean this node in the compiled C#, and it is checked
     /// against the compiler's own table rather than against the spelling (decision 57's rule again).
+    ///
+    /// AND IT MUST BE AT MOUNT SCOPE (decision 168). Decision 132's whole mapping is "the reference IS
+    /// the element's name", which holds exactly while the name and the reader share a scope. Under a
+    /// region they do not: the row/branch body is its own local function, so `const row = …` inside it
+    /// is invisible to a mount-level handler, which then reads a FREE VARIABLE. The generator used to
+    /// emit that at exit 0 -- measured `ReferenceError: row is not defined` -- which is the one thing
+    /// this project forbids. Refused here rather than hoisted: a hoist (`let row;` at mount scope,
+    /// assigned inside the body) is LAST-ASSIGNED-WINS, and list() never re-runs create() for a
+    /// persisting key, so after a reorder the name would point at a different element than Blazor's
+    /// capture does. That is a subtler divergence than the one being fixed, and it needs a Blazor
+    /// reorder oracle before it can ship.
     /// </summary>
     string? RefTargetJs(ReferenceCaptureIntermediateNode capture)
     {
@@ -1523,16 +1786,37 @@ public sealed class TemplateCompiler
             return null;
         }
 
+        if (_region is not null)
+        {
+            Diag("ref-under-region",
+                $"@ref=\"{name}\" is inside {_region}. A region's body is compiled into its own local " +
+                $"function, so the element would be named by a `const {name}` that only exists while that " +
+                "function runs -- and the component-scope code reading the reference would read a free " +
+                "variable (measured: `ReferenceError`). The element does not exist until the region runs, " +
+                "and there may be many of it or none, so there is no single node for the name to mean. " +
+                "Move the @ref onto an element OUTSIDE the @foreach/@if, or drive the row from the event " +
+                "argument instead of from a captured reference. Refusing to emit.",
+                capture.Source);
+            return null;
+        }
+
         return _code.FieldJs(name!);
     }
 
     /// <summary>
     /// The markup a composing parent passed INTO a child (`&lt;Card&gt;…&lt;/Card&gt;`), together with the
-    /// parent context it must be compiled in (decision 131). All four fields travel together because the
+    /// parent context it must be compiled in (decision 131). All five fields travel together because the
     /// fragment is written in the PARENT's file and scope: its `@count` names the PARENT's signal, and its
     /// regions were planned by the PARENT's collect walk. Emitting it under the child's context would
     /// resolve those names against the wrong component -- or, worse, silently against nothing.
     /// </summary>
+    /// <param name="Composing">
+    /// The composition chain the fragment was WRITTEN in, i.e. without the child that will place it.
+    /// The chain is lexical, like every other field here: `&lt;Card&gt;&lt;Card&gt;x&lt;/Card&gt;&lt;/Card&gt;`
+    /// nests a Card inside a Card's content and TERMINATES (the inner content is text), so the inner use
+    /// must not see the outer Card on the chain and be refused as a cycle. Card.razor rendering
+    /// `&lt;Card&gt;x&lt;/Card&gt;` ITSELF is the genuine cycle, and that one is caught at its own site.
+    /// </param>
     /// <param name="Container">
     /// The node Collect planned the content's region against, when the passed content holds template
     /// C# (`&lt;Card&gt;@if (show) { … }&lt;/Card&gt;`). A region's children are NOT in document order any
@@ -1540,17 +1824,39 @@ public sealed class TemplateCompiler
     /// hand raw C# to the emitter. Carrying the container lets EmitFragment take the same
     /// `_regions.Contains(container)` branch every other container takes.
     /// </param>
+    /// <param name="Outer">
+    /// The slot map in scope where the content was WRITTEN (decision 168). A fragment is compiled in
+    /// its author's scope, and `@ChildContent` is part of that scope: `Middle.razor` rendering
+    /// `&lt;Inner&gt;@ChildContent&lt;/Inner&gt;` FORWARDS its own hole one level down, so when Inner's
+    /// hole is reached the map to consult is the one Middle saw -- the grandparent's. Clearing it
+    /// instead (which is what shipped) dropped every forwarded fragment silently; restoring the map the
+    /// SLOT ITSELF is in would re-inline the fragment into itself and never terminate. The scope it was
+    /// written in is the only one that is both correct and finite.
+    /// </param>
     sealed record Fragment(
         IReadOnlyList<IntermediateNode> Nodes,
         IntermediateNode Container,
         CSharpFrontEnd Code,
         HashSet<IntermediateNode> Regions,
-        string File);
+        string File,
+        IReadOnlyList<string> Composing,
+        IReadOnlyDictionary<string, Fragment> Outer);
 
-    /// <summary>The fragment in scope for the child currently being inlined, or null. Saved/restored
-    /// around each composition exactly as _code/_regions/_file are, so a nested composition cannot see
-    /// its grandparent's fragment.</summary>
-    Fragment? _fragment;
+    /// <summary>
+    /// The content a composing parent bound to the child currently being inlined, KEYED BY THE
+    /// FRAGMENT PARAMETER NAME it fills (decision 168). Saved/restored around each composition exactly
+    /// as _code/_regions/_file are, so a nested composition cannot see its grandparent's content.
+    ///
+    /// KEYED, not single: a child may declare `Header` AND `ChildContent`, and Blazor binds bare
+    /// content to `ChildContent` ALONE. One un-named fragment (decision 131's shape) was inlined at
+    /// EVERY hole -- the same markup rendered twice, duplicate element ids, two live effects on one
+    /// signal. Always REPLACED, never mutated in place, because each entry's Outer holds a reference
+    /// to the map that was in scope one level up.
+    /// </summary>
+    IReadOnlyDictionary<string, Fragment> _fragments = EmptyFragments;
+
+    static readonly IReadOnlyDictionary<string, Fragment> EmptyFragments =
+        new Dictionary<string, Fragment>(StringComparer.Ordinal);
 
     /// <summary>The cascaded values in scope, keyed by C# TYPE (decision 134). A stack in effect: each
     /// &lt;CascadingValue&gt; adds its entry for the duration of its children and restores on the way out,
@@ -1566,30 +1872,76 @@ public sealed class TemplateCompiler
     /// </summary>
     void EmitFragment(CSharpExpressionIntermediateNode slot, string? parent)
     {
-        if (_fragment is not { } frag)
+        // WHICH hole this is. `@Header` and `@ChildContent` are two different positions, and only the
+        // content the parent bound to THIS name belongs here (decision 168).
+        var name = _code.SlotFragmentName(slot)
+            ?? throw new GeneratorException(
+                "FIL-WIRING: a fragment slot reached the emitter without the [Parameter] name it reads. " +
+                "SlotIsFragment and SlotFragmentName are set together at the one site that recognises a " +
+                "fragment slot. This is the TOOL being broken, not the input.");
+
+        if (!_fragments.TryGetValue(name, out var frag))
         {
-            // No parent supplied one. Blazor renders a null RenderFragment as NOTHING, so this emits
-            // nothing -- the one case where silence is the faithful answer rather than a dropped node.
+            // The parent bound nothing to this hole. Blazor renders a null RenderFragment as NOTHING,
+            // so this emits nothing -- the one case where silence is the faithful answer rather than a
+            // dropped node. It is ALSO the case decision 131 got wrong by having no key to miss on:
+            // `<div id="head">@Header</div>` must come out EMPTY when the parent passed bare content.
             return;
         }
 
         if (parent is null)
-            throw new GeneratorException(
-                "FIL-WIRING: a RenderFragment reached the emitter with no container to insert into. " +
-                "A fragment slot is always a child of the element the composed child declared it in. " +
-                "This is the TOOL being broken, not the input.");
+        {
+            // A fragment slot placed BARE inside a region -- `@if (Title == "t") { @ChildContent }` in
+            // the child (register defect B3). The region's body is compiled into its own local function
+            // and mounted through list(), which owns ONE node per key and splices it at a comment
+            // anchor; a RenderFragment is N top-level nodes and the region RE-RUNS, so there is no
+            // stable container the fragment's nodes can be inserted into. This is VALID Blazor, so it
+            // is a LOCATED refusal, not the crash it used to be -- and not a silent wrong render: the
+            // verifier hand-ran the obvious mapping and read the wrong DOM (nodes reversed at frame
+            // zero, orphans on toggle, duplicates on re-entry). The faithful capability is templated-
+            // fragment work blocked on the runtime freeze (spec S16 / defect D6), not this slice.
+            //
+            // `_region` is set ONLY by the two region emitters (EmitBranchFn -> "an @if branch",
+            // EmitList -> "a @foreach row"), and a fragment slot cannot reach here any other way: a
+            // child whose ROOT is a bare @ChildContent is refused earlier for having zero root elements
+            // (the static-leaf single-root gate). So a null region here is genuinely the tool broken.
+            if (_region is null)
+                throw new GeneratorException(
+                    "FIL-WIRING: a RenderFragment reached the emitter with no container and no region. " +
+                    "A fragment slot is always a child of the element the composed child declared it in, " +
+                    "or the body of a region. This is the TOOL being broken, not the input.");
+
+            Diag("fragment-under-region",
+                $"@{name} is placed BARE inside {_region}. A fragment slot must be a DIRECT child of an " +
+                "element the child declares, because a RenderFragment is N top-level nodes and a region " +
+                "re-runs: its list() rows own ONE node each and splice at a comment anchor, so there is " +
+                "no stable container for the fragment's nodes to be inserted into. The obvious mapping " +
+                "was MEASURED to render the wrong DOM (nodes reversed at frame zero, orphans on toggle, " +
+                $"duplicates on re-entry). Wrap the hole in one element the child owns (`@if (…) {{ <div>@{name}" +
+                $"</div> }}`), or lift the @{name} OUT of the @if/@foreach. Refusing to emit.",
+                slot.Source);
+            return;
+        }
 
         var savedFile = _file;
         var savedCode = _code;
         var savedRegions = _regions;
-        var savedFragment = _fragment;
+        var savedFragments = _fragments;
+        var savedComposing = _composing.ToArray();
 
         _file = frag.File;
         _code = frag.Code;
         _regions = frag.Regions;
-        // The fragment's own content may compose further children, but it is not itself inside one:
-        // clearing this is what stops a fragment that contains `@ChildContent` from re-inlining itself.
-        _fragment = null;
+        // ...and the composition chain with them: this markup sits ABOVE the child on the chain, not
+        // inside it, so a component the parent nested in its own content is not re-entering anything.
+        _composing.Clear();
+        _composing.AddRange(frag.Composing);
+        // ...AND THE SLOT MAP. The content is compiled in the scope it was WRITTEN in, and a hole that
+        // scope could see is part of it: `<Inner>@ChildContent</Inner>` inside a child FORWARDS the
+        // grandparent's content one level down, and Outer is the map that makes that resolve. Setting
+        // null here (decision 131) dropped it in total silence; setting the CURRENT map would re-enter
+        // this same fragment forever.
+        _fragments = frag.Outer;
 
         // THE CONTENT IS A CONTAINER LIKE ANY OTHER. If it held template C#, Collect planned it as a
         // region against the element the parent wrote it in, and its emission comes from the C# front
@@ -1606,7 +1958,9 @@ public sealed class TemplateCompiler
         _file = savedFile;
         _code = savedCode;
         _regions = savedRegions;
-        _fragment = savedFragment;
+        _fragments = savedFragments;
+        _composing.Clear();
+        _composing.AddRange(savedComposing);
     }
 
     /// <summary>
@@ -1614,6 +1968,10 @@ public sealed class TemplateCompiler
     /// parent's translated expression in scope, keyed by its C# TYPE, for the duration of its children.
     /// Because the whole composition inlines into one mount(), a descendant's [CascadingParameter] then
     /// binds to that expression directly -- the cascade IS lexical scope, and it costs nothing at runtime.
+    ///
+    /// IsFixed IS REFUSED (decision 167), and it used to be IGNORED: it changes the cascade's UPDATE
+    /// SEMANTICS for its consumers, both candidate mappings were measured against Blazor, and both
+    /// render the wrong DOM. See the block below for the numbers.
     /// </summary>
     void EmitCascadingValue(ComponentIntermediateNode node, string? parent)
     {
@@ -1627,6 +1985,36 @@ public sealed class TemplateCompiler
                 "<CascadingValue> needs a Value=\"@…\" expression. A cascade with nothing to cascade would " +
                 "put the type's default in scope and let descendants render it as real data. Refusing to emit.",
                 node.Source);
+            return;
+        }
+
+        // IsFixed IS NOT DECORATION (decision 167). It changes WHEN a consumer sees a new value: a fixed
+        // cascade registers no subscription, so a consumer whose own parameters do not change never sees
+        // one again -- while a consumer re-parameterised for any OTHER reason is still re-supplied the
+        // supplier's LIVE value. Measured on two consumers under one fixed cascade, Blazor renders
+        // 1,1,1 for the static one and 1,2,3 for the re-parameterised one.
+        //
+        // Here a cascade is LEXICAL SCOPE and the whole composition inlines into one mount(): there is no
+        // per-consumer render pass for that rule to hang on. The obvious approximation -- fold the value
+        // once at mount -- was MEASURED too, and it renders 1,1,1 for BOTH: it fixes the first consumer
+        // and breaks the second. So this is refused rather than approximated, and refused for ANY value:
+        // admitting the literal `false` would be a second matching rule and a second set of failure modes
+        // (@expr, casing, an unquoted token) for a form that is already the default, exactly the argument
+        // that keeps Name out below.
+        if (node.Children.OfType<ComponentAttributeIntermediateNode>()
+                .FirstOrDefault(a => a.AttributeName == "IsFixed") is { } isFixed)
+        {
+            Diag("unsupported-cascade",
+                "<CascadingValue IsFixed=\"…\"> changes the UPDATE SEMANTICS of the cascade for its " +
+                "consumers, and this compiler will not approximate it. Blazor's fixed cascade registers no " +
+                "subscription: a consumer whose own parameters never change never sees a new value again, " +
+                "while a consumer re-parameterised for any other reason IS re-supplied the live one -- " +
+                "measured on two consumers under one fixed cascade, Blazor renders 1,1,1 and 1,2,3. A " +
+                "cascade here is LEXICAL SCOPE, inlined into one mount(), with no per-consumer render for " +
+                "that rule to attach to; freezing the value at mount was measured and renders 1,1,1 for " +
+                "BOTH, right for the first consumer and wrong for the second. Drop IsFixed: the live " +
+                "cascade is faithful and costs nothing to keep. Refusing to emit rather than ignore it.",
+                isFixed.Source ?? node.Source);
             return;
         }
 
@@ -1869,6 +2257,10 @@ public sealed class TemplateCompiler
     /// (decision 138). preventDefault() is not decoration: without it the browser navigates on submit
     /// and the page reloads, which is precisely what Blazor's EditForm suppresses.
     ///
+    /// AND IT SUPPRESSES IT WITH OR WITHOUT A CALLBACK (decision 165). EditForm registers `onsubmit`
+    /// in its own render tree, always; OnValidSubmit only decides what runs after. So the submit
+    /// listener here is unconditional, and the callback is the optional part.
+    ///
     /// WITHOUT A VALIDATOR, OnValidSubmit FIRES ON EVERY SUBMIT -- that is Blazor's behaviour, not a
     /// simplification, because "valid" is decided by validator components and there are none. A
     /// &lt;DataAnnotationsValidator /&gt; is therefore REFUSED rather than ignored: ignoring it would make
@@ -1902,6 +2294,7 @@ public sealed class TemplateCompiler
         var v = $"_el{_el++}";
         _create.Add($"const {v} = document.createElement('form');");
 
+        var submitHandled = false;
         foreach (var attr in attrs)
         {
             if (attr.AttributeName is "Model") continue;   // consumed: nothing validates it (see above)
@@ -1920,8 +2313,25 @@ public sealed class TemplateCompiler
 
             _used.Add("listen");
             // Recorded like any other handler, so single-use inlining and batching decide identically.
+            // preventDefault() is NOT recorded alongside it: DefaultSuppressedEvents decides that from
+            // the event name, which is where Blazor keeps the rule too.
             _handlers.Add((v, "submit", handler));
-            _preventDefault.Add(v);
+            submitHandled = true;
+        }
+
+        // AN <EditForm> WITH NO OnValidSubmit STILL REGISTERS ONE (decision 165, register defect A2).
+        // Blazor's EditForm wires `onsubmit` -> HandleSubmitAsync unconditionally in its own render tree;
+        // the callback only decides what runs AFTER the default is killed. So the callback-less form
+        // suppresses navigation exactly like its twin -- measured in the browser, `defaultPrevented:true`
+        // on both. Filament emitted no listener at all here, which made the ONE thing an author writes a
+        // form for -- a submit button -- throw the whole application away and reload the document.
+        //
+        // Emitted directly rather than recorded, because _handlers entries name a @code METHOD and there
+        // is no method here: the listener's entire body IS the suppression.
+        if (!submitHandled)
+        {
+            _used.Add("listen");
+            _events.Add($"listen({v}, 'submit', (e) => {{ e.preventDefault(); }});");
         }
 
         EmitChildContent(node, v);
@@ -2071,6 +2481,29 @@ public sealed class TemplateCompiler
             return null;
         }
 
+        // THE CYCLE GUARD. Case-insensitive because File.Exists above is, on this platform and on
+        // Windows: a tag whose spelling differs from the file only in case resolves to the SAME file,
+        // so it must land on the same link of the chain. Two sibling components whose names differ
+        // only in case cannot both be resolved here anyway.
+        var childFull = Path.GetFullPath(childPath);
+        var opened = _composing.FindIndex(p => string.Equals(p, childFull, StringComparison.OrdinalIgnoreCase));
+        if (opened >= 0)
+        {
+            var cycle = string.Join(" -> ", _composing.Skip(opened).Append(childFull).Select(Path.GetFileName));
+            Diag("composition-cycle",
+                $"<{el.TagName}> re-enters a component that is already being inlined: {cycle}. Composition " +
+                "is COMPILE-TIME INLINING (decision 88): the child has no runtime instance, its markup is " +
+                "spliced into this mount(), and an @if guard around the recursive use becomes a runtime " +
+                "list() whose body is walked either way -- so the compiler cannot know where the recursion " +
+                "stops, and a cycle has no finite expansion here. Blazor instantiates the child at RUN time " +
+                "and evaluates the guard, so a guarded recursion does terminate there; the subset has no " +
+                "faithful mapping for that. Cut one edge of the cycle -- a recursive component tree needs a " +
+                "runtime instance per level, which is the spec 3 non-goal. Refusing to emit rather than " +
+                "descend until the process aborts.",
+                el.Source);
+            return null;
+        }
+
         // Two kinds of binding. A STATIC scalar (Name="World") folds to a JS string literal (#88). A
         // BOUND value (Value="@count") is the parent's translated EXPRESSION (decision 90): the parent
         // already compiled it (CollectComponentBindings harvested it into FreeSlots), so SlotJs is its
@@ -2079,6 +2512,7 @@ public sealed class TemplateCompiler
         var bindings = new Dictionary<string, string>(StringComparer.Ordinal);
         var reactive = new HashSet<string>(StringComparer.Ordinal);
         var handlers = new Dictionary<string, string>(StringComparer.Ordinal);
+        var formats = new Dictionary<string, ScalarFormat>(StringComparer.Ordinal);
         foreach (var attr in el.Children.OfType<HtmlAttributeIntermediateNode>())
         {
             var bound = attr.Children.OfType<CSharpExpressionAttributeValueIntermediateNode>().FirstOrDefault();
@@ -2118,6 +2552,12 @@ public sealed class TemplateCompiler
                 }
                 bindings[attr.AttributeName] = _code.SlotJs(bound);
                 reactive.Add(attr.AttributeName);
+                // Carry the type-directed display format across the boundary (the S9 slice, register A15):
+                // a float/decimal/DateTime/bool the parent supplies keeps its formatter at the child's
+                // `@Name` even when the child's declared type is an erased @typeparam. A format-less scalar
+                // (int, string) carries nothing, so the common case adds no entry and changes no bytes.
+                var fmt = _code.SlotFormat(bound);
+                if (fmt != ScalarFormat.None) formats[attr.AttributeName] = fmt;
                 continue;
             }
             // Prefix-aware for the same reason as the static path (decision 151): a multi-token
@@ -2130,7 +2570,7 @@ public sealed class TemplateCompiler
 
         var childParse = RazorFrontEnd.Parse(childPath);
         var childCode = new CSharpFrontEnd();
-        childCode.BindParameters(bindings, reactive, handlers);
+        childCode.BindParameters(bindings, reactive, handlers, formats);
         childCode.BindCascades(_cascades);
 
         // THE MARKUP THE PARENT PASSED IN (decision 131). Everything that is not an attribute is the
@@ -2146,10 +2586,12 @@ public sealed class TemplateCompiler
         var savedFile = _file;
         var savedCode = _code;
         var savedRegions = _regions;
-        var savedFragment = _fragment;
+        var savedFragments = _fragments;             // the slot map the CONTENT below was written in
+        var savedComposing = _composing.ToArray();   // the chain the CONTENT below was written in
         var diagBefore = _diagnostics.Count;
 
         _file = childParse.FilePath;
+        _composing.Add(childFull);
         var (childMethod, childRegions) = PrepareComponent(childParse, childCode);
 
         string? result = null;
@@ -2189,25 +2631,154 @@ public sealed class TemplateCompiler
                     $"static-leaf slice; it has {roots.Count}. Refusing to emit.", el.Source);
             else
             {
-                // Walk the child's root with _code swapped to the child front end: its create
-                // statements splice INTO the parent's shared _create (inline), and @Name folds to
-                // the bound constant. Same save/restore idiom EmitBranchFn uses for _create/_bindings.
-                _code = childCode;
-                _regions = childRegions;
-                // The fragment travels with the PARENT context it was written in, so that when the child's
-                // @ChildContent is reached the parent's scope can be restored to compile it (decision 131).
-                _fragment = fragmentNodes.Count > 0
-                    ? new Fragment(fragmentNodes, el, savedCode, savedRegions, savedFile)
-                    : null;
-                result = EmitNode(roots[0], parent: null);
+                // WHICH HOLE GETS WHAT (decision 168). The content is bound to the child's fragment
+                // [Parameter]s BY NAME before anything is emitted, so a refusal costs no statements.
+                // The fragments travel with the PARENT context they were written in, so that when a
+                // hole is reached the parent's scope can be restored to compile them (decision 131).
+                var slots = BindFragmentSlots(
+                    el, fragmentNodes, childCode, savedCode, savedRegions, savedFile, savedComposing, savedFragments);
+
+                if (slots is not null)
+                {
+                    // Walk the child's root with _code swapped to the child front end: its create
+                    // statements splice INTO the parent's shared _create (inline), and @Name folds to
+                    // the bound constant. Same save/restore idiom EmitBranchFn uses for _create/_bindings.
+                    _code = childCode;
+                    _regions = childRegions;
+                    _fragments = slots;
+                    result = EmitNode(roots[0], parent: null);
+                }
             }
         }
 
+        _composing.RemoveAt(_composing.Count - 1);
         _file = savedFile;
         _code = savedCode;
         _regions = savedRegions;
-        _fragment = savedFragment;
+        _fragments = savedFragments;
         return result;
+    }
+
+    /// <summary>
+    /// Bind the markup a parent passed to the CHILD's fragment [Parameter]s, BY NAME (decision 168).
+    /// Returns null after emitting a located refusal; an empty map when nothing was passed.
+    ///
+    /// SLOT FIRST, SIBLING FILE SECOND, and the order is the whole fix for one of the two defects
+    /// this closes. `&lt;Slotted&gt;&lt;Body&gt;…&lt;/Body&gt;&lt;/Slotted&gt;` where the child declares
+    /// a `Body` fragment names the child's HOLE; Razor's own codegen for that source is
+    /// `AddAttribute(5, "Body", (RenderFragment)…)` and `OpenComponent&lt;…Body&gt;` appears NOWHERE.
+    /// Resolving `Body.razor` first -- which is what shipped -- emitted the sibling component instead
+    /// of filling the slot, at exit 0. Worse, it emitted the SAME bytes whether or not the child
+    /// declared `Body`, i.e. it was invariant to the declaration that decides the meaning: accidentally
+    /// right in one case, silently wrong in the other. The match is scoped to IMMEDIATE children, which
+    /// is also Blazor's rule -- one level down, `&lt;Body&gt;` is the component again.
+    /// </summary>
+    IReadOnlyDictionary<string, Fragment>? BindFragmentSlots(
+        MarkupElementIntermediateNode el,
+        IReadOnlyList<IntermediateNode> content,
+        CSharpFrontEnd childCode,
+        CSharpFrontEnd parentCode,
+        HashSet<IntermediateNode> parentRegions,
+        string parentFile,
+        IReadOnlyList<string> parentComposing,
+        IReadOnlyDictionary<string, Fragment> outer)
+    {
+        if (content.Count == 0) return EmptyFragments;
+
+        var declared = childCode.FragmentParameterNames.ToHashSet(StringComparer.Ordinal);
+        var named = content.OfType<MarkupElementIntermediateNode>()
+            .Where(m => declared.Contains(m.TagName))
+            .ToList();
+
+        Fragment Make(IntermediateNode container, IReadOnlyList<IntermediateNode> nodes) =>
+            new(nodes, container, parentCode, parentRegions, parentFile, parentComposing, outer);
+
+        if (named.Count == 0)
+        {
+            // BARE CONTENT GOES TO ChildContent, AND TO NOTHING ELSE. That is Blazor's rule, and the
+            // reason the map needs a key it can MISS on: with one un-named fragment, a child declaring
+            // `Header` AND `ChildContent` rendered the parent's markup at BOTH holes -- the same
+            // elements twice, duplicate ids, two effects on one signal, at exit 0.
+            if (!declared.Contains("ChildContent"))
+            {
+                // Razor still lowers bare content to `AddAttribute(…, "ChildContent", …)` for a
+                // property that does not exist, so this BUILDS on the Blazor side and fails when the
+                // component is rendered. Dropping it here would be the silent half of that.
+                Diag("composition-out-of-subset",
+                    $"<{el.TagName}> was given bare content, which binds to a `ChildContent` " +
+                    $"[Parameter] RenderFragment -- and {el.TagName}.razor declares no such parameter. " +
+                    $"It declares: {string.Join(", ", declared)}. Either name the slot explicitly " +
+                    $"(`<{el.TagName}><{declared.First()}>…</{declared.First()}></{el.TagName}>`) or " +
+                    "declare `[Parameter] public RenderFragment? ChildContent { get; set; }`. Refusing " +
+                    "to emit rather than place the content at a hole the author did not name.",
+                    el.Source);
+                return null;
+            }
+
+            return new Dictionary<string, Fragment>(StringComparer.Ordinal) { ["ChildContent"] = Make(el, content) };
+        }
+
+        // NAMED-SLOT MODE. Everything below is REFUSED rather than emitted, and each refusal has a
+        // Blazor reading behind it -- either Razor rejects the source outright, or Razor and this
+        // compiler disagree about what the leftover means (register defect D9).
+        if (named.GroupBy(m => m.TagName, StringComparer.Ordinal).FirstOrDefault(g => g.Count() > 1) is { } dup)
+        {
+            // NOT a Razor error, and that was MEASURED rather than assumed: Razor accepts this source
+            // (`Build succeeded. 0 Warning(s) 0 Error(s)`) and emits the parameter assignment TWICE,
+            // so a real Blazor app renders the LAST one and silently discards the first (read in
+            // Chrome: `<div id="card"><span id="h2">b</span></div>`, the `id="h"` content gone).
+            // Reproducing that is one line here -- the map is keyed, so the later entry would win by
+            // itself -- but shipping a rule whose whole content is "one of the two you wrote is
+            // ignored" without driving it through the DOM-contract oracle on both shells is exactly
+            // the shortcut this project does not take. Refused, and the refusal names what Blazor does.
+            Diag("composition-out-of-subset",
+                $"<{el.TagName}> names the slot '{dup.Key}' more than once, and a fragment [Parameter] " +
+                "holds ONE value. Razor accepts this and assigns the parameter twice, so a Blazor app " +
+                "renders the LAST one and silently drops the earlier content. Merge them into a single " +
+                $"<{dup.Key}> element. Refusing to emit rather than compile a source whose first half " +
+                "does nothing.", el.Source);
+            return null;
+        }
+
+        if (named.FirstOrDefault(m => m.Children.OfType<HtmlAttributeIntermediateNode>().Any()) is { } withAttr)
+        {
+            // Razor: `RZ9997: Unrecognized attribute '…' on child content element '…'`. A slot element
+            // is not an element -- it is the NAME of a parameter -- so it has nothing to carry.
+            Diag("composition-out-of-subset",
+                $"<{withAttr.TagName}> inside <{el.TagName}> names a fragment [Parameter], not an " +
+                "element, so it cannot carry attributes -- Razor rejects the same source with RZ9997. " +
+                "Move the attribute onto an element INSIDE the slot. Refusing to emit.",
+                withAttr.Source ?? el.Source);
+            return null;
+        }
+
+        if (content.FirstOrDefault(c => !named.Contains(c)) is { } leftover)
+        {
+            var isWhitespace = leftover is HtmlContentIntermediateNode h && string.IsNullOrWhiteSpace(RawText(h));
+            Diag("composition-out-of-subset",
+                isWhitespace
+                    ? $"<{el.TagName}> mixes named slots with WHITESPACE, and the two compilers disagree " +
+                      "about what that whitespace is: Razor DISCARDS it between child content elements, " +
+                      "while this compiler materialises whitespace between siblings as a real text node " +
+                      "(the documented policy every other slice is measured under). Emitting would build " +
+                      "a DOM Blazor does not. Write the slots with no space between them " +
+                      $"(`<{el.TagName}><{named[0].TagName}>…</{named[0].TagName}>…</{el.TagName}>`). " +
+                      "Refusing to emit rather than add a node Blazor never creates."
+                    : $"<{el.TagName}> mixes named slots with loose content. Razor rejects the same " +
+                      $"source with RZ9996 (Unrecognized child content inside component '{el.TagName}'): " +
+                      "once one slot is named, ALL of the content must be. Wrap the loose content in its " +
+                      "own named slot. Refusing to emit.",
+                el.Source);
+            return null;
+        }
+
+        var map = new Dictionary<string, Fragment>(StringComparer.Ordinal);
+        foreach (var m in named)
+            // The slot ELEMENT is the container, not the composition element: if the slot's content
+            // holds template C#, the parent's collect walk planned the region against THAT node
+            // (decision 162), and EmitFragment asks `_regions.Contains(container)`.
+            map[m.TagName] = Make(m, m.Children.Where(c => c is not HtmlAttributeIntermediateNode).ToList());
+        return map;
     }
 
     /// <summary>Emit one re-parsed region, in the order the C# says.</summary>
@@ -2276,11 +2847,13 @@ public sealed class TemplateCompiler
         var outerCreate = _create;
         var outerBindings = _bindings;
         var outerKey = _consumedKey;
+        var outerRegion = _region;
         var eventsBefore = _events.Count;
         var handlersBefore = _handlers.Count;
         _create = [];
         _bindings = [];
         _consumedKey = fe.Key;
+        _region = "a @foreach row";
 
         var root = EmitNode(fe.Body, parent: null);
         var body = new List<string>();
@@ -2292,6 +2865,7 @@ public sealed class TemplateCompiler
         _create = outerCreate;
         _bindings = outerBindings;
         _consumedKey = outerKey;
+        _region = outerRegion;
 
         // A NAMED-method handler inside a row records into the DEFERRED mount-level pass (its site
         // count decides inlining), which would emit its listen() where the row's element const does
@@ -2429,6 +3003,7 @@ public sealed class TemplateCompiler
         var outerCreate = _create;
         var outerBindings = _bindings;
         var outerKey = _consumedKey;
+        var outerRegion = _region;
         // Same scooping as a row's (decision 141): a listener on a branch-local element must be wired
         // inside the branch function, where its const exists -- not in the mount events section.
         var eventsBefore = _events.Count;
@@ -2436,6 +3011,7 @@ public sealed class TemplateCompiler
         _create = [];
         _bindings = [];
         _consumedKey = null;
+        _region = "an @if branch";
 
         var root = EmitNode(bodyNode, parent: null);
         var lines = new List<string>();
@@ -2447,6 +3023,7 @@ public sealed class TemplateCompiler
         _create = outerCreate;
         _bindings = outerBindings;
         _consumedKey = outerKey;
+        _region = outerRegion;
 
         if (_handlers.Count > handlersBefore)
         {
@@ -2585,8 +3162,21 @@ public sealed class TemplateCompiler
                 if (_code.LambdaBodyJs(attr) is { } lambdaLines)
                 {
                     _used.Add("listen");
-                    var arrow = "() => {\n" + string.Join("\n", lambdaLines.Select(l => "  " + l)) + "\n}";
-                    if (_code.LambdaBatched(attr)) { _used.Add("batch"); arrow = $"() => batch({arrow})"; }
+                    string arrow;
+                    // A LAMBDA ON A SUPPRESSED EVENT (decision 165) goes through the SAME arrow a named
+                    // handler does. This path emits during the walk instead of being recorded, and that
+                    // alone is why `<form @onsubmit="() => …">` navigated while <EditForm> did not: the
+                    // rule was written on one path only. It is one rule now, in SuppressingArrow.
+                    if (DefaultSuppressedEvents.Contains(domEvent))
+                    {
+                        arrow = SuppressingArrow(
+                            string.Join("\n", lambdaLines.Select(l => "  " + l)), _code.LambdaBatched(attr));
+                    }
+                    else
+                    {
+                        arrow = "() => {\n" + string.Join("\n", lambdaLines.Select(l => "  " + l)) + "\n}";
+                        if (_code.LambdaBatched(attr)) { _used.Add("batch"); arrow = $"() => batch({arrow})"; }
+                    }
                     _events.Add($"listen({v}, {JsString(domEvent)}, {arrow});");
                     return;
                 }
@@ -2779,6 +3369,16 @@ public sealed class TemplateCompiler
             js = $"__dtStr({js})";
         }
 
+        // A BOOL in text position renders C#'s CAPITALISED "True"/"False" (Boolean.ToString), not JS's
+        // lower-case String(true) = "true" -- the latent divergence decision 107 named, closed here (the
+        // S9 slice, register A13). Same type-directed dispatch as the scalars above, so a bool that crosses
+        // a composition boundary (SlotFormat carried it) is formatted at the child's render site too.
+        if (_code.SlotIsBool(expr))
+        {
+            _needsBoolFormat = true;
+            js = $"__bool({js})";
+        }
+
         // NOT REACTIVE -> no signal, no effect, no .value: one write, at create time. The
         // source can never change, so an effect around it would be a subscription to nothing --
         // machinery serving machinery, which is the thing this POC refuses. rows.js's @row.Id
@@ -2855,6 +3455,15 @@ public sealed class TemplateCompiler
             sb.Append("  }\n");
             sb.Append("  return String(x);\n");
             sb.Append("}\n\n");
+        }
+
+        if (_needsBoolFormat)
+        {
+            // C#'s Boolean.ToString() is CAPITALISED and invariant ("True"/"False"); JS's String(true) is
+            // "true". A bool in text position formats through this, so `@flag` renders what Blazor renders.
+            // Emitted (not a runtime export) so a bool display stays generator-only. Decision 107/S9.
+            sb.Append("// -- bool display: C#'s Boolean.ToString() is capitalised (\"True\"/\"False\") --\n");
+            sb.Append("function __bool(b) { return b ? 'True' : 'False'; }\n\n");
         }
 
         if (_code.DecimalHelpers.Count > 0)
