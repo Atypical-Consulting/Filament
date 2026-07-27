@@ -17,6 +17,13 @@ jobs:
     name: Test, pack, prove, publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    # Job-level, so it must restate contents: write — a job-level block REPLACES the
+    # workflow-level one rather than adding to it, and `gh release create` below needs it.
+    permissions:
+      contents: write
+      id-token: write # request the GitHub OIDC token for NuGet Trusted Publishing
+
     defaults:
       run:
         shell: bash
@@ -105,17 +112,25 @@ jobs:
             --title "Filament $GITHUB_REF_NAME" \
             --generate-notes
 
-      # The one human prerequisite: a NUGET_API_KEY repo secret. Guarded so a fork or a
-      # secretless run still produces a complete GitHub Release instead of a red X.
+      # Trusted Publishing: exchanges the OIDC token (needs `id-token: write` above) for a NuGet
+      # key valid ~1 hour, so no long-lived secret is stored. Keep it adjacent to the push so the
+      # key cannot expire in between. The one human prerequisite is now a Trusted Publishing
+      # policy on nuget.org naming this repository and `release.yml`, plus the NUGET_USER secret
+      # (the nuget.org profile name) — not a long-lived key.
+      #
+      # The previous `if [[ -z "$NUGET_API_KEY" ]]; then exit 0` soft-skip is GONE on purpose.
+      # This workflow only runs on a v* tag, so a release is expected: a missing policy must fail
+      # loudly rather than leave the tagged version unpublished behind a green check. The GitHub
+      # Release is created in the step above, so it exists either way.
+      - name: NuGet login (OIDC -> short-lived key)
+        id: nuget-login
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       - name: Push to nuget.org
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          if [[ -z "$NUGET_API_KEY" ]]; then
-            echo "NUGET_API_KEY not configured -- packages are on the GitHub Release; add the secret and re-run to publish to nuget.org."
-            exit 0
-          fi
           dotnet nuget push "artifacts/nuget/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
