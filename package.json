@@ -6,7 +6,7 @@
   "devDependencies": {
     "@tailwindcss/cli": "4.3.3",
     "esbuild": "0.28.1",
-    "happy-dom": "20.11.0",
+    "happy-dom": "20.11.1",
     "tailwindcss": "4.3.3"
   }
 }
