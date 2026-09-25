@@ -114,15 +114,15 @@ jobs:
       - name: Deploy to GitHub Pages (attempt 1)
         id: d1
         continue-on-error: true
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
       - name: Deploy to GitHub Pages (attempt 2)
         id: d2
         if: steps.d1.outcome == 'failure'
         continue-on-error: true
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
 
       - name: Deploy to GitHub Pages (attempt 3)
         id: d3
         if: steps.d1.outcome == 'failure' && steps.d2.outcome == 'failure'
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5
