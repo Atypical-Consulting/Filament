@@ -96,7 +96,7 @@ jobs:
         run: dotnet test Filament.sln --no-build -c Release -m:1 --logger "trx;LogFileName=test-results.trx"
 
       - name: Upload test results
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always() && matrix.os == 'ubuntu-latest'
         with:
           name: test-results
